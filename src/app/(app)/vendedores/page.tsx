@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar } from "@/components/avatar";
+import { AvatarUploader } from "@/components/avatar-uploader";
 
 type FormState = {
   nome: string;
@@ -127,7 +129,12 @@ export default function VendedoresPage() {
             <tbody className="divide-y divide-[var(--color-border)]">
               {desempenho.map((d) => (
                 <tr key={d.id} className="hover:bg-[var(--color-surface-2)]/40">
-                  <td className="px-5 py-3 font-medium">{d.nome}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar id={d.id} nome={d.nome} size={32} />
+                      <span className="font-medium">{d.nome}</span>
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-[var(--color-text-dim)]">{d.email}</td>
                   <td className="px-5 py-3 text-right">{brl(d.metaMensal)}</td>
                   <td className="px-5 py-3 text-right">{pct(d.comissaoPct)}</td>
@@ -174,6 +181,15 @@ export default function VendedoresPage() {
         title={editing ? "Editar vendedor" : "Novo vendedor"}
       >
         <form onSubmit={salvar} className="space-y-4">
+          {editing && (
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-4">
+              <Label>Foto do vendedor</Label>
+              <p className="mb-3 text-xs text-[var(--color-text-dim)]">
+                Aparece no ranking, na tabela e em todo lugar que mostra o vendedor.
+              </p>
+              <AvatarUploader targetId={editing.id} nome={editing.nome} />
+            </div>
+          )}
           <div>
             <Label htmlFor="nome">Nome</Label>
             <Input

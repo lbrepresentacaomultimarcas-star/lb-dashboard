@@ -5,6 +5,7 @@ import { LogOut, Menu } from "lucide-react";
 import { sessionApi, useSession } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Avatar } from "@/components/avatar";
 
 export function Topbar() {
   const session = useSession();
@@ -18,6 +19,7 @@ export function Topbar() {
         >
           <Menu className="h-5 w-5" />
         </button>
+        {session && <Avatar id={session.id} nome={session.nome} size={36} />}
         <div>
           <p className="text-xs text-[var(--color-text-dim)]">Olá,</p>
           <p className="text-sm font-medium">{session?.nome ?? "Convidado"}</p>

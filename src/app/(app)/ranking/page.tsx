@@ -6,23 +6,9 @@ import { useMetas, useVendas, useVendedores } from "@/lib/store";
 import { desempenhoPorVendedor, totalFaturado, vendasNoMes } from "@/lib/selectors";
 import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
 import { Logo } from "@/components/logo";
+import { Avatar } from "@/components/avatar";
 
 const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º na ordem visual
-
-function avatarColor(nome: string) {
-  let h = 0;
-  for (const c of nome) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return `hsl(${h}, 65%, 55%)`;
-}
-
-function initials(nome: string) {
-  return nome
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 export default function RankingPage() {
   const vendedores = useVendedores();
@@ -156,14 +142,12 @@ export default function RankingPage() {
                         className="absolute -inset-6 rounded-full"
                         style={{ background: tone.glow }}
                       />
-                      <div
-                        className="relative grid h-full w-full place-items-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-3xl font-bold text-white"
-                        style={{
-                          backgroundImage: `linear-gradient(135deg, ${avatarColor(d.nome)} 0%, rgba(0,0,0,0.5) 100%)`,
-                        }}
-                      >
-                        {initials(d.nome)}
-                      </div>
+                      <Avatar
+                        id={d.id}
+                        nome={d.nome}
+                        size={idx === 0 ? 144 : 112}
+                        className="relative h-full w-full"
+                      />
                       {idx === 0 && (
                         <Icon
                           className="absolute -top-3 -right-2 h-8 w-8 text-yellow-300 drop-shadow-[0_0_8px_rgba(253,224,71,0.8)]"
@@ -221,13 +205,11 @@ export default function RankingPage() {
                 className="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm"
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold text-white"
-                    style={{
-                      backgroundImage: `linear-gradient(135deg, ${avatarColor(d.nome)} 0%, rgba(0,0,0,0.6) 100%)`,
-                    }}
-                  >
-                    {i + 1}
+                  <div className="relative shrink-0">
+                    <Avatar id={d.id} nome={d.nome} size={40} />
+                    <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-[var(--color-brand)] text-[10px] font-bold text-white ring-2 ring-[#06070d]">
+                      {i + 1}
+                    </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-white">{d.nome}</p>

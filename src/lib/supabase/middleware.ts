@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * a request segue normal (client browser refaz o handshake se precisar).
  */
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const response = NextResponse.next({ request });
 
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();

@@ -1,0 +1,79 @@
+import {
+  BarChart3,
+  History,
+  LayoutDashboard,
+  Settings,
+  Shield,
+  ShoppingCart,
+  Sparkles,
+  Target,
+  Trophy,
+  UserCircle,
+  Users,
+  Wallet,
+} from "lucide-react";
+import type { Papel, SessionUser } from "@/lib/types";
+import { temPermissao } from "@/lib/permissions";
+
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  minimo?: Papel;
+};
+
+export type NavGroup = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavItem[];
+  minimo?: Papel;
+};
+
+export const NAV: (NavItem | NavGroup)[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  {
+    label: "Gameficação",
+    icon: Trophy,
+    items: [
+      { href: "/ranking", label: "Rankings", icon: Trophy },
+      { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
+    ],
+  },
+  {
+    label: "Negócios",
+    icon: ShoppingCart,
+    items: [
+      { href: "/vendas", label: "Vendas", icon: ShoppingCart },
+      { href: "/leads", label: "Pipeline / Leads", icon: Sparkles },
+      { href: "/clientes", label: "Clientes", icon: UserCircle },
+    ],
+  },
+  {
+    label: "Administrativo",
+    icon: Users,
+    minimo: "admin",
+    items: [
+      { href: "/admin/colaboradores", label: "Colaboradores", icon: Shield, minimo: "admin" },
+      { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
+      { href: "/admin/producoes", label: "Produções", icon: BarChart3, minimo: "admin" },
+      { href: "/vendedores", label: "Vendedores", icon: Users, minimo: "supervisor" },
+    ],
+  },
+  { href: "/financeiro", label: "Financeiro", icon: Wallet, minimo: "coordenador" },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { href: "/historico", label: "Histórico", icon: History, minimo: "supervisor" },
+  { href: "/configuracoes", label: "Configurações", icon: Settings, minimo: "admin" },
+];
+
+export function filterNav(session: SessionUser | null): (NavItem | NavGroup)[] {
+  const out: (NavItem | NavGroup)[] = [];
+  for (const entry of NAV) {
+    if ("items" in entry) {
+      const filhos = entry.items.filter((it) => !it.minimo || temPermissao(session, it.minimo));
+      if (filhos.length > 0) out.push({ ...entry, items: filhos });
+    } else if (!entry.minimo || temPermissao(session, entry.minimo)) {
+      out.push(entry);
+    }
+  }
+  return out;
+}
