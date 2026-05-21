@@ -122,6 +122,11 @@ export default function LoginPage() {
               ? "Conectado ao Supabase"
               : "Modo demo: qualquer email/senha funciona"}
           </p>
+          {/* DIAGNÓSTICO TEMPORÁRIO — remover depois de confirmar produção */}
+          <p className="text-center text-[10px] font-mono text-[var(--color-text-dim)]/60">
+            url:{(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "vazio").slice(0, 30)}{" "}
+            · key:{(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "vazio").slice(0, 15)}
+          </p>
         </form>
       </div>
     </div>
