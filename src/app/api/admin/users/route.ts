@@ -5,8 +5,8 @@ import type { Papel } from "@/lib/types";
 
 const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "vendedor"];
 
-export async function GET() {
-  const auth = await requireAdmin();
+export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const admin = supabaseAdmin();
   const { data, error } = await admin
@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const body = (await req.json()) as {
     userId?: string;
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const userId = req.nextUrl.searchParams.get("userId");
   if (!userId) return Response.json({ error: "userId obrigatório" }, { status: 400 });

@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-export async function GET() {
-  const auth = await requireAdmin();
+export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const admin = supabaseAdmin();
   const { data, error } = await admin
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const body = (await req.json()) as {
     nome?: string;
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const body = (await req.json()) as {
     id?: string;
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return Response.json({ error: "id obrigatório" }, { status: 400 });

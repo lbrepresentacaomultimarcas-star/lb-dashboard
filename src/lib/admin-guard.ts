@@ -2,14 +2,27 @@ import "server-only";
 
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { clientIdFromRequest, rateLimit } from "./rate-limit";
 
 /**
- * Valida que o caller está logado e é admin do org.
- * Retorna { userId, orgId } pra usar na lógica do handler, ou Response com 401/403.
+ * Valida que o caller está logado, é admin do org e está dentro do rate limit.
+ * Retorna { userId, orgId } pra usar na lógica do handler, ou Response com 401/403/429.
  */
-export async function requireAdmin(): Promise<
-  { userId: string; orgId: string; email: string } | Response
-> {
+export async function requireAdmin(
+  req?: Request,
+): Promise<{ userId: string; orgId: string; email: string } | Response> {
+  // Rate limit por IP — 60 req / minuto pra cada IP fazendo chamadas admin
+  if (req) {
+    const ip = clientIdFromRequest(req);
+    const rl = rateLimit(`admin:${ip}`, { capacity: 60, refillPerSec: 1 });
+    if (!rl.ok) {
+      return Response.json(
+        { error: "Muitas requisições. Aguarde alguns segundos." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter) } },
+      );
+    }
+  }
+
   const sb = await supabaseServer();
   const { data: userRes } = await sb.auth.getUser();
   const user = userRes.user;
@@ -28,7 +41,6 @@ export async function requireAdmin(): Promise<
   if (profile.papel !== "admin") {
     return Response.json({ error: "Apenas admin pode acessar" }, { status: 403 });
   }
-  // Org = vendedor_id se houver, senão o próprio id (admin do org é o dono)
   const orgId = profile.vendedor_id ?? profile.id;
   return { userId: user.id, orgId, email: profile.email };
 }

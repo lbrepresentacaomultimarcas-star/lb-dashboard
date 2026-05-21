@@ -14,7 +14,7 @@ type Body = {
 };
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const body = (await req.json()) as Body;
   if (!body.email) return Response.json({ error: "Email obrigatório" }, { status: 400 });
