@@ -19,5 +19,26 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icon-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Atalhos rápidos (long-press no ícone do app)
+    shortcuts: [
+      {
+        name: "Pipeline de Negócios",
+        short_name: "Pipeline",
+        url: "/leads",
+        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+      },
+      {
+        name: "Ranking de Vendas",
+        short_name: "Ranking",
+        url: "/ranking",
+        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+      },
+      {
+        name: "Nova Venda",
+        short_name: "Vendas",
+        url: "/vendas",
+        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+      },
+    ],
   };
 }

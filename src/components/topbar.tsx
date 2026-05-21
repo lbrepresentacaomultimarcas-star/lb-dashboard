@@ -6,16 +6,22 @@ import { sessionApi, useSession } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar } from "@/components/avatar";
+import { useMobileNav } from "@/components/mobile-nav-context";
 
 export function Topbar() {
   const session = useSession();
   const router = useRouter();
+  const { setOpen } = useMobileNav();
   return (
-    <header className="flex h-16 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 md:px-6">
+    <header
+      className="flex h-16 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 md:px-6"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div className="flex items-center gap-3">
         <button
+          onClick={() => setOpen(true)}
           className="rounded-md p-2 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] md:hidden"
-          aria-label="Menu"
+          aria-label="Abrir menu"
         >
           <Menu className="h-5 w-5" />
         </button>

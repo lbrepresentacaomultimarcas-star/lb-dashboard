@@ -11,7 +11,10 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const SITE_URL = "https://lb-dashboard-virid.vercel.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   applicationName: "LB Dashboard",
   title: {
     default: "LB Representações — Dashboard",
@@ -26,6 +29,22 @@ export const metadata: Metadata = {
     title: "LB Dashboard",
   },
   formatDetection: { telephone: false },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: "LB Dashboard",
+    title: "LB Representações — Dashboard",
+    description:
+      "Sistema de gestão de vendas, pipeline, metas e comissões.",
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "LB Representações" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "LB Representações — Dashboard",
+    description: "Gestão de vendas, pipeline, metas e comissões.",
+    images: ["/icon-512.png"],
+  },
+  robots: { index: false, follow: false }, // sistema interno — não indexar
 };
 
 export const viewport: Viewport = {
