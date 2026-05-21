@@ -1,0 +1,287 @@
+import type { AuditLog, Cliente, Equipe, Lead, LeadStatus, LeadTipo, Meta, Papel, Producao, Profile, Venda, Vendedor } from "../types";
+
+const num = (v: number | string) => (typeof v === "string" ? Number(v) : v);
+
+// ============================================================
+// Vendedor
+// ============================================================
+export type DbVendedor = {
+  id: string;
+  nome: string;
+  email: string | null;
+  meta_mensal: number | string;
+  comissao_pct: number | string;
+  ativo: boolean;
+  criado_em: string;
+};
+
+export const vendedorFromDb = (r: DbVendedor): Vendedor => ({
+  id: r.id,
+  nome: r.nome,
+  email: r.email ?? "",
+  metaMensal: num(r.meta_mensal),
+  comissaoPct: num(r.comissao_pct),
+  ativo: r.ativo,
+  criadoEm: r.criado_em,
+});
+
+export const vendedorToDb = (v: Partial<Vendedor>): Partial<DbVendedor> => {
+  const out: Partial<DbVendedor> = {};
+  if (v.nome !== undefined) out.nome = v.nome;
+  if (v.email !== undefined) out.email = v.email || null;
+  if (v.metaMensal !== undefined) out.meta_mensal = v.metaMensal;
+  if (v.comissaoPct !== undefined) out.comissao_pct = v.comissaoPct;
+  if (v.ativo !== undefined) out.ativo = v.ativo;
+  return out;
+};
+
+// ============================================================
+// Venda
+// ============================================================
+export type DbVenda = {
+  id: string;
+  vendedor_id: string;
+  cliente: string;
+  valor: number | string;
+  data: string;
+  observacao: string | null;
+};
+
+export const vendaFromDb = (r: DbVenda): Venda => ({
+  id: r.id,
+  vendedorId: r.vendedor_id,
+  cliente: r.cliente,
+  valor: num(r.valor),
+  data: r.data,
+  observacao: r.observacao ?? undefined,
+});
+
+export const vendaToDb = (v: Partial<Venda>): Partial<DbVenda> => {
+  const out: Partial<DbVenda> = {};
+  if (v.vendedorId !== undefined) out.vendedor_id = v.vendedorId;
+  if (v.cliente !== undefined) out.cliente = v.cliente;
+  if (v.valor !== undefined) out.valor = v.valor;
+  if (v.data !== undefined) out.data = v.data;
+  if (v.observacao !== undefined) out.observacao = v.observacao || null;
+  return out;
+};
+
+// ============================================================
+// Cliente
+// ============================================================
+export type DbCliente = {
+  id: string;
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  empresa: string | null;
+  notas: string | null;
+  criado_em: string;
+};
+
+export const clienteFromDb = (r: DbCliente): Cliente => ({
+  id: r.id,
+  nome: r.nome,
+  email: r.email ?? "",
+  telefone: r.telefone ?? "",
+  empresa: r.empresa ?? "",
+  notas: r.notas ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const clienteToDb = (c: Partial<Cliente>): Partial<DbCliente> => {
+  const out: Partial<DbCliente> = {};
+  if (c.nome !== undefined) out.nome = c.nome;
+  if (c.email !== undefined) out.email = c.email || null;
+  if (c.telefone !== undefined) out.telefone = c.telefone || null;
+  if (c.empresa !== undefined) out.empresa = c.empresa || null;
+  if (c.notas !== undefined) out.notas = c.notas || null;
+  return out;
+};
+
+// ============================================================
+// Lead
+// ============================================================
+export type DbLead = {
+  id: string;
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  valor_estimado: number | string;
+  status: LeadStatus;
+  tipo: LeadTipo | null;
+  vendedor_id: string | null;
+  origem: string | null;
+  observacao: string | null;
+  criado_em: string;
+};
+
+export const leadFromDb = (r: DbLead): Lead => ({
+  id: r.id,
+  nome: r.nome,
+  email: r.email ?? "",
+  telefone: r.telefone ?? "",
+  valorEstimado: num(r.valor_estimado),
+  status: r.status,
+  tipo: r.tipo ?? undefined,
+  vendedorId: r.vendedor_id ?? undefined,
+  origem: r.origem ?? undefined,
+  observacao: r.observacao ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
+  const out: Partial<DbLead> = {};
+  if (l.nome !== undefined) out.nome = l.nome;
+  if (l.email !== undefined) out.email = l.email || null;
+  if (l.telefone !== undefined) out.telefone = l.telefone || null;
+  if (l.valorEstimado !== undefined) out.valor_estimado = l.valorEstimado;
+  if (l.status !== undefined) out.status = l.status;
+  if (l.tipo !== undefined) out.tipo = l.tipo || null;
+  if (l.vendedorId !== undefined) out.vendedor_id = l.vendedorId || null;
+  if (l.origem !== undefined) out.origem = l.origem || null;
+  if (l.observacao !== undefined) out.observacao = l.observacao || null;
+  return out;
+};
+
+// ============================================================
+// AuditLog
+// ============================================================
+export type DbAuditLog = {
+  id: string;
+  acao: string;
+  entidade: string;
+  entidade_id: string | null;
+  usuario_email: string | null;
+  detalhes: string | null;
+  criado_em: string;
+};
+
+export const auditFromDb = (r: DbAuditLog): AuditLog => ({
+  id: r.id,
+  acao: r.acao,
+  entidade: r.entidade,
+  entidadeId: r.entidade_id ?? undefined,
+  usuarioEmail: r.usuario_email ?? undefined,
+  detalhes: r.detalhes ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const auditToDb = (a: Partial<AuditLog>): Partial<DbAuditLog> => {
+  const out: Partial<DbAuditLog> = {};
+  if (a.acao !== undefined) out.acao = a.acao;
+  if (a.entidade !== undefined) out.entidade = a.entidade;
+  if (a.entidadeId !== undefined) out.entidade_id = a.entidadeId || null;
+  if (a.usuarioEmail !== undefined) out.usuario_email = a.usuarioEmail || null;
+  if (a.detalhes !== undefined) out.detalhes = a.detalhes || null;
+  return out;
+};
+
+// ============================================================
+// Meta (meta mensal por vendedor)
+// ============================================================
+export type DbMeta = {
+  id: string;
+  vendedor_id: string;
+  ano_mes: string;
+  valor: number | string;
+  criado_em: string;
+};
+
+export const metaFromDb = (r: DbMeta): Meta => ({
+  id: r.id,
+  vendedorId: r.vendedor_id,
+  anoMes: r.ano_mes,
+  valor: num(r.valor),
+  criadoEm: r.criado_em,
+});
+
+export const metaToDb = (m: Partial<Meta>): Partial<DbMeta> => {
+  const out: Partial<DbMeta> = {};
+  if (m.vendedorId !== undefined) out.vendedor_id = m.vendedorId;
+  if (m.anoMes !== undefined) out.ano_mes = m.anoMes;
+  if (m.valor !== undefined) out.valor = m.valor;
+  return out;
+};
+
+// ============================================================
+// Profile
+// ============================================================
+export type DbProfile = {
+  id: string;
+  nome: string;
+  email: string;
+  papel: Papel;
+  vendedor_id: string | null;
+  equipe_id: string | null;
+  ativo: boolean;
+  criado_em: string;
+};
+
+export const profileFromDb = (r: DbProfile): Profile => ({
+  id: r.id,
+  nome: r.nome,
+  email: r.email,
+  papel: r.papel,
+  vendedorId: r.vendedor_id ?? undefined,
+  equipeId: r.equipe_id ?? undefined,
+  ativo: r.ativo ?? true,
+  criadoEm: r.criado_em,
+});
+
+// ============================================================
+// Equipe
+// ============================================================
+export type DbEquipe = {
+  id: string;
+  nome: string;
+  cor: string | null;
+  lider_id: string | null;
+  criado_em: string;
+};
+
+export const equipeFromDb = (r: DbEquipe): Equipe => ({
+  id: r.id,
+  nome: r.nome,
+  cor: r.cor ?? "#6366f1",
+  liderId: r.lider_id ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const equipeToDb = (e: Partial<Equipe>): Partial<DbEquipe> => {
+  const out: Partial<DbEquipe> = {};
+  if (e.nome !== undefined) out.nome = e.nome;
+  if (e.cor !== undefined) out.cor = e.cor || null;
+  if (e.liderId !== undefined) out.lider_id = e.liderId || null;
+  return out;
+};
+
+// ============================================================
+// Produção
+// ============================================================
+export type DbProducao = {
+  id: string;
+  nome: string;
+  data_inicio: string;
+  data_fim: string;
+  ativa: boolean;
+  criado_em: string;
+};
+
+export const producaoFromDb = (r: DbProducao): Producao => ({
+  id: r.id,
+  nome: r.nome,
+  dataInicio: r.data_inicio,
+  dataFim: r.data_fim,
+  ativa: r.ativa,
+  criadoEm: r.criado_em,
+});
+
+export const producaoToDb = (p: Partial<Producao>): Partial<DbProducao> => {
+  const out: Partial<DbProducao> = {};
+  if (p.nome !== undefined) out.nome = p.nome;
+  if (p.dataInicio !== undefined) out.data_inicio = p.dataInicio;
+  if (p.dataFim !== undefined) out.data_fim = p.dataFim;
+  if (p.ativa !== undefined) out.ativa = p.ativa;
+  return out;
+};
