@@ -51,8 +51,6 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
-  // Continua o build mesmo se o lint falhar (em dev a gente garante; build não pode parar)
-  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
