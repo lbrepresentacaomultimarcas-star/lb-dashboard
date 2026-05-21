@@ -28,6 +28,8 @@ const csp = [
   `font-src 'self' https://fonts.gstatic.com data:`,
   `img-src 'self' data: blob: https://${supabaseHost}`,
   `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
+  `worker-src 'self' blob:`,
+  `manifest-src 'self'`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
   `form-action 'self'`,
