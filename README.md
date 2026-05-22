@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LB Dashboard 2.0 — CRM LB Representações
 
-## Getting Started
+CRM comercial multiusuário: pipeline de negócios, gestão de vendedores, metas,
+comissões, ranking gamificado e financeiro. PWA instalável.
 
-First, run the development server:
+- **Produção:** https://lb-dashboard-virid.vercel.app
+- **Repositório:** https://github.com/lbrepresentacaomultimarcas-star/lb-dashboard
+- **Domínio futuro:** app.lbrepresentacoes.com.br
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Framework | Next.js 16 (App Router) + React 19 |
+| Linguagem | TypeScript (strict) |
+| Estilo | Tailwind CSS v4 |
+| Banco / Auth | Supabase (Postgres + Auth + Realtime + Storage) |
+| Hospedagem | Vercel (deploy automático via GitHub) |
+| Gráficos | Recharts · Exportação: jsPDF, xlsx |
+| Notificações UI | sonner (toasts) |
+
+---
+
+## Estrutura de pastas
+
+```
+src/
+├── app/
+│   ├── (app)/              # rotas autenticadas (sidebar + topbar + guards)
+│   │   ├── dashboard/      # visão geral (gestor) / meu desempenho (vendedor)
+│   │   ├── leads/          # pipeline de negócios (7 etapas)
+│   │   ├── vendas/         # lançamentos de venda
+│   │   ├── clientes/       # base de clientes
+│   │   ├── ranking/        # ranking gamificado (pódio)
+│   │   ├── metas/          # metas mensais por vendedor (supervisor+)
+│   │   ├── financeiro/     # faturamento, comissão, lucro (coordenador+)
+│   │   ├── relatorios/     # gráficos + export CSV/PDF/Excel (coordenador+)
+│   │   ├── historico/      # audit log (escopo por papel)
+│   │   ├── configuracoes/  # upload de logos (admin)
+│   │   └── admin/          # colaboradores, equipes, produções (admin)
+│   ├── api/admin/          # route handlers server-side (service_role)
+│   ├── auth/callback/      # troca code/magic-link por sessão
+│   ├── login/              # tela de login
+│   ├── manifest.ts         # PWA manifest
+│   └── layout.tsx          # root layout (tema, PWA, analytics)
+├── components/             # UI (Card, Button, Modal, Avatar, Sidebar, etc.)
+├── lib/
+│   ├── store.ts            # estado reativo (Supabase ↔ localStorage)
+│   ├── supabase/           # clients: browser, server, admin, middleware
+│   ├── repo/mappers.ts     # camelCase ↔ snake_case
+│   ├── selectors.ts        # cálculos (ranking, faturamento)
+│   ├── permissions.ts      # RBAC client (temPermissao)
+│   ├── admin-guard.ts      # RBAC server (requireAdmin) — server-only
+│   ├── rate-limit.ts       # rate limit em memória — server-only
+│   └── use-ranking.ts      # ranking agregado via RPC
+├── proxy.ts                # middleware (Next 16): refresh de sessão
+supabase/schema.sql         # schema completo do banco
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Rodar localmente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install                  # instala dependências
+cp .env.example .env.local   # e preencha com suas chaves Supabase
+npm run dev                  # http://localhost:3000
+```
 
-## Learn More
+Sem `.env.local` o app roda em **modo demo** (dados locais no navegador).
+Com as chaves, conecta no Supabase real.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento |
+| `npm run build` | Build de produção |
+| `npm run lint` | ESLint |
+| `npx tsc --noEmit` | Type check |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Papéis de acesso (RBAC)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Papel | Acesso |
+|---|---|
+| **admin** | Tudo: todos os dados, admin, financeiro, configs |
+| **coordenador** | Tudo do org + financeiro/relatórios (sem admin) |
+| **supervisor** | Tudo do org + vendedores/metas |
+| **vendedor** | Só os próprios leads/vendas/clientes + ranking/metas |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Isolamento por **RLS no banco** (`owner_id`) + **guards de rota** + **menu dinâmico**.
+
+---
+
+## Fluxo comercial automático
+
+```
+Lead criado → vendedor vinculado → arrasta pra FECHAMENTO
+                                          ↓ (trigger SQL lead_para_venda)
+                              venda criada automaticamente (sem duplicar)
+                                          ↓ (Supabase Realtime)
+        Financeiro soma · Comissão calcula · Ranking atualiza · Meta atualiza
+```
+
+---
+
+## Documentação
+
+- [DEPLOY.md](./DEPLOY.md) — subir/atualizar em produção
+- [SECURITY.md](./SECURITY.md) — modelo de segurança e secrets
+- [BACKUP.md](./BACKUP.md) — backup e disaster recovery
+- `supabase/schema.sql` — schema completo (recriar banco do zero)
