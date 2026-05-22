@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
 import { Crown, Star, Trophy } from "lucide-react";
 import { useMetas, useVendas, useVendedores } from "@/lib/store";
-import { desempenhoPorVendedor, totalFaturado, vendasNoMes } from "@/lib/selectors";
+import { useRankingMensal } from "@/lib/use-ranking";
 import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
@@ -16,15 +15,10 @@ export default function RankingPage() {
   const metas = useMetas();
   const mes = todayMonth();
 
-  const ranking = useMemo(
-    () =>
-      desempenhoPorVendedor(vendedores, vendas, metas, mes)
-        .filter((d) => d.ativo)
-        .sort((a, b) => b.vendido - a.vendido),
-    [vendedores, vendas, metas, mes],
-  );
+  // Ranking agregado (org-wide) — funciona pra vendedor sem expor vendas alheias
+  const ranking = useRankingMensal(mes, vendedores, vendas, metas);
   const top3 = ranking.slice(0, 3);
-  const total = totalFaturado(vendasNoMes(vendas, mes));
+  const total = ranking.reduce((acc, d) => acc + d.vendido, 0);
 
   const tones = [
     {

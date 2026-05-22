@@ -60,8 +60,8 @@ export const NAV: (NavItem | NavGroup)[] = [
     ],
   },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, minimo: "coordenador" },
-  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { href: "/historico", label: "Histórico", icon: History, minimo: "supervisor" },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3, minimo: "coordenador" },
+  { href: "/historico", label: "Histórico", icon: History },
   { href: "/configuracoes", label: "Configurações", icon: Settings, minimo: "admin" },
 ];
 

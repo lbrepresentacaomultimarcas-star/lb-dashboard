@@ -31,7 +31,7 @@ import {
   type LeadStatus,
   type LeadTipo,
 } from "@/lib/types";
-import { brl } from "@/lib/utils";
+import { brl, parseNumBR } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -211,7 +211,7 @@ export default function LeadsPage() {
         nome: form.nome.trim(),
         email: form.email.trim(),
         telefone: form.telefone.trim(),
-        valorEstimado: Number(form.valorEstimado) || 0,
+        valorEstimado: parseNumBR(form.valorEstimado),
         status: form.status,
         tipo: form.tipo as LeadTipo,
         vendedorId: form.vendedorId || undefined,

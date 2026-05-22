@@ -5,7 +5,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMetas, useVendas, useVendedores, vendedoresApi } from "@/lib/store";
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import type { Vendedor } from "@/lib/types";
-import { brl, pct } from "@/lib/utils";
+import { brl, parseNumBR, pct } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -65,8 +65,8 @@ export default function VendedoresPage() {
     const payload = {
       nome: form.nome.trim(),
       email: form.email.trim(),
-      metaMensal: Number(form.metaMensal) || 0,
-      comissaoPct: Number(form.comissaoPct) || 0,
+      metaMensal: parseNumBR(form.metaMensal),
+      comissaoPct: parseNumBR(form.comissaoPct),
       ativo: form.ativo,
     };
     if (!payload.nome) return;
@@ -213,9 +213,9 @@ export default function VendedoresPage() {
               <Label htmlFor="meta">Meta mensal (R$)</Label>
               <Input
                 id="meta"
-                type="number"
-                min={0}
-                step={100}
+                type="text"
+                inputMode="decimal"
+                placeholder="50.000,00"
                 value={form.metaMensal}
                 onChange={(e) => setForm({ ...form, metaMensal: e.target.value })}
               />
@@ -224,10 +224,9 @@ export default function VendedoresPage() {
               <Label htmlFor="com">Comissão (%)</Label>
               <Input
                 id="com"
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
+                type="text"
+                inputMode="decimal"
+                placeholder="ex: 2,5"
                 value={form.comissaoPct}
                 onChange={(e) => setForm({ ...form, comissaoPct: e.target.value })}
               />

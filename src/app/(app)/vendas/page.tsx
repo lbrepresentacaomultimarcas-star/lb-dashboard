@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useVendas, useVendedores, vendasApi } from "@/lib/store";
-import { brl, monthKey, monthLabel, todayMonth } from "@/lib/utils";
+import { brl, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -69,7 +69,7 @@ export default function VendasPage() {
       await vendasApi.add({
         vendedorId: form.vendedorId,
         cliente: form.cliente.trim(),
-        valor: Number(form.valor),
+        valor: parseNumBR(form.valor),
         data: new Date(form.data).toISOString(),
         observacao: form.observacao.trim() || undefined,
       });
