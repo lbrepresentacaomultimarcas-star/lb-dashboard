@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 
 type FormState = {
   vendedorId: string;
@@ -200,13 +201,10 @@ export default function VendasPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="val">Valor (R$)</Label>
-              <Input
+              <MoneyInput
                 id="val"
-                type="number"
-                min={0}
-                step={0.01}
                 value={form.valor}
-                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                onChange={(v) => setForm({ ...form, valor: v })}
                 required
               />
             </div>

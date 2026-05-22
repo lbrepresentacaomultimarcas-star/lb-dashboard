@@ -33,11 +33,12 @@ import {
   type LeadStatus,
   type LeadTipo,
 } from "@/lib/types";
-import { brl, parseNumBR } from "@/lib/utils";
+import { brl, formatNumBR, parseNumBR } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 
 const STATUS_ORDER: LeadStatus[] = [
   "oportunidade",
@@ -191,7 +192,7 @@ export default function LeadsPage() {
       nome: l.nome,
       telefone: l.telefone,
       tipo: l.tipo ?? "",
-      valorEstimado: String(l.valorEstimado || ""),
+      valorEstimado: formatNumBR(l.valorEstimado),
       status: l.status,
       vendedorId: l.vendedorId ?? "",
       email: l.email,
@@ -664,14 +665,10 @@ export default function LeadsPage() {
             </div>
             <div>
               <Label htmlFor="val">Valor do Crédito (opcional)</Label>
-              <Input
+              <MoneyInput
                 id="val"
-                type="number"
-                min={0}
-                step={100}
                 value={form.valorEstimado}
-                onChange={(e) => setForm({ ...form, valorEstimado: e.target.value })}
-                placeholder="0,00"
+                onChange={(v) => setForm({ ...form, valorEstimado: v })}
               />
             </div>
           </div>

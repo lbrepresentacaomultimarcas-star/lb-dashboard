@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Target } from "lucide-react";
 import { metasApi, useMetas, useVendedores } from "@/lib/store";
-import { brl, monthKey, monthLabel, todayMonth } from "@/lib/utils";
+import { brl, formatNumBR, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,8 +37,8 @@ export default function MetasPage() {
     raw: string,
     fallback: number,
   ) {
-    const valor = Number(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
-    if (Number.isNaN(valor) || valor < 0) {
+    const valor = parseNumBR(raw);
+    if (valor < 0) {
       notify.error("Valor inválido");
       return;
     }
@@ -118,10 +118,9 @@ export default function MetasPage() {
                       return (
                         <td key={m} className="px-3 py-2">
                           <Input
-                            type="number"
-                            defaultValue={atual}
-                            min={0}
-                            step={100}
+                            type="text"
+                            inputMode="decimal"
+                            defaultValue={formatNumBR(atual)}
                             onBlur={(e) => salvar(v.id, m, e.target.value, atual)}
                             disabled={salvando === key}
                             className={
