@@ -114,6 +114,7 @@ export type DbLead = {
   origem: string | null;
   observacao: string | null;
   criado_em: string;
+  atualizado_em?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -128,6 +129,7 @@ export const leadFromDb = (r: DbLead): Lead => ({
   origem: r.origem ?? undefined,
   observacao: r.observacao ?? undefined,
   criadoEm: r.criado_em,
+  atualizadoEm: r.atualizado_em ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {

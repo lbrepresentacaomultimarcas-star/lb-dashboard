@@ -247,6 +247,42 @@ async function logAudit(input: {
 let initPromise: Promise<void> | null = null;
 let realtimeAttached = false;
 
+/**
+ * Monta a sessão buscando o papel REAL + vínculo de vendedor do profile.
+ * (antes o papel vinha hardcoded como "admin" — bug que furava o RBAC no client)
+ */
+async function buildSession(
+  u: { id: string; email?: string; user_metadata?: Record<string, unknown> },
+): Promise<SessionUser> {
+  const sb = supabaseBrowser();
+  const fallbackNome =
+    (u.user_metadata?.nome as string | undefined) ??
+    u.email?.split("@")[0] ??
+    "Usuário";
+  try {
+    const { data: prof } = await sb
+      .from("profiles")
+      .select("nome, papel, vendedor_ref")
+      .eq("id", u.id)
+      .single();
+    return {
+      id: u.id,
+      nome: prof?.nome ?? fallbackNome,
+      email: u.email ?? "",
+      papel: (prof?.papel as SessionUser["papel"]) ?? "vendedor",
+      vendedorId: (prof?.vendedor_ref as string | null) ?? undefined,
+    };
+  } catch {
+    // Se falhar (ex: coluna ainda não migrada), assume vendedor (mais restrito)
+    return {
+      id: u.id,
+      nome: fallbackNome,
+      email: u.email ?? "",
+      papel: "vendedor",
+    };
+  }
+}
+
 export function initStore(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
@@ -254,15 +290,7 @@ export function initStore(): Promise<void> {
       const sb = supabaseBrowser();
       const { data: userData } = await sb.auth.getUser();
       if (userData.user) {
-        state.session = {
-          id: userData.user.id,
-          nome:
-            (userData.user.user_metadata?.nome as string | undefined) ??
-            userData.user.email?.split("@")[0] ??
-            "Usuário",
-          email: userData.user.email ?? "",
-          papel: "admin",
-        };
+        state.session = await buildSession(userData.user);
         await Promise.all([
           reloadVendedores(),
           reloadVendas(),
@@ -639,15 +667,7 @@ export const sessionApi = {
       if (error) throw error;
       const u = data.user;
       if (!u) throw new Error("Sessão inválida");
-      state.session = {
-        id: u.id,
-        nome:
-          (u.user_metadata?.nome as string | undefined) ??
-          u.email?.split("@")[0] ??
-          "Usuário",
-        email: u.email ?? email,
-        papel: "admin",
-      };
+      state.session = await buildSession(u);
       await Promise.all([
         reloadVendedores(),
         reloadVendas(),

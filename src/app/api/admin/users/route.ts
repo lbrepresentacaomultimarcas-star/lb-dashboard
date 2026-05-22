@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest) {
     userId?: string;
     papel?: Papel;
     equipeId?: string | null;
+    vendedorRef?: string | null;
     ativo?: boolean;
     nome?: string;
   };
@@ -54,6 +55,7 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (body.papel !== undefined) patch.papel = body.papel;
   if (body.equipeId !== undefined) patch.equipe_id = body.equipeId;
+  if (body.vendedorRef !== undefined) patch.vendedor_ref = body.vendedorRef;
   if (body.ativo !== undefined) patch.ativo = body.ativo;
   if (body.nome !== undefined) patch.nome = body.nome;
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);

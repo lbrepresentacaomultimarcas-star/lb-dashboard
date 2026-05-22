@@ -67,6 +67,7 @@ export type Lead = {
   origem?: string;
   observacao?: string;
   criadoEm: string;
+  atualizadoEm?: string;
 };
 
 export type AuditLog = {

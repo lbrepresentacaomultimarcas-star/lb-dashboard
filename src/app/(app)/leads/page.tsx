@@ -23,7 +23,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeads, useVendedores } from "@/lib/store";
+import { leadsApi, useLeads, useSession, useVendedores } from "@/lib/store";
+import { temPermissao } from "@/lib/permissions";
+import { Avatar } from "@/components/avatar";
 import {
   LEAD_STATUS_INFO,
   LEAD_TIPO_INFO,
@@ -127,6 +129,8 @@ function telLink(telefone: string) {
 export default function LeadsPage() {
   const leads = useLeads();
   const vendedores = useVendedores();
+  const session = useSession();
+  const gestor = temPermissao(session, "supervisor");
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
@@ -173,7 +177,12 @@ export default function LeadsPage() {
 
   function abrirNovo(status?: LeadStatus) {
     setEditing(null);
-    setForm({ ...empty, status: status ?? "oportunidade" });
+    // Vendedor: já vincula a si mesmo. Gestor: escolhe no dropdown.
+    setForm({
+      ...empty,
+      status: status ?? "oportunidade",
+      vendedorId: !gestor && session?.vendedorId ? session.vendedorId : "",
+    });
     setOpen(true);
   }
   function abrirEditar(l: Lead) {
@@ -286,19 +295,21 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            value={filtroVendedor}
-            onChange={(e) => setFiltroVendedor(e.target.value)}
-            className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
-          >
-            <option value="todos">Todos vendedores</option>
-            <option value="sem-vendedor">Sem vendedor</option>
-            {vendedores.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.nome}
-              </option>
-            ))}
-          </select>
+          {gestor && (
+            <select
+              value={filtroVendedor}
+              onChange={(e) => setFiltroVendedor(e.target.value)}
+              className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
+            >
+              <option value="todos">Todos vendedores</option>
+              <option value="sem-vendedor">Sem vendedor</option>
+              {vendedores.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.nome}
+                </option>
+              ))}
+            </select>
+          )}
           <Button onClick={() => abrirNovo()}>
             <Plus className="h-4 w-4" />
             Criar negócio
@@ -385,13 +396,25 @@ export default function LeadsPage() {
                           </div>
                         )}
 
-                        {vendedor && (
-                          <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-                            <span className="font-medium text-[var(--color-text)]">
-                              {vendedor.nome}
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          {vendedor ? (
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <Avatar id={vendedor.id} nome={vendedor.nome} size={20} />
+                              <span className="truncate text-xs font-medium text-[var(--color-text)]">
+                                {vendedor.nome}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] uppercase tracking-wider text-[var(--color-warn)]">
+                              Sem vendedor
                             </span>
-                          </p>
-                        )}
+                          )}
+                          {l.atualizadoEm && (
+                            <span className="shrink-0 text-[10px] text-[var(--color-text-dim)]">
+                              {timeAgo(l.atualizadoEm)}
+                            </span>
+                          )}
+                        </div>
 
                         <div className="mt-2 flex items-center justify-between border-t border-[var(--color-border)] pt-2">
                           <div className="flex items-center gap-1">
@@ -645,22 +668,34 @@ export default function LeadsPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <Label htmlFor="vd">Vendedor responsável</Label>
-              <select
-                id="vd"
-                value={form.vendedorId}
-                onChange={(e) => setForm({ ...form, vendedorId: e.target.value })}
-                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
-              >
-                <option value="">— sem vendedor —</option>
-                {vendedores.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {gestor ? (
+              <div>
+                <Label htmlFor="vd">Vendedor responsável</Label>
+                <select
+                  id="vd"
+                  value={form.vendedorId}
+                  onChange={(e) => setForm({ ...form, vendedorId: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
+                >
+                  <option value="">— sem vendedor —</option>
+                  {vendedores.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <Label>Vendedor responsável</Label>
+                <div className="flex h-10 items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 px-3 text-sm text-[var(--color-text-dim)]">
+                  {vendedores.find((v) => v.id === form.vendedorId)?.nome ??
+                    session?.nome ??
+                    "Você"}{" "}
+                  (você)
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
