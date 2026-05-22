@@ -251,9 +251,24 @@ export default function LeadsPage() {
     }
   }
   async function mudarStatus(l: Lead, status: LeadStatus) {
+    // Pra fechar (gerar venda) o lead PRECISA de vendedor definido
+    if (status === "fechamento" && !l.vendedorId) {
+      notify.error(
+        "Defina o vendedor antes de fechar",
+        "Use ⋮ → Compartilhar pra atribuir um vendedor — a comissão vai pra ele.",
+      );
+      return;
+    }
     try {
       await leadsApi.update(l.id, { status });
-      notify.success(`Movido para ${LEAD_STATUS_INFO[status].label}`);
+      if (status === "fechamento") {
+        notify.success(
+          "Negócio fechado! 🎉",
+          "Venda gerada automaticamente — financeiro, comissão e ranking atualizados.",
+        );
+      } else {
+        notify.success(`Movido para ${LEAD_STATUS_INFO[status].label}`);
+      }
     } catch (e) {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
     }
@@ -360,7 +375,11 @@ export default function LeadsPage() {
                     return (
                       <div
                         key={l.id}
-                        className="group relative rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 transition-shadow hover:shadow-lg"
+                        className={`group relative rounded-lg border bg-[var(--color-surface-2)] p-3 transition-shadow hover:shadow-lg ${
+                          l.status === "fechamento"
+                            ? "border-[var(--color-success)]/50 ring-1 ring-[var(--color-success)]/30"
+                            : "border-[var(--color-border)]"
+                        }`}
                       >
                         <div className="mb-1.5 flex items-start justify-between">
                           <div className="flex items-center gap-1.5">
@@ -368,6 +387,11 @@ export default function LeadsPage() {
                             <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-dim)]">
                               {tipoLabel}
                             </span>
+                            {l.status === "fechamento" && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-[var(--color-success)]/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--color-success)]">
+                                ✓ Venda
+                              </span>
+                            )}
                           </div>
                           <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-dim)]">
                             {timeAgo(l.criadoEm)}
