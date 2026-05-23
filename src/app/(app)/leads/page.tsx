@@ -12,6 +12,7 @@ import {
   Clock,
   Construction,
   FileText,
+  Flame,
   GripVertical,
   Home,
   MessageCircle,
@@ -23,7 +24,10 @@ import {
   Receipt,
   Share2,
   Sparkles,
+  Star,
+  Target,
   Trash2,
+  TrendingDown,
   TrendingUp,
   Trophy,
   Truck,
@@ -31,6 +35,7 @@ import {
   Wallet,
   Wrench,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { leadsApi, useLeads, useSession, useVendedores } from "@/lib/store";
@@ -148,34 +153,79 @@ function AnimatedBRL({ value, className }: { value: number; className?: string }
   return <span className={className}>{brl(v)}</span>;
 }
 
-function Metric({
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = data.length > 1 ? (i / (data.length - 1)) * 100 : 0;
+    const y = 30 - ((v - min) / range) * 26 - 2;
+    return `${x},${y}`;
+  });
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-9 w-full">
+      <defs>
+        <linearGradient id="pipeSpark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,30 ${pts.join(" ")} 100,30`} fill="url(#pipeSpark)" />
+      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function Kpi({
   icon: Icon,
   label,
   value,
-  color = "#a5b4fc",
-  glow = false,
+  color,
+  hint,
+  delay = 0,
+  children,
 }: {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   label: string;
   value: React.ReactNode;
-  color?: string;
-  glow?: boolean;
+  color: string;
+  hint?: string;
+  delay?: number;
+  children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+    <div
+      className="lb-fade-up group relative overflow-hidden rounded-2xl border border-white/10 p-4 backdrop-blur-xl"
+      style={{
+        animationDelay: `${delay}s`,
+        background: "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))",
+        boxShadow: "0 20px 46px -22px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.12)",
+      }}
+    >
       <span
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
-        style={{ background: `${color}1f`, boxShadow: glow ? `0 0 18px -2px ${color}` : undefined }}
+        className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-25 blur-2xl transition-opacity duration-300 group-hover:opacity-50"
+        style={{ background: color }}
+      />
+      <span
+        className="grid h-9 w-9 place-items-center rounded-xl"
+        style={{ background: `${color}1f`, boxShadow: `0 0 18px -3px ${color}` }}
       >
         <Icon className="h-4 w-4" style={{ color }} />
       </span>
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-white/45">{label}</p>
-        <p className="truncate text-base font-bold text-white tabular-nums">{value}</p>
-      </div>
+      <p className="mt-3 text-[10px] uppercase tracking-wider text-white/45">{label}</p>
+      <p className="text-xl font-bold text-white tabular-nums md:text-2xl">{value}</p>
+      {hint && <p className="text-[11px] text-white/40">{hint}</p>}
+      {children}
     </div>
   );
 }
+
+type LeadTag = {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  color: string;
+  bg: string;
+};
 
 export default function LeadsPage() {
   const leads = useLeads();
@@ -233,6 +283,7 @@ export default function LeadsPage() {
     const valorTotal = filtrados.reduce((a, l) => a + l.valorEstimado, 0);
     const totalNegocios = filtrados.length;
     const ganhos = colunas.fechamento.length;
+    const perdidos = colunas.perdido.length;
     const taxaConversao = totalNegocios > 0 ? (ganhos / totalNegocios) * 100 : 0;
     const ticketMedio = totalNegocios > 0 ? valorTotal / totalNegocios : 0;
     const fechados = colunas.fechamento;
@@ -244,8 +295,27 @@ export default function LeadsPage() {
             return a + Math.max(0, (fim - ini) / 86_400_000);
           }, 0) / fechados.length
         : 0;
-    return { valorTotal, totalNegocios, ganhos, taxaConversao, ticketMedio, cicloMedio };
+    return { valorTotal, totalNegocios, ganhos, perdidos, taxaConversao, ticketMedio, cicloMedio };
   }, [filtrados, colunas]);
+
+  const analytics = useMemo(() => {
+    const now = new Date();
+    const buckets: number[] = [0, 0, 0, 0, 0, 0];
+    const keyIdx = new Map<string, number>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keyIdx.set(`${d.getFullYear()}-${d.getMonth()}`, 5 - i);
+    }
+    for (const l of filtrados) {
+      const d = new Date(l.criadoEm);
+      const idx = keyIdx.get(`${d.getFullYear()}-${d.getMonth()}`);
+      if (idx !== undefined) buckets[idx] += l.valorEstimado;
+    }
+    const cur = buckets[5] ?? 0;
+    const prev = buckets[4] ?? 0;
+    const crescimento = prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
+    return { serie: buckets, crescimento };
+  }, [filtrados]);
 
   const maxCount = Math.max(...STATUS_ORDER.map((s) => colunas[s].length), 1);
 
@@ -401,6 +471,8 @@ export default function LeadsPage() {
       {/* blobs de luz */}
       <div className="lb-drift pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full opacity-50 blur-3xl" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.32), transparent 70%)" }} />
       <div className="lb-drift pointer-events-none absolute -right-32 top-40 h-[28rem] w-[28rem] rounded-full opacity-40 blur-3xl" style={{ background: "radial-gradient(circle, rgba(168,85,247,0.28), transparent 70%)", animationDelay: "5s" }} />
+      {/* névoa suave */}
+      <div className="lb-fog pointer-events-none absolute left-1/4 top-24 h-40 w-1/2 rounded-[50%] opacity-60 blur-3xl" style={{ background: "radial-gradient(ellipse at center, rgba(99,102,241,0.12), transparent 70%)" }} />
       {/* grid futurista (reflexo no chão) */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-64 opacity-20"
@@ -435,10 +507,10 @@ export default function LeadsPage() {
       {/* vinheta — mais contraste */}
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse at 50% 30%, transparent 42%, rgba(0,0,0,0.5) 100%)" }}
+        style={{ background: "radial-gradient(ellipse at 50% 28%, transparent 44%, rgba(0,0,0,0.5) 100%)" }}
       />
 
-      <div className="relative space-y-5">
+      <div className="relative space-y-6">
         {/* ===================== HEADER PREMIUM ===================== */}
         <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -478,404 +550,493 @@ export default function LeadsPage() {
           </div>
         </header>
 
-        {/* ===================== KANBAN ===================== */}
-        <div className="overflow-x-auto pb-2">
-          <div className="grid grid-flow-col gap-4" style={{ gridAutoColumns: "minmax(280px, 1fr)" }}>
-            {STATUS_ORDER.map((s, ci) => {
-              const info = LEAD_STATUS_INFO[s];
-              const tone = STATUS_TONE[s];
-              const StageIcon = tone.icon;
-              const items = colunas[s];
-              const isOver = overCol === s;
-              return (
-                <div
-                  key={s}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (overCol !== s) setOverCol(s);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    soltarNaColuna(s);
-                  }}
-                  className="lb-fade-up relative flex min-h-[440px] flex-col rounded-2xl border transition-shadow duration-300"
-                  style={{
-                    animationDelay: `${ci * 0.05}s`,
-                    background: `linear-gradient(180deg, ${tone.color}14, rgba(255,255,255,0.018))`,
-                    backdropFilter: "blur(12px)",
-                    WebkitBackdropFilter: "blur(12px)",
-                    borderColor: isOver ? tone.color : `${tone.color}3a`,
-                    boxShadow: isOver
-                      ? `0 0 50px -6px ${tone.color}, inset 0 1px 0 rgba(255,255,255,.08)`
-                      : `0 10px 40px -16px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05)`,
-                  }}
-                >
-                  {/* borda luminosa superior */}
-                  <div
-                    className="pointer-events-none absolute inset-x-3 top-0 h-px"
-                    style={{ background: `linear-gradient(90deg, transparent, ${tone.color}, transparent)`, boxShadow: `0 0 8px ${tone.color}` }}
-                  />
-
-                  {/* header da coluna */}
-                  <div
-                    className="flex items-center justify-between gap-2 rounded-t-2xl border-b px-3 py-3"
-                    style={{ borderColor: `${tone.color}26`, background: `linear-gradient(180deg, ${tone.color}26, transparent)` }}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg"
-                        style={{ background: `${tone.color}26`, boxShadow: `0 0 16px -2px ${tone.color}` }}
-                      >
-                        <StageIcon className="h-4 w-4" style={{ color: tone.color }} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-bold uppercase tracking-wider text-white">
-                          {info.label}
-                          <span className="ml-1 text-white/45">({items.length})</span>
-                        </p>
-                        <p className="text-[10px] text-white/55 tabular-nums">{brl(totais[s])}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => abrirNovo(s)}
-                      className="rounded-md p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-                      title="Adicionar nesta etapa"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  {/* corpo da coluna */}
-                  <div className="flex-1 space-y-2.5 overflow-y-auto p-2.5">
-                    {items.map((l, i) => {
-                      const vendedor = vendedores.find((v) => v.id === l.vendedorId);
-                      const wa = waLink(l.telefone);
-                      const tel = telLink(l.telefone);
-                      const TipoIcon = l.tipo ? TIPO_ICON[l.tipo] : Building2;
-                      const tipoLabel = l.tipo ? LEAD_TIPO_INFO[l.tipo].label : "Negócio";
-                      const fechado = l.status === "fechamento";
-                      return (
-                        <div key={l.id} className="lb-fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
-                          <div
-                            data-lead-card
-                            className={cn(
-                              "lb-podium-card group relative rounded-xl border py-3 pl-4 pr-3 transition-all",
-                              dragId === l.id ? "opacity-40" : "",
-                            )}
-                            style={{
-                              background: "linear-gradient(160deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
-                              borderColor: fechado ? "rgba(34,197,94,.45)" : "rgba(255,255,255,.1)",
-                              boxShadow: fechado
-                                ? "0 10px 26px -12px rgba(0,0,0,.7), 0 0 22px -8px rgba(34,197,94,.6), inset 0 1px 0 rgba(255,255,255,.08)"
-                                : "0 10px 26px -12px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.08)",
-                            }}
-                          >
-                            {/* reflexo holográfico (clipa só o card, não corta o dropdown) */}
-                            <span className="lb-holo pointer-events-none absolute inset-0 rounded-xl" aria-hidden />
-                            {/* acento de status (cor da etapa) */}
-                            <span
-                              className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-full"
-                              style={{ background: tone.color, boxShadow: `0 0 10px ${tone.color}` }}
-                            />
-
-                            {/* topo: grip + tipo + tempo */}
-                            <div className="mb-1.5 flex items-start justify-between gap-1">
-                              <div className="flex min-w-0 items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  draggable
-                                  onDragStart={(e) => {
-                                    e.dataTransfer.effectAllowed = "move";
-                                    e.dataTransfer.setData("text/plain", l.id);
-                                    const card = e.currentTarget.closest("[data-lead-card]");
-                                    if (card) e.dataTransfer.setDragImage(card as Element, 24, 24);
-                                    setDragId(l.id);
-                                  }}
-                                  onDragEnd={() => {
-                                    setDragId(null);
-                                    setOverCol(null);
-                                  }}
-                                  className="-ml-1 shrink-0 cursor-grab rounded p-0.5 text-white/25 transition-colors hover:text-white/70 active:cursor-grabbing"
-                                  title="Arraste para mover de etapa"
-                                  aria-label="Mover negócio"
-                                >
-                                  <GripVertical className="h-3.5 w-3.5" />
-                                </button>
-                                <TipoIcon className="h-3.5 w-3.5 text-white/45" />
-                                <span className="truncate text-[10px] uppercase tracking-wider text-white/50">
-                                  {tipoLabel}
-                                </span>
-                                {fechado && (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-emerald-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
-                                    ✓ Venda
-                                  </span>
-                                )}
-                              </div>
-                              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-white/40">
-                                {timeAgo(l.criadoEm)}
-                              </span>
-                            </div>
-
-                            {/* nome + origem (badge) */}
-                            <button
-                              type="button"
-                              onClick={() => abrirEditar(l)}
-                              className="block w-full text-left"
-                            >
-                              <p className="truncate text-sm font-semibold text-white hover:underline">
-                                {l.nome}
-                              </p>
-                            </button>
-                            {l.origem && (
-                              <span className="mt-1 inline-flex max-w-full items-center truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55">
-                                {l.origem}
-                              </span>
-                            )}
-
-                            {l.telefone && (
-                              <div className="mt-1.5 flex items-center gap-1.5 text-xs text-white/55">
-                                <Phone className="h-3 w-3 text-emerald-400" />
-                                <span className="truncate">{l.telefone}</span>
-                              </div>
-                            )}
-
-                            {/* vendedor (avatar + badge) */}
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                              {vendedor ? (
-                                <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 py-0.5 pl-0.5 pr-2">
-                                  <Avatar id={vendedor.id} nome={vendedor.nome} size={20} />
-                                  <span className="truncate text-xs font-medium text-white">
-                                    {vendedor.nome}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="inline-flex items-center rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
-                                  Sem vendedor
-                                </span>
-                              )}
-                              {l.atualizadoEm && (
-                                <span className="shrink-0 text-[10px] text-white/35">
-                                  {timeAgo(l.atualizadoEm)}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* rodapé: ações + valor */}
-                            <div className="mt-2.5 flex items-center justify-between border-t border-white/10 pt-2.5">
-                              <div className="flex items-center gap-1">
-                                {tel && (
-                                  <a
-                                    href={tel}
-                                    className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
-                                    title="Ligar"
-                                  >
-                                    <Phone className="h-3.5 w-3.5" />
-                                  </a>
-                                )}
-                                {wa && (
-                                  <a
-                                    href={wa}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
-                                    title="WhatsApp"
-                                  >
-                                    <MessageCircle className="h-3.5 w-3.5" />
-                                  </a>
-                                )}
-                                <Dropdown
-                                  trigger={<MoreVertical className="h-3.5 w-3.5" />}
-                                  align="start"
-                                  width={260}
-                                  header={
-                                    <div className="border-b border-[var(--color-border)] px-3 py-2 text-xs">
-                                      <p className="font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
-                                        Ações
-                                      </p>
-                                      <p className="mt-0.5 truncate text-[var(--color-text)]">
-                                        {l.nome}
-                                        {l.tipo && ` · ${LEAD_TIPO_INFO[l.tipo].label}`}
-                                        {l.valorEstimado > 0 && ` · ${brl(l.valorEstimado)}`}
-                                      </p>
-                                    </div>
-                                  }
-                                >
-                                  {(close) => (
-                                    <>
-                                      <DropdownItem
-                                        icon={<Pencil className="h-4 w-4" />}
-                                        onClick={() => {
-                                          abrirEditar(l);
-                                          close();
-                                        }}
-                                      >
-                                        Editar
-                                      </DropdownItem>
-                                      {wa && (
-                                        <DropdownItem
-                                          icon={<MessageCircle className="h-4 w-4 text-[var(--color-success)]" />}
-                                          hint={l.telefone}
-                                          onClick={() => {
-                                            window.open(wa, "_blank");
-                                            close();
-                                          }}
-                                        >
-                                          WhatsApp
-                                        </DropdownItem>
-                                      )}
-                                      {tel && (
-                                        <DropdownItem
-                                          icon={<Phone className="h-4 w-4 text-[var(--color-success)]" />}
-                                          hint={l.telefone}
-                                          onClick={() => {
-                                            window.location.href = tel;
-                                            close();
-                                          }}
-                                        >
-                                          Telefone
-                                        </DropdownItem>
-                                      )}
-                                      <DropdownItem
-                                        icon={<FileText className="h-4 w-4" />}
-                                        disabled
-                                        hint="em breve"
-                                      >
-                                        Gerar Proposta
-                                      </DropdownItem>
-                                      <DropdownItem
-                                        icon={<Share2 className="h-4 w-4" />}
-                                        onClick={() => {
-                                          abrirCompartilhar(l);
-                                          close();
-                                        }}
-                                      >
-                                        Compartilhar
-                                      </DropdownItem>
-                                      <DropdownSeparator />
-                                      <DropdownItem
-                                        icon={<XCircle className="h-4 w-4" />}
-                                        danger
-                                        disabled={l.status === "perdido"}
-                                        onClick={() => {
-                                          mudarStatus(l, "perdido");
-                                          close();
-                                        }}
-                                      >
-                                        Perdeu
-                                      </DropdownItem>
-                                      <DropdownItem
-                                        icon={<CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />}
-                                        disabled={l.status === "fechamento"}
-                                        onClick={() => {
-                                          mudarStatus(l, "fechamento");
-                                          close();
-                                        }}
-                                      >
-                                        Ganhou
-                                      </DropdownItem>
-                                      <DropdownSeparator />
-                                      <DropdownItem
-                                        icon={<Trash2 className="h-4 w-4" />}
-                                        danger
-                                        onClick={() => {
-                                          remover(l);
-                                          close();
-                                        }}
-                                      >
-                                        Excluir
-                                      </DropdownItem>
-                                    </>
-                                  )}
-                                </Dropdown>
-                                <select
-                                  value={l.status}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => mudarStatus(l, e.target.value as LeadStatus)}
-                                  className="ml-1 rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[10px] text-white/60"
-                                  title="Mover etapa"
-                                >
-                                  {STATUS_ORDER.map((st) => (
-                                    <option key={st} value={st} className="bg-[#0b0d16] text-white">
-                                      {LEAD_STATUS_INFO[st].label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <span className="text-xs font-semibold text-white tabular-nums">
-                                {brl(l.valorEstimado)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {items.length === 0 && (
-                      <div
-                        className={cn(
-                          "m-1 flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-center text-xs transition-colors",
-                          isOver ? "border-white/30 text-white/60" : "border-white/10 text-white/35",
-                        )}
-                      >
-                        <Sparkles className="h-4 w-4 opacity-40" />
-                        <span>Arraste um card aqui</span>
-                        <button
-                          onClick={() => abrirNovo(s)}
-                          className="font-medium text-indigo-300 hover:underline"
-                        >
-                          Adicionar
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        {/* ===================== KPIs PREMIUM (TOPO) ===================== */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Kpi icon={Wallet} label="Valor estimado" color="#34d399" delay={0} value={<AnimatedBRL value={metrics.valorTotal} />}>
+            <div className="mt-1.5 -mb-1">
+              <Sparkline data={analytics.serie} color="#34d399" />
+            </div>
+          </Kpi>
+          <Kpi
+            icon={TrendingUp}
+            label="Taxa de conversão"
+            color="#22d3ee"
+            delay={0.06}
+            value={pct(metrics.taxaConversao)}
+            hint={`${metrics.ganhos} ganhos · ${metrics.totalNegocios} no funil`}
+          />
+          <Kpi
+            icon={Receipt}
+            label="Ticket médio"
+            color="#fbbf24"
+            delay={0.12}
+            value={<AnimatedBRL value={metrics.ticketMedio} />}
+            hint="por negócio"
+          />
+          <Kpi
+            icon={Activity}
+            label="Crescimento"
+            color="#a78bfa"
+            delay={0.18}
+            hint="valor criado vs mês anterior"
+            value={
+              <span className={cn("inline-flex items-center gap-1", analytics.crescimento >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                {analytics.crescimento >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                {pct(Math.abs(analytics.crescimento))}
+              </span>
+            }
+          />
         </div>
 
-        {/* ===================== PAINEL INFERIOR ===================== */}
-        <div className="lb-glass lb-fade-up rounded-2xl p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-indigo-300" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">Resumo do pipeline</h2>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Metric icon={Briefcase} label="Negócios" value={metrics.totalNegocios} color="#818cf8" />
-            <Metric icon={Wallet} label="Valor estimado" value={<AnimatedBRL value={metrics.valorTotal} />} color="#34d399" glow />
-            <Metric icon={TrendingUp} label="Conversão" value={pct(metrics.taxaConversao)} color="#22d3ee" />
-            <Metric icon={Receipt} label="Ticket médio" value={<AnimatedBRL value={metrics.ticketMedio} />} color="#fbbf24" />
-            <Metric icon={Clock} label="Ciclo médio" value={`${metrics.cicloMedio.toFixed(0)}d`} color="#f472b6" />
-          </div>
+        {/* ===================== KANBAN ===================== */}
+        <div className="relative">
+          {/* luz ambiente atrás das colunas */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: "radial-gradient(ellipse 75% 55% at 50% 0%, rgba(99,102,241,0.14), transparent 72%)" }}
+          />
+          {/* reflexo no chão */}
+          <div className="pointer-events-none absolute inset-x-8 -bottom-3 h-12 rounded-[50%] bg-indigo-500/10 blur-2xl" />
 
-          {/* mini gráfico futurista — distribuição por etapa */}
-          <div className="mt-4">
-            <p className="mb-2 text-[10px] uppercase tracking-wider text-white/45">Distribuição por etapa</p>
-            <div className="flex items-end gap-2">
-              {STATUS_ORDER.map((s) => {
+          <div className="overflow-x-auto pb-2">
+            <div className="grid grid-flow-col gap-6" style={{ gridAutoColumns: "minmax(296px, 1fr)" }}>
+              {STATUS_ORDER.map((s, ci) => {
+                const info = LEAD_STATUS_INFO[s];
                 const tone = STATUS_TONE[s];
-                const c = colunas[s].length;
-                const h = (c / maxCount) * 100;
+                const StageIcon = tone.icon;
+                const items = colunas[s];
+                const isOver = overCol === s;
                 return (
-                  <div key={s} className="flex flex-1 flex-col items-center gap-1">
-                    <div className="flex h-14 w-full items-end">
-                      <div
-                        className="w-full rounded-t-md transition-[height] duration-700"
-                        style={{
-                          height: `${Math.max(h, 4)}%`,
-                          background: `linear-gradient(180deg, ${tone.color}, ${tone.color}55)`,
-                          boxShadow: `0 0 14px -2px ${tone.color}`,
-                        }}
-                      />
+                  <div
+                    key={s}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (overCol !== s) setOverCol(s);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      soltarNaColuna(s);
+                    }}
+                    className="lb-fade-up relative flex min-h-[460px] flex-col rounded-2xl border transition-shadow duration-300"
+                    style={{
+                      animationDelay: `${ci * 0.05}s`,
+                      background: `linear-gradient(180deg, ${tone.color}14, rgba(255,255,255,0.018))`,
+                      backdropFilter: "blur(14px)",
+                      WebkitBackdropFilter: "blur(14px)",
+                      borderColor: isOver ? tone.color : `${tone.color}3a`,
+                      boxShadow: isOver
+                        ? `0 0 54px -6px ${tone.color}, inset 0 1px 0 rgba(255,255,255,.08)`
+                        : `0 26px 60px -24px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.05)`,
+                    }}
+                  >
+                    {/* borda luminosa superior */}
+                    <div
+                      className="pointer-events-none absolute inset-x-3 top-0 h-px"
+                      style={{ background: `linear-gradient(90deg, transparent, ${tone.color}, transparent)`, boxShadow: `0 0 8px ${tone.color}` }}
+                    />
+
+                    {/* header da coluna */}
+                    <div
+                      className="flex items-center justify-between gap-2 rounded-t-2xl border-b px-3 py-3"
+                      style={{ borderColor: `${tone.color}26`, background: `linear-gradient(180deg, ${tone.color}26, transparent)` }}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg"
+                          style={{ background: `${tone.color}26`, boxShadow: `0 0 16px -2px ${tone.color}` }}
+                        >
+                          <StageIcon className="h-4 w-4" style={{ color: tone.color }} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold uppercase tracking-wider text-white">
+                            {info.label}
+                            <span className="ml-1 text-white/45">({items.length})</span>
+                          </p>
+                          <p className="text-[10px] text-white/55 tabular-nums">{brl(totais[s])}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => abrirNovo(s)}
+                        className="rounded-md p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+                        title="Adicionar nesta etapa"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
                     </div>
-                    <span className="text-[10px] font-bold tabular-nums text-white/70">{c}</span>
-                    <span className="hidden truncate text-[8px] uppercase tracking-wide text-white/35 sm:block">
-                      {LEAD_STATUS_INFO[s].label.slice(0, 4)}
-                    </span>
+
+                    {/* corpo da coluna */}
+                    <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                      {items.map((l, i) => {
+                        const vendedor = vendedores.find((v) => v.id === l.vendedorId);
+                        const wa = waLink(l.telefone);
+                        const tel = telLink(l.telefone);
+                        const TipoIcon = l.tipo ? TIPO_ICON[l.tipo] : Building2;
+                        const tipoLabel = l.tipo ? LEAD_TIPO_INFO[l.tipo].label : "Negócio";
+                        const fechado = l.status === "fechamento";
+
+                        // indicadores premium
+                        const diasUlt = (Date.now() - new Date(l.atualizadoEm ?? l.criadoEm).getTime()) / 86_400_000;
+                        const ativo = l.status !== "perdido" && l.status !== "fechamento";
+                        const altoTicket = l.valorEstimado >= Math.max(150_000, metrics.ticketMedio * 1.6);
+                        const quente = ativo && diasUlt <= 2;
+                        const prioridade = ativo && altoTicket && (l.status === "reuniao" || l.status === "acompanhamento");
+                        const fechamentoProx = l.status === "acompanhamento";
+                        const tags: LeadTag[] = [];
+                        if (quente) tags.push({ icon: Flame, label: "Quente", color: "#fda4af", bg: "rgba(244,63,94,.16)" });
+                        if (altoTicket) tags.push({ icon: Star, label: "Alto ticket", color: "#fcd34d", bg: "rgba(245,158,11,.16)" });
+                        if (prioridade) tags.push({ icon: Zap, label: "Prioridade", color: "#c4b5fd", bg: "rgba(139,92,246,.16)" });
+                        if (fechamentoProx) tags.push({ icon: Target, label: "Fechar", color: "#6ee7b7", bg: "rgba(16,185,129,.16)" });
+
+                        return (
+                          <div key={l.id} className="lb-fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
+                            <div className="lb-bob-sm" style={{ animationDelay: `${(i % 5) * 0.6}s` }}>
+                              <div
+                                data-lead-card
+                                className={cn(
+                                  "lb-podium-card group relative rounded-xl border py-3.5 pl-4 pr-3.5 transition-all",
+                                  dragId === l.id ? "opacity-40" : "",
+                                )}
+                                style={{
+                                  background:
+                                    "linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03) 55%, rgba(255,255,255,0.06))",
+                                  borderColor: fechado ? "rgba(34,197,94,.42)" : "rgba(255,255,255,.13)",
+                                  boxShadow: fechado
+                                    ? "0 22px 42px -20px rgba(0,0,0,.85), 0 0 26px -10px rgba(34,197,94,.6), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 26px rgba(255,255,255,.04)"
+                                    : "0 22px 42px -20px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 26px rgba(255,255,255,.04)",
+                                }}
+                              >
+                                {/* reflexo holográfico (clipa só o card, não corta o dropdown) */}
+                                <span className="lb-holo pointer-events-none absolute inset-0 rounded-xl" aria-hidden />
+                                {/* brilho interno no topo */}
+                                <span
+                                  className="pointer-events-none absolute inset-x-0 top-0 h-1/2 rounded-t-xl"
+                                  style={{ background: "linear-gradient(180deg, rgba(255,255,255,.10), transparent)" }}
+                                  aria-hidden
+                                />
+                                {/* glow aumentando no hover */}
+                                <span
+                                  className="pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                                  style={{ background: `radial-gradient(120% 80% at 50% 0%, ${tone.color}26, transparent 70%)`, boxShadow: `inset 0 0 30px -6px ${tone.color}` }}
+                                  aria-hidden
+                                />
+                                {/* acento de status (cor da etapa) */}
+                                <span
+                                  className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-full"
+                                  style={{ background: tone.color, boxShadow: `0 0 10px ${tone.color}` }}
+                                />
+
+                                {/* topo: grip + tipo + tempo */}
+                                <div className="relative mb-1.5 flex items-start justify-between gap-1">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.effectAllowed = "move";
+                                        e.dataTransfer.setData("text/plain", l.id);
+                                        const card = e.currentTarget.closest("[data-lead-card]");
+                                        if (card) e.dataTransfer.setDragImage(card as Element, 24, 24);
+                                        setDragId(l.id);
+                                      }}
+                                      onDragEnd={() => {
+                                        setDragId(null);
+                                        setOverCol(null);
+                                      }}
+                                      className="-ml-1 shrink-0 cursor-grab rounded p-0.5 text-white/25 transition-colors hover:text-white/70 active:cursor-grabbing"
+                                      title="Arraste para mover de etapa"
+                                      aria-label="Mover negócio"
+                                    >
+                                      <GripVertical className="h-3.5 w-3.5" />
+                                    </button>
+                                    <TipoIcon className="h-3.5 w-3.5 text-white/45" />
+                                    <span className="truncate text-[10px] uppercase tracking-wider text-white/50">
+                                      {tipoLabel}
+                                    </span>
+                                    {fechado && (
+                                      <span className="inline-flex items-center gap-0.5 rounded bg-emerald-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+                                        ✓ Venda
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-white/40">
+                                    {timeAgo(l.criadoEm)}
+                                  </span>
+                                </div>
+
+                                {/* nome + origem */}
+                                <button
+                                  type="button"
+                                  onClick={() => abrirEditar(l)}
+                                  className="relative block w-full text-left"
+                                >
+                                  <p className="truncate text-sm font-semibold text-white hover:underline">
+                                    {l.nome}
+                                  </p>
+                                </button>
+                                {l.origem && (
+                                  <span className="relative mt-1 inline-flex max-w-full items-center truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55">
+                                    {l.origem}
+                                  </span>
+                                )}
+
+                                {/* indicadores premium */}
+                                {tags.length > 0 && (
+                                  <div className="relative mt-1.5 flex flex-wrap items-center gap-1">
+                                    {tags.map((t) => (
+                                      <span
+                                        key={t.label}
+                                        className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                                        style={{ background: t.bg, color: t.color }}
+                                      >
+                                        <t.icon className="h-2.5 w-2.5" /> {t.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {l.telefone && (
+                                  <div className="relative mt-1.5 flex items-center gap-1.5 text-xs text-white/55">
+                                    <Phone className="h-3 w-3 text-emerald-400" />
+                                    <span className="truncate">{l.telefone}</span>
+                                  </div>
+                                )}
+
+                                {/* vendedor (avatar + badge) */}
+                                <div className="relative mt-2 flex items-center justify-between gap-2">
+                                  {vendedor ? (
+                                    <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 py-0.5 pl-0.5 pr-2">
+                                      <Avatar id={vendedor.id} nome={vendedor.nome} size={20} />
+                                      <span className="truncate text-xs font-medium text-white">
+                                        {vendedor.nome}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="inline-flex items-center rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                                      Sem vendedor
+                                    </span>
+                                  )}
+                                  {l.atualizadoEm && (
+                                    <span className="shrink-0 text-[10px] text-white/35">
+                                      {timeAgo(l.atualizadoEm)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* rodapé: ações + valor */}
+                                <div className="relative mt-2.5 flex items-center justify-between border-t border-white/10 pt-2.5">
+                                  <div className="flex items-center gap-1">
+                                    {tel && (
+                                      <a
+                                        href={tel}
+                                        className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
+                                        title="Ligar"
+                                      >
+                                        <Phone className="h-3.5 w-3.5" />
+                                      </a>
+                                    )}
+                                    {wa && (
+                                      <a
+                                        href={wa}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
+                                        title="WhatsApp"
+                                      >
+                                        <MessageCircle className="h-3.5 w-3.5" />
+                                      </a>
+                                    )}
+                                    <Dropdown
+                                      trigger={<MoreVertical className="h-3.5 w-3.5" />}
+                                      align="start"
+                                      width={260}
+                                      header={
+                                        <div className="border-b border-[var(--color-border)] px-3 py-2 text-xs">
+                                          <p className="font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+                                            Ações
+                                          </p>
+                                          <p className="mt-0.5 truncate text-[var(--color-text)]">
+                                            {l.nome}
+                                            {l.tipo && ` · ${LEAD_TIPO_INFO[l.tipo].label}`}
+                                            {l.valorEstimado > 0 && ` · ${brl(l.valorEstimado)}`}
+                                          </p>
+                                        </div>
+                                      }
+                                    >
+                                      {(close) => (
+                                        <>
+                                          <DropdownItem
+                                            icon={<Pencil className="h-4 w-4" />}
+                                            onClick={() => {
+                                              abrirEditar(l);
+                                              close();
+                                            }}
+                                          >
+                                            Editar
+                                          </DropdownItem>
+                                          {wa && (
+                                            <DropdownItem
+                                              icon={<MessageCircle className="h-4 w-4 text-[var(--color-success)]" />}
+                                              hint={l.telefone}
+                                              onClick={() => {
+                                                window.open(wa, "_blank");
+                                                close();
+                                              }}
+                                            >
+                                              WhatsApp
+                                            </DropdownItem>
+                                          )}
+                                          {tel && (
+                                            <DropdownItem
+                                              icon={<Phone className="h-4 w-4 text-[var(--color-success)]" />}
+                                              hint={l.telefone}
+                                              onClick={() => {
+                                                window.location.href = tel;
+                                                close();
+                                              }}
+                                            >
+                                              Telefone
+                                            </DropdownItem>
+                                          )}
+                                          <DropdownItem
+                                            icon={<FileText className="h-4 w-4" />}
+                                            disabled
+                                            hint="em breve"
+                                          >
+                                            Gerar Proposta
+                                          </DropdownItem>
+                                          <DropdownItem
+                                            icon={<Share2 className="h-4 w-4" />}
+                                            onClick={() => {
+                                              abrirCompartilhar(l);
+                                              close();
+                                            }}
+                                          >
+                                            Compartilhar
+                                          </DropdownItem>
+                                          <DropdownSeparator />
+                                          <DropdownItem
+                                            icon={<XCircle className="h-4 w-4" />}
+                                            danger
+                                            disabled={l.status === "perdido"}
+                                            onClick={() => {
+                                              mudarStatus(l, "perdido");
+                                              close();
+                                            }}
+                                          >
+                                            Perdeu
+                                          </DropdownItem>
+                                          <DropdownItem
+                                            icon={<CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />}
+                                            disabled={l.status === "fechamento"}
+                                            onClick={() => {
+                                              mudarStatus(l, "fechamento");
+                                              close();
+                                            }}
+                                          >
+                                            Ganhou
+                                          </DropdownItem>
+                                          <DropdownSeparator />
+                                          <DropdownItem
+                                            icon={<Trash2 className="h-4 w-4" />}
+                                            danger
+                                            onClick={() => {
+                                              remover(l);
+                                              close();
+                                            }}
+                                          >
+                                            Excluir
+                                          </DropdownItem>
+                                        </>
+                                      )}
+                                    </Dropdown>
+                                    <select
+                                      value={l.status}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => mudarStatus(l, e.target.value as LeadStatus)}
+                                      className="ml-1 rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[10px] text-white/60"
+                                      title="Mover etapa"
+                                    >
+                                      {STATUS_ORDER.map((st) => (
+                                        <option key={st} value={st} className="bg-[#0b0d16] text-white">
+                                          {LEAD_STATUS_INFO[st].label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <span className="text-xs font-semibold text-white tabular-nums">
+                                    {brl(l.valorEstimado)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {items.length === 0 && (
+                        <div
+                          className={cn(
+                            "m-1 flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-center text-xs transition-colors",
+                            isOver ? "border-white/30 text-white/60" : "border-white/10 text-white/35",
+                          )}
+                        >
+                          <Sparkles className="h-4 w-4 opacity-40" />
+                          <span>Arraste um card aqui</span>
+                          <button
+                            onClick={() => abrirNovo(s)}
+                            className="font-medium text-indigo-300 hover:underline"
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
+          </div>
+        </div>
+
+        {/* ===================== FUNIL (RODAPÉ) ===================== */}
+        <div className="lb-glass lb-fade-up rounded-2xl p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-indigo-300" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-white">Funil de conversão</h2>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-white/55">
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5 text-pink-300" /> Ciclo médio {metrics.cicloMedio.toFixed(0)}d
+              </span>
+              <span className="text-emerald-300">{metrics.ganhos} ganhos</span>
+              <span className="text-rose-300">{metrics.perdidos} perdidos</span>
+            </div>
+          </div>
+          <div className="flex items-end gap-2">
+            {STATUS_ORDER.map((s) => {
+              const tone = STATUS_TONE[s];
+              const c = colunas[s].length;
+              const h = (c / maxCount) * 100;
+              return (
+                <div key={s} className="flex flex-1 flex-col items-center gap-1">
+                  <div className="flex h-20 w-full items-end">
+                    <div
+                      className="w-full rounded-t-md transition-[height] duration-700"
+                      style={{
+                        height: `${Math.max(h, 4)}%`,
+                        background: `linear-gradient(180deg, ${tone.color}, ${tone.color}55)`,
+                        boxShadow: `0 0 14px -2px ${tone.color}`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold tabular-nums text-white/70">{c}</span>
+                  <span className="hidden truncate text-[8px] uppercase tracking-wide text-white/35 sm:block">
+                    {LEAD_STATUS_INFO[s].label.slice(0, 4)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

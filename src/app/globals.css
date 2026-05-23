@@ -222,6 +222,10 @@ body {
 }
 .lb-bob { animation: lb-bob 4.5s ease-in-out infinite; }
 
+/* Flutuacao sutil — cards do pipeline (amplitude pequena, escalonada) */
+@keyframes lb-bob-sm { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.lb-bob-sm { animation: lb-bob-sm 6s ease-in-out infinite; }
+
 /* Reflexo holografico que cruza o card */
 @keyframes lb-holo {
   0% { transform: translateX(-60%) skewX(-12deg); opacity: 0; }
@@ -259,5 +263,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
   .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog,
-  .lb-bob, .lb-holo::after, .lb-rise { animation: none; }
+  .lb-bob, .lb-bob-sm, .lb-holo::after, .lb-rise { animation: none; }
 }
