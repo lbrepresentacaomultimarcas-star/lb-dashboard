@@ -260,8 +260,54 @@ body {
 .lb-podium-card { transition: transform .35s cubic-bezier(.2,.8,.2,1), filter .35s ease; }
 .lb-podium-card:hover { transform: translateY(-8px) scale(1.025); filter: brightness(1.12) saturate(1.1); }
 
+/* ===================== PREMIUM AAA ===================== */
+/* fundo de palco premium das telas */
+.lb-stage {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(30,64,175,0.18), transparent 35%),
+    radial-gradient(ellipse at 88% 100%, rgba(124,58,237,0.12), transparent 55%),
+    #060816;
+}
+
+/* card premium reutilizável */
+.lb-card-premium {
+  position: relative;
+  background: rgba(10,14,35,0.88);
+  border: 1px solid rgba(80,120,255,0.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.45);
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), border-color .3s ease, box-shadow .3s ease;
+}
+.lb-card-premium:hover {
+  transform: translateY(-3px);
+  border-color: rgba(59,130,246,0.55);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05), 0 24px 70px rgba(0,0,0,0.5), 0 0 30px -6px rgba(37,99,255,0.5);
+}
+
+/* orbe neon pro ícone (cor via --orb) */
+.lb-orb {
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--orb, #3b82f6) 50%, transparent);
+  background: color-mix(in oklab, var(--orb, #3b82f6) 16%, transparent);
+  box-shadow: 0 0 22px -4px var(--orb, #3b82f6), inset 0 0 12px -5px var(--orb, #3b82f6);
+  color: var(--orb, #3b82f6);
+}
+
+/* glow pulsando lentamente */
+@keyframes lb-pulse-glow { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+.lb-pulse-glow { animation: lb-pulse-glow 3.5s ease-in-out infinite; }
+
+/* scrollbar neon escopada (.lb-scroll) */
+.lb-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.lb-scroll::-webkit-scrollbar-track { background: transparent; }
+.lb-scroll::-webkit-scrollbar-thumb { background: linear-gradient(180deg,#2563ff,#7c3aed); border-radius: 8px; }
+.lb-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg,#3b82f6,#7c3aed); }
+
 @media (prefers-reduced-motion: reduce) {
   .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
   .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog,
-  .lb-bob, .lb-bob-sm, .lb-holo::after, .lb-rise { animation: none; }
+  .lb-bob, .lb-bob-sm, .lb-holo::after, .lb-rise, .lb-pulse-glow { animation: none; }
 }
