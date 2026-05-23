@@ -6,13 +6,13 @@ import {
   Award,
   Crown,
   Flame,
+  Minus,
   Rocket,
   Sparkles,
   Star,
   TrendingDown,
   TrendingUp,
   Trophy,
-  Users,
 } from "lucide-react";
 import { useMetas, useVendas, useVendedores } from "@/lib/store";
 import { faturamentoMensal } from "@/lib/selectors";
@@ -23,39 +23,102 @@ import type { VendedorComDesempenho } from "@/lib/types";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
 
-const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º na ordem visual
+const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º
 
 const MOTIVACAO = [
-  "Quem não é visto, não é lembrado. Aparece no topo.",
-  "Cada não te aproxima do próximo sim.",
-  "Disciplina vence motivação. Liga pro próximo lead.",
-  "Meta não é teto, é piso. Voa mais alto.",
-  "O melhor vendedor não é o mais talentoso — é o mais consistente.",
-  "Hoje é dia de bater meta. Bora.",
-  "Pipeline cheio, mente tranquila. Alimenta o funil.",
+  { frase: "Disciplina é fazer o que precisa ser feito, mesmo quando você não quer fazer.", tag: "Foco • Força • Fé" },
+  { frase: "Quem não é visto, não é lembrado. Aparece no topo.", tag: "Visibilidade • Ação" },
+  { frase: "Cada não te aproxima do próximo sim. Continua ligando.", tag: "Persistência" },
+  { frase: "Meta não é teto, é piso. Voa mais alto.", tag: "Ambição" },
+  { frase: "Pipeline cheio, mente tranquila. Alimenta o funil todo dia.", tag: "Consistência" },
 ];
 
 type Tone = {
-  ring: string;        // cor do anel neon
-  glow: string;        // gradiente de brilho atrás do avatar
-  base: string;        // gradiente do pilar
-  light: string;       // cor do número/topo
-  text: string;        // classe de cor do nome
-  h: number;           // altura do pilar
-  icon: typeof Crown;
+  ring: string;   // cor do anel/borda
+  drum: string;   // gradiente do cilindro
+  light: string;  // brilho/numero
+  glow: string;   // aura atrás do avatar
 };
 
+const TONES: Tone[] = [
+  { // 1º ouro
+    ring: "#f59e0b",
+    drum: "linear-gradient(180deg,#7a4d06 0%,#3a2403 55%,#160d02 100%)",
+    light: "#fcd34d",
+    glow: "radial-gradient(circle,rgba(250,204,21,0.5),transparent 70%)",
+  },
+  { // 2º azul
+    ring: "#3b82f6",
+    drum: "linear-gradient(180deg,#1e3a8a 0%,#10204d 55%,#070d1f 100%)",
+    light: "#93c5fd",
+    glow: "radial-gradient(circle,rgba(59,130,246,0.45),transparent 70%)",
+  },
+  { // 3º vermelho
+    ring: "#f43f5e",
+    drum: "linear-gradient(180deg,#9f1239 0%,#4d0a1c 55%,#1f060d 100%)",
+    light: "#fda4af",
+    glow: "radial-gradient(circle,rgba(244,63,94,0.4),transparent 70%)",
+  },
+];
+
 function badgeFor(d: VendedorComDesempenho, index: number) {
-  if (index === 0) return { label: "Elite", cls: "from-yellow-400/30 to-amber-500/10 text-yellow-300 border-yellow-400/40", icon: Crown };
-  if (d.pctMeta >= 100) return { label: "Meta batida", cls: "from-emerald-400/25 to-emerald-500/5 text-emerald-300 border-emerald-400/40", icon: Trophy };
-  if (d.pctMeta >= 70) return { label: "Em ascensão", cls: "from-amber-400/25 to-orange-500/5 text-amber-300 border-amber-400/40", icon: Rocket };
-  if (d.vendas >= 5) return { label: "Sequência 5", cls: "from-indigo-400/25 to-violet-500/5 text-indigo-300 border-indigo-400/40", icon: Flame };
-  return { label: "Persistente", cls: "from-slate-400/20 to-slate-500/5 text-slate-300 border-slate-400/30", icon: Star };
+  if (index === 0) return { label: "Top Closer", cls: "border-yellow-400/50 bg-yellow-400/15 text-yellow-300", icon: Crown };
+  if (d.pctMeta >= 100) return { label: "Bateu meta", cls: "border-emerald-400/50 bg-emerald-400/15 text-emerald-300", icon: Trophy };
+  if (d.pctMeta >= 70) return { label: "Em ascensão", cls: "border-indigo-400/50 bg-indigo-400/15 text-indigo-300", icon: Rocket };
+  if (d.vendas >= 5) return { label: "Sequência 5", cls: "border-amber-400/50 bg-amber-400/15 text-amber-300", icon: Flame };
+  return { label: "Persistente", cls: "border-rose-400/50 bg-rose-400/15 text-rose-300", icon: Star };
 }
 
 function AnimatedBRL({ value, className }: { value: number; className?: string }) {
   const v = useCountUp(value);
   return <span className={className}>{brl(v)}</span>;
+}
+
+function Laurel({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size * 0.7} viewBox="0 0 120 84" style={{ color }} aria-hidden>
+      {[0, 1].map((m) => (
+        <g key={m} transform={m === 1 ? "scale(-1,1) translate(-120,0)" : ""}>
+          <path d="M60 82 C 30 74 17 50 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" opacity="0.85" />
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <ellipse
+              key={i}
+              cx={20 + i * 1.5}
+              cy={24 + i * 10}
+              rx="7"
+              ry="3.4"
+              transform={`rotate(${-55 + i * 9} ${20 + i * 1.5} ${24 + i * 10})`}
+              fill="currentColor"
+              opacity="0.8"
+            />
+          ))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = data.length > 1 ? (i / (data.length - 1)) * 100 : 0;
+    const y = 32 - ((v - min) / range) * 28 - 2;
+    return `${x},${y}`;
+  });
+  return (
+    <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-12 w-full">
+      <defs>
+        <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,32 ${pts.join(" ")} 100,32`} fill="url(#spark)" />
+      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
 }
 
 export default function RankingPage() {
@@ -66,60 +129,27 @@ export default function RankingPage() {
 
   const ranking = useRankingMensal(mes, vendedores, vendas, metas);
   const top3 = ranking.slice(0, 3);
-  const top10 = ranking.slice(0, 10);
-  const total = ranking.reduce((acc, d) => acc + d.vendido, 0);
-  const totalComissao = ranking.reduce((acc, d) => acc + d.comissao, 0);
-  const metaGlobal = ranking.reduce((acc, d) => acc + d.metaMensal, 0);
+  const resto = ranking.slice(3, 10); // posições 4-10 na tabela
+  const total = ranking.reduce((a, d) => a + d.vendido, 0);
+  const metaGlobal = ranking.reduce((a, d) => a + d.metaMensal, 0);
   const pctGlobal = metaGlobal > 0 ? (total / metaGlobal) * 100 : 0;
-  const ativos = ranking.length;
 
-  // Crescimento vs mês anterior
-  const serie = useMemo(() => faturamentoMensal(vendas, 2), [vendas]);
+  const serie = useMemo(() => faturamentoMensal(vendas, 8), [vendas]);
   const crescimento = useMemo(() => {
-    if (serie.length < 2) return 0;
-    const ant = serie[0].total;
-    const atual = serie[1].total;
-    return ant > 0 ? ((atual - ant) / ant) * 100 : 0;
+    const s = serie.slice(-2);
+    if (s.length < 2 || s[0].total === 0) return 0;
+    return ((s[1].total - s[0].total) / s[0].total) * 100;
   }, [serie]);
 
-  const motivacao = MOTIVACAO[new Date().getDate() % MOTIVACAO.length];
-
-  const tones: Tone[] = [
-    { // 1º — ouro
-      ring: "#facc15",
-      glow: "radial-gradient(circle at 50% 30%, rgba(250,204,21,0.45), transparent 70%)",
-      base: "linear-gradient(180deg, #a16207 0%, #1a1206 100%)",
-      light: "#fde047",
-      text: "text-yellow-300",
-      h: 300,
-      icon: Crown,
-    },
-    { // 2º — prata/ciano
-      ring: "#67e8f9",
-      glow: "radial-gradient(circle at 50% 30%, rgba(103,232,249,0.38), transparent 70%)",
-      base: "linear-gradient(180deg, #155e75 0%, #08131a 100%)",
-      light: "#a5f3fc",
-      text: "text-cyan-200",
-      h: 220,
-      icon: Award,
-    },
-    { // 3º — bronze/vermelho
-      ring: "#fb7185",
-      glow: "radial-gradient(circle at 50% 30%, rgba(251,113,133,0.35), transparent 70%)",
-      base: "linear-gradient(180deg, #9f1239 0%, #1a0710 100%)",
-      light: "#fda4af",
-      text: "text-rose-200",
-      h: 180,
-      icon: Star,
-    },
-  ];
+  const champ = top3[0];
+  const mot = MOTIVACAO[new Date().getDate() % MOTIVACAO.length];
 
   return (
     <div
       className="-m-4 md:-m-6 relative min-h-[calc(100vh-4rem)] overflow-hidden p-4 md:p-6 pb-24 md:pb-6"
       style={{
         background:
-          "radial-gradient(ellipse at 25% 0%, rgba(99,102,241,0.16), transparent 55%), radial-gradient(ellipse at 85% 90%, rgba(168,85,247,0.16), transparent 55%), #06070d",
+          "radial-gradient(ellipse at 25% 0%, rgba(99,102,241,0.16), transparent 55%), radial-gradient(ellipse at 85% 95%, rgba(168,85,247,0.15), transparent 55%), #06070d",
       }}
     >
       {/* estrelas */}
@@ -131,22 +161,14 @@ export default function RankingPage() {
           backgroundSize: "300px 300px, 400px 400px, 500px 500px, 350px 350px, 450px 450px",
         }}
       />
-
-      {/* luz ambiente flutuante (blobs) */}
+      {/* blobs de luz */}
+      <div className="lb-drift pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.35), transparent 70%)" }} />
+      <div className="lb-drift pointer-events-none absolute -right-32 top-40 h-[28rem] w-[28rem] rounded-full opacity-50 blur-3xl" style={{ background: "radial-gradient(circle, rgba(168,85,247,0.3), transparent 70%)", animationDelay: "5s" }} />
+      {/* grid futurista */}
       <div
-        className="lb-drift pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full opacity-60 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(99,102,241,0.35), transparent 70%)" }}
-      />
-      <div
-        className="lb-drift pointer-events-none absolute -right-32 top-40 h-[28rem] w-[28rem] rounded-full opacity-50 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.3), transparent 70%)", animationDelay: "5s" }}
-      />
-      {/* grid futurista no chão */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-64 opacity-25"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-64 opacity-20"
         style={{
-          backgroundImage:
-            "linear-gradient(rgba(99,102,241,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.5) 1px, transparent 1px)",
+          backgroundImage: "linear-gradient(rgba(99,102,241,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.5) 1px, transparent 1px)",
           backgroundSize: "44px 44px",
           maskImage: "linear-gradient(to top, #000, transparent)",
           WebkitMaskImage: "linear-gradient(to top, #000, transparent)",
@@ -155,138 +177,128 @@ export default function RankingPage() {
         }}
       />
 
-      <div className="relative grid gap-6 lg:grid-cols-[1fr_340px]">
-        {/* ============ COLUNA PRINCIPAL ============ */}
-        <div className="space-y-8">
-          <header className="flex flex-wrap items-end justify-between gap-3 lb-fade-up">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
-                Ranking de Vendas
-              </h1>
-              <p className="text-sm text-white/60">{monthLabel(mes)}</p>
+      <div className="relative grid gap-6 lg:grid-cols-[1fr_320px]">
+        {/* ===================== COLUNA PRINCIPAL ===================== */}
+        <div className="space-y-7">
+          {/* Header */}
+          <header className="flex flex-wrap items-start justify-between gap-3 lb-fade-up">
+            <div className="flex items-center gap-3">
+              <Trophy className="h-8 w-8 text-yellow-400" style={{ filter: "drop-shadow(0 0 10px rgba(250,204,21,.6))" }} />
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Ranking de vendas</h1>
+                <p className="text-sm text-white/55">{monthLabel(mes)}</p>
+              </div>
             </div>
             <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest text-white/50">Faturamento total</p>
-              <AnimatedBRL
-                value={total}
-                className="text-2xl font-bold text-cyan-300 tabular-nums md:text-3xl"
-              />
+              <p className="text-[10px] uppercase tracking-widest text-white/50">Total faturamento</p>
+              <div className="flex items-center justify-end gap-2">
+                <AnimatedBRL value={total} className="text-2xl font-bold text-emerald-400 tabular-nums md:text-3xl" />
+                <span className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold ${crescimento >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                  {crescimento >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {pct(Math.abs(crescimento))}
+                </span>
+              </div>
+              <p className="text-[11px] text-white/40">vs mês anterior</p>
             </div>
           </header>
 
-          {/* ============ PÓDIO ============ */}
+          {/* ===================== PÓDIO ===================== */}
           {top3.length === 0 ? (
-            <div className="lb-glass rounded-2xl p-12 text-center text-white/60">
-              Sem vendedores pra ranquear ainda.
-            </div>
+            <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
           ) : (
-            <div className="flex items-end justify-center gap-2 pt-20 sm:gap-5 lg:gap-7">
+            <div className="flex items-end justify-center gap-2 pt-16 sm:gap-4 lg:gap-5">
               {PODIUM_ORDER.map((idx) => {
                 const d = top3[idx];
-                const tone = tones[idx];
+                const tone = TONES[idx];
                 const champion = idx === 0;
-                const avatarSize = champion ? 168 : 96;
-                const cardW = champion ? "w-36 sm:w-52" : "w-24 sm:w-36";
+                const drumH = champion ? 132 : idx === 1 ? 104 : 84;
+                const avatar = champion ? 104 : 78;
+                const colW = champion ? "w-[40%] max-w-[280px]" : "w-[30%] max-w-[220px]";
                 if (!d) {
-                  return (
-                    <div key={`e-${idx}`} className={`flex ${cardW} flex-col items-center opacity-20`}>
-                      <div className="mb-4 rounded-full bg-white/5" style={{ width: avatarSize * 0.7, height: avatarSize * 0.7 }} />
-                      <div className="w-full rounded-t-xl border border-white/10" style={{ height: tone.h * 0.6, background: tone.base }} />
-                    </div>
-                  );
+                  return <div key={`e-${idx}`} className={colW} />;
                 }
                 const b = badgeFor(d, idx);
                 return (
-                  <div
-                    key={d.id}
-                    className={`lb-fade-up relative flex ${cardW} flex-col items-center ${champion ? "z-10" : ""}`}
-                    style={{ animationDelay: `${idx * 0.12}s` }}
-                  >
-                    {/* Holofote no campeão */}
+                  <div key={d.id} className={`lb-fade-up flex flex-col items-center ${colW} ${champion ? "z-10" : ""}`} style={{ animationDelay: `${idx * 0.1}s` }}>
+                    {/* holofote campeão */}
                     {champion && (
                       <div
-                        className="lb-spotlight pointer-events-none absolute -top-16 left-1/2 -z-10 h-80 w-56 -translate-x-1/2"
-                        style={{
-                          background: "linear-gradient(to bottom, rgba(253,224,71,0.5), transparent 75%)",
-                          clipPath: "polygon(38% 0, 62% 0, 100% 100%, 0% 100%)",
-                          filter: "blur(8px)",
-                        }}
+                        className="lb-spotlight pointer-events-none absolute -top-10 left-1/2 -z-10 h-[26rem] w-64 -translate-x-1/2"
+                        style={{ background: "linear-gradient(to bottom, rgba(252,211,77,0.45), transparent 78%)", clipPath: "polygon(40% 0,60% 0,100% 100%,0 100%)", filter: "blur(10px)" }}
                       />
                     )}
 
-                    {/* AVATAR + aura + anel neon + coroa + partículas */}
-                    <div className="relative mb-5">
-                      {/* aura pulsante */}
-                      <div
-                        className="lb-aura absolute -inset-6 rounded-full"
-                        style={{ background: tone.glow }}
-                      />
-                      {champion && (
-                        <>
-                          <Crown
-                            className="lb-float absolute -top-12 left-1/2 z-20 h-12 w-12 -translate-x-1/2 text-yellow-300"
-                            fill="currentColor"
-                            style={{ filter: "drop-shadow(0 0 14px rgba(253,224,71,0.95))" }}
-                          />
-                          {[0, 1, 2, 3, 4, 5, 6, 7].map((p) => (
-                            <span
-                              key={p}
-                              className="pointer-events-none absolute bottom-3 left-1/2 h-1.5 w-1.5 rounded-full bg-yellow-300"
-                              style={{
-                                animation: `lb-particle ${2 + (p % 3) * 0.6}s ease-in ${p * 0.35}s infinite`,
-                                marginLeft: `${(p - 3.5) * 18}px`,
-                                boxShadow: "0 0 6px rgba(253,224,71,0.9)",
-                              }}
-                            />
-                          ))}
-                        </>
-                      )}
-                      <div
-                        className="lb-ring relative grid place-items-center rounded-full"
-                        style={{ ["--ring-c" as string]: tone.ring }}
-                      >
-                        <Avatar id={d.id} nome={d.nome} size={avatarSize} className="relative" />
-                      </div>
-                    </div>
-
-                    {/* base circular iluminada */}
+                    {/* CARD DE VIDRO */}
                     <div
-                      className="lb-glow pointer-events-none absolute left-1/2 h-6 w-[120%] -translate-x-1/2 rounded-[100%] blur-md"
-                      style={{ bottom: tone.h - 10, background: tone.light, opacity: 0.5 }}
-                    />
-
-                    {/* PÓDIO 3D */}
-                    <div
-                      className="lb-pillar relative w-full rounded-t-2xl border-x border-t border-white/15"
-                      style={{ height: tone.h, background: tone.base }}
+                      className="lb-glass relative w-full rounded-2xl px-3 pb-4 pt-12 text-center"
+                      style={{ borderColor: `${tone.ring}66`, boxShadow: `0 0 36px -6px ${tone.ring}99, inset 0 1px 0 rgba(255,255,255,.1)` }}
                     >
-                      <div
-                        className="absolute inset-x-0 top-0 h-2 lb-glow rounded-t-2xl"
-                        style={{ background: tone.light, boxShadow: `0 0 22px ${tone.light}` }}
-                      />
-                      <div
-                        className={`grid h-full place-items-center font-black tabular-nums ${champion ? "text-8xl sm:text-9xl" : "text-6xl sm:text-7xl"}`}
-                        style={{ color: tone.light, textShadow: `0 0 28px ${tone.light}` }}
-                      >
-                        {idx + 1}
+                      {/* avatar sobreposto */}
+                      <div className="absolute -top-10 left-1/2 -translate-x-1/2">
+                        <div className="relative">
+                          <div className="lb-aura absolute -inset-3 rounded-full" style={{ background: tone.glow }} />
+                          {champion && (
+                            <>
+                              <Crown className="lb-float absolute -top-8 left-1/2 z-20 h-8 w-8 -translate-x-1/2 text-yellow-300" fill="currentColor" style={{ filter: "drop-shadow(0 0 12px rgba(253,224,71,.95))" }} />
+                              {[0, 1, 2, 3, 4, 5].map((p) => (
+                                <span key={p} className="pointer-events-none absolute bottom-2 left-1/2 h-1.5 w-1.5 rounded-full bg-yellow-300" style={{ animation: `lb-particle ${2 + (p % 3) * 0.6}s ease-in ${p * 0.4}s infinite`, marginLeft: `${(p - 2.5) * 16}px`, boxShadow: "0 0 6px rgba(253,224,71,.9)" }} />
+                              ))}
+                            </>
+                          )}
+                          <div className="lb-ring relative grid place-items-center rounded-full" style={{ ["--ring-c" as string]: tone.ring }}>
+                            <Avatar id={d.id} nome={d.nome} size={avatar} className="relative" />
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* NOME + VALOR + BADGE */}
-                    <div className={`relative z-10 -mt-px w-full rounded-b-2xl border-x border-b border-white/15 bg-black/60 px-2 py-3 text-center backdrop-blur ${tone.text}`}>
-                      <p className={`truncate font-bold ${champion ? "text-base sm:text-lg" : "text-sm"}`}>{d.nome}</p>
-                      <AnimatedBRL value={d.vendido} className={`block font-bold text-white tabular-nums ${champion ? "text-sm" : "text-xs"}`} />
-                      <span className={`mt-1.5 inline-flex items-center gap-1 rounded-full border bg-gradient-to-b px-2 py-0.5 text-[10px] font-bold ${b.cls}`}>
+                      {/* badge flutuante */}
+                      <span className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${b.cls}`}>
                         <b.icon className="h-2.5 w-2.5" /> {b.label}
                       </span>
+
+                      <p className={`mt-1 truncate font-bold text-white ${champion ? "text-base sm:text-lg" : "text-sm"}`}>{d.nome}</p>
+                      <AnimatedBRL value={d.vendido} className={`block font-extrabold text-emerald-400 tabular-nums ${champion ? "text-xl sm:text-2xl" : "text-lg"}`} />
+
+                      {/* stats */}
+                      <div className="mt-3 grid grid-cols-3 gap-1 border-t border-white/10 pt-2 text-center">
+                        <div>
+                          <p className="text-[8px] uppercase tracking-wider text-white/40">Vendas</p>
+                          <p className="text-xs font-bold text-white tabular-nums">{d.vendas}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] uppercase tracking-wider text-white/40">% Meta</p>
+                          <p className="text-xs font-bold text-white tabular-nums">{pct(d.pctMeta)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] uppercase tracking-wider text-white/40">Comissão</p>
+                          <p className="text-xs font-bold text-emerald-300 tabular-nums">{brl(d.comissao)}</p>
+                        </div>
+                      </div>
+                      {/* barra */}
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div className="relative h-full rounded-full transition-[width] duration-1000" style={{ width: `${Math.min(d.pctMeta, 100)}%`, background: "linear-gradient(90deg,#22c55e,#4ade80)" }}>
+                          <span className="lb-bar-shine absolute inset-0" />
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-white/45">Meta: {brl(d.metaMensal)}</p>
                     </div>
 
-                    {/* Reflexo no chão */}
-                    <div className="lb-reflection mt-1 w-full" aria-hidden>
-                      <div
-                        className="w-full rounded-b-2xl"
-                        style={{ height: tone.h * 0.4, background: tone.base }}
-                      />
+                    {/* CILINDRO 3D (base) */}
+                    <div className="relative w-[78%]" style={{ height: drumH }}>
+                      {/* topo elíptico */}
+                      <div className="absolute inset-x-0 top-0 h-4 rounded-[50%]" style={{ background: tone.light, opacity: 0.9, boxShadow: `0 0 22px ${tone.light}` }} />
+                      {/* corpo */}
+                      <div className="lb-pillar absolute inset-x-0 bottom-2 top-2 overflow-hidden rounded-b-[14px]" style={{ background: tone.drum, borderRadius: "8px 8px 14px 14px" }}>
+                        {/* louros + número */}
+                        <div className="absolute inset-0 grid place-items-center">
+                          <div className="relative grid place-items-center">
+                            <Laurel size={champion ? 104 : 80} color={tone.light} />
+                            <span className="absolute font-black tabular-nums" style={{ color: tone.light, fontSize: champion ? 44 : 34, textShadow: `0 0 22px ${tone.light}` }}>{idx + 1}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* base elíptica iluminada no chão */}
+                      <div className="lb-glow absolute -bottom-1 left-1/2 h-4 w-[120%] -translate-x-1/2 rounded-[50%] blur-md" style={{ background: tone.light, opacity: 0.4 }} />
                     </div>
                   </div>
                 );
@@ -294,172 +306,175 @@ export default function RankingPage() {
             </div>
           )}
 
-          {/* ============ TOP 10 ============ */}
-          {top10.length > 0 && (
-            <div className="lb-fade-up lb-glass rounded-2xl p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-yellow-300" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-white">Top 10 vendedores</h2>
-              </div>
-              <div className="space-y-2">
-                {top10.map((d, i) => {
-                  const b = badgeFor(d, i);
-                  return (
-                    <div
-                      key={d.id}
-                      className="group flex items-center gap-3 rounded-xl border border-white/5 bg-white/5 p-2.5 transition-all hover:border-white/15 hover:bg-white/10"
-                    >
-                      <div className="flex w-6 shrink-0 items-center justify-center">
-                        <span className={`text-sm font-bold tabular-nums ${i === 0 ? "text-yellow-300" : i === 1 ? "text-cyan-200" : i === 2 ? "text-rose-200" : "text-white/40"}`}>
-                          {i + 1}
-                        </span>
-                      </div>
-                      <Avatar id={d.id} nome={d.nome} size={36} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-white">{d.nome}</p>
-                          <span className={`hidden shrink-0 rounded-full border bg-gradient-to-b px-1.5 py-px text-[9px] font-bold sm:inline ${b.cls}`}>
-                            {b.label}
-                          </span>
-                        </div>
-                        {/* barra de progresso animada */}
-                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="relative h-full rounded-full transition-[width] duration-1000 ease-out"
-                            style={{
-                              width: `${Math.min(d.pctMeta, 100)}%`,
-                              background:
-                                d.pctMeta >= 100
-                                  ? "linear-gradient(90deg,#22c55e,#4ade80)"
-                                  : d.pctMeta >= 70
-                                    ? "linear-gradient(90deg,#f59e0b,#fbbf24)"
-                                    : "linear-gradient(90deg,#6366f1,#a78bfa)",
-                            }}
-                          >
-                            <span className="lb-bar-shine absolute inset-0" />
+          {/* ===================== TOP 10 (4 a 10) ===================== */}
+          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-yellow-300" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-white">Top 10 vendedores</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
+                    <th className="pb-2 pr-3">Posição</th>
+                    <th className="pb-2 pr-3">Vendedor</th>
+                    <th className="pb-2 pr-3 text-right">Faturamento</th>
+                    <th className="hidden pb-2 pr-3 sm:table-cell">% Meta</th>
+                    <th className="hidden pb-2 pr-3 text-right md:table-cell">Vendas</th>
+                    <th className="pb-2 pr-3 text-right">Comissão</th>
+                    <th className="hidden pb-2 text-right sm:table-cell">Evolução</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {resto.map((d, i) => {
+                    const pos = i + 4;
+                    const b = badgeFor(d, pos - 1);
+                    return (
+                      <tr key={d.id} className="group transition-colors hover:bg-white/5">
+                        <td className="py-2.5 pr-3">
+                          <span className="font-bold text-white/70 tabular-nums">{pos}</span>
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar id={d.id} nome={d.nome} size={32} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-white">{d.nome}</p>
+                              <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[8px] font-bold uppercase ${b.cls}`}>
+                                <b.icon className="h-2 w-2" /> {b.label}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="hidden text-right sm:block">
-                        <p className="text-sm font-bold text-white tabular-nums">{brl(d.vendido)}</p>
-                        <p className="text-[10px] text-white/50 tabular-nums">{d.vendas} vendas · {pct(d.pctMeta)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-semibold text-emerald-300 tabular-nums">{brl(d.comissao)}</p>
-                        <p className="text-[9px] uppercase text-white/40">comissão</p>
-                      </div>
-                    </div>
-                  );
-                })}
+                        </td>
+                        <td className="py-2.5 pr-3 text-right font-semibold text-white tabular-nums">{brl(d.vendido)}</td>
+                        <td className="hidden py-2.5 pr-3 sm:table-cell">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(d.pctMeta, 100)}%`, background: d.pctMeta >= 100 ? "#22c55e" : d.pctMeta >= 70 ? "#f59e0b" : "#6366f1" }} />
+                            </div>
+                            <span className="text-[10px] text-white/50 tabular-nums">{pct(d.pctMeta)}</span>
+                          </div>
+                        </td>
+                        <td className="hidden py-2.5 pr-3 text-right text-white/70 tabular-nums md:table-cell">{d.vendas}</td>
+                        <td className="py-2.5 pr-3 text-right font-semibold text-emerald-300 tabular-nums">{brl(d.comissao)}</td>
+                        <td className="hidden py-2.5 text-right sm:table-cell">
+                          <span className="inline-flex items-center gap-0.5 text-[11px] text-white/40">
+                            <Minus className="h-3 w-3" /> —
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {resto.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-xs text-white/40">
+                        Só temos o pódio por enquanto — conforme a equipe vende, o Top 10 enche.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* ===================== PAINEL DIREITO ===================== */}
+        <aside className="space-y-4">
+          <div className="lb-glass lb-fade-up flex items-center justify-center gap-3 rounded-2xl p-4">
+            <Logo size={40} />
+            <div className="border-l border-white/20 pl-3">
+              <p className="text-[10px] uppercase tracking-widest text-white/60">LB</p>
+              <p className="text-sm font-bold text-white">Representações</p>
+            </div>
+          </div>
+
+          {/* Desempenho geral */}
+          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
+                <Activity className="h-4 w-4 text-indigo-300" /> Desempenho geral
+              </span>
+              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${crescimento >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                {crescimento >= 0 ? "+" : ""}{pct(crescimento)}
+              </span>
+            </div>
+            <Sparkline data={serie.map((s) => s.total)} color="#818cf8" />
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-white/55">Total faturamento</span>
+                <span className="font-semibold text-white tabular-nums">{brl(total)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-white/55">Meta total</span>
+                <span className="font-semibold text-white tabular-nums">{brl(metaGlobal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-white/55">Atingimento</span>
+                <span className="font-bold text-indigo-300 tabular-nums">{pct(pctGlobal)}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="relative h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 transition-[width] duration-1000" style={{ width: `${Math.min(pctGlobal, 100)}%` }}>
+                  <span className="lb-bar-shine absolute inset-0" />
+                </div>
+              </div>
+              {pctGlobal < 100 && (
+                <p className="text-[11px] text-white/45">🔥 Faltam {brl(Math.max(metaGlobal - total, 0))} para a meta</p>
+              )}
+            </div>
+          </div>
+
+          {/* Destaque do mês */}
+          {champ && (
+            <div className="lb-glass lb-fade-up rounded-2xl p-4">
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
+                <Crown className="h-4 w-4 text-yellow-300" /> Destaque do mês
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="lb-ring rounded-full" style={{ ["--ring-c" as string]: "#f59e0b" }}>
+                  <Avatar id={champ.id} nome={champ.nome} size={52} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white">{champ.nome}</p>
+                  <p className="text-sm font-bold text-emerald-400 tabular-nums">{brl(champ.vendido)}</p>
+                  <p className="text-[10px] text-white/45">{champ.vendas} vendas · {pct(champ.pctMeta)} da meta</p>
+                </div>
               </div>
             </div>
           )}
-        </div>
-
-        {/* ============ PAINEL LATERAL (widgets) ============ */}
-        <aside className="space-y-4">
-          {/* Logo */}
-          <div className="lb-fade-up lb-glass rounded-2xl p-4">
-            <div className="flex items-center justify-center gap-3">
-              <Logo size={44} />
-              <div className="border-l border-white/20 pl-3">
-                <p className="text-[10px] uppercase tracking-widest text-white/60">LB</p>
-                <p className="text-sm font-bold text-white">Representações</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Meta global */}
-          <div className="lb-glass lb-fade-up rounded-2xl p-4">
-            <div className="mb-2 flex items-center gap-2 text-white/80">
-              <Activity className="h-4 w-4 text-indigo-300" />
-              <span className="text-xs font-semibold uppercase tracking-wider">Meta global da equipe</span>
-            </div>
-            <AnimatedBRL value={total} className="text-2xl font-bold text-white tabular-nums" />
-            <p className="text-xs text-white/50">de {brl(metaGlobal)}</p>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="relative h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 transition-[width] duration-1000"
-                style={{ width: `${Math.min(pctGlobal, 100)}%` }}
-              >
-                <span className="lb-bar-shine absolute inset-0" />
-              </div>
-            </div>
-            <p className="mt-1 text-right text-xs font-bold text-indigo-300">{pct(pctGlobal)}</p>
-          </div>
-
-          {/* Widgets de stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <Widget icon={Users} label="Vendedores" value={String(ativos)} tint="text-cyan-300" />
-            <Widget
-              icon={crescimento >= 0 ? TrendingUp : TrendingDown}
-              label="Crescimento"
-              value={`${crescimento >= 0 ? "+" : ""}${pct(crescimento)}`}
-              tint={crescimento >= 0 ? "text-emerald-300" : "text-rose-300"}
-            />
-            <Widget icon={Trophy} label="Comissão total" value={brl(totalComissao)} tint="text-amber-300" small />
-            <Widget
-              icon={Crown}
-              label="Destaque do mês"
-              value={top3[0]?.nome ?? "—"}
-              tint="text-yellow-300"
-              small
-            />
-          </div>
 
           {/* Últimas conquistas */}
-          <div className="lb-fade-up lb-glass rounded-2xl p-4">
-            <div className="mb-2 flex items-center gap-2 text-white/80">
-              <Award className="h-4 w-4 text-yellow-300" />
-              <span className="text-xs font-semibold uppercase tracking-wider">Conquistas</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+            <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
+              <Award className="h-4 w-4 text-yellow-300" /> Últimas conquistas
+            </p>
+            <div className="space-y-2.5">
               {top3.map((d, i) => {
                 const b = badgeFor(d, i);
                 return (
-                  <span key={d.id} className={`inline-flex items-center gap-1 rounded-full border bg-gradient-to-b px-2 py-1 text-[10px] font-bold ${b.cls}`}>
-                    <b.icon className="h-3 w-3" /> {d.nome.split(" ")[0]} · {b.label}
-                  </span>
+                  <div key={d.id} className="flex items-center gap-2.5">
+                    <Avatar id={d.id} nome={d.nome} size={30} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-white">{d.nome}</p>
+                      <p className="flex items-center gap-1 text-[10px] text-white/50">
+                        <b.icon className="h-2.5 w-2.5" /> {i === 0 ? "Líder do ranking" : i === 1 ? "Subiu pro pódio" : "No pódio"}
+                      </p>
+                    </div>
+                  </div>
                 );
               })}
-              {top3.length === 0 && <span className="text-xs text-white/40">Sem conquistas ainda</span>}
+              {top3.length === 0 && <p className="text-xs text-white/40">Sem conquistas ainda</p>}
             </div>
           </div>
 
           {/* Motivação */}
           <div className="lb-glass lb-fade-up rounded-2xl border-indigo-400/20 p-4">
-            <div className="mb-1 flex items-center gap-2 text-indigo-200">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-xs font-semibold uppercase tracking-wider">Motivação do dia</span>
-            </div>
-            <p className="text-sm font-medium leading-snug text-white">{motivacao}</p>
+            <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-200">
+              <Sparkles className="h-4 w-4" /> Motivação do dia
+            </p>
+            <p className="text-sm font-medium leading-snug text-white">“{mot.frase}”</p>
+            <p className="mt-2 text-xs font-semibold text-indigo-300">{mot.tag}</p>
           </div>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Widget({
-  icon: Icon,
-  label,
-  value,
-  tint,
-  small,
-}: {
-  icon: typeof Crown;
-  label: string;
-  value: string;
-  tint: string;
-  small?: boolean;
-}) {
-  return (
-    <div className="lb-glass lb-fade-up rounded-2xl p-3">
-      <Icon className={`mb-1 h-4 w-4 ${tint}`} />
-      <p className="text-[10px] uppercase tracking-wider text-white/50">{label}</p>
-      <p className={`truncate font-bold text-white tabular-nums ${small ? "text-sm" : "text-xl"}`}>
-        {value}
-      </p>
     </div>
   );
 }
