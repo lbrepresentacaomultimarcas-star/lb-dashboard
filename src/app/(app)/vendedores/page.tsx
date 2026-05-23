@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Crown, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useMetas, useVendas, useVendedores, vendedoresApi } from "@/lib/store";
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import type { Vendedor } from "@/lib/types";
 import { brl, parseNumBR, pct } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/avatar";
 import { AvatarUploader } from "@/components/avatar-uploader";
+import { PremiumStage } from "@/components/premium-stage";
 
 type FormState = {
   nome: string;
@@ -30,11 +29,19 @@ const emptyForm: FormState = {
   ativo: true,
 };
 
+/** Cor dinâmica do % da meta: 0–20 vermelho, 20–50 amarelo, 50+ verde. */
+function pctColor(p: number) {
+  if (p >= 50) return "#22C55E";
+  if (p >= 20) return "#FACC15";
+  return "#f43f5e";
+}
+
 export default function VendedoresPage() {
   const vendedores = useVendedores();
   const vendas = useVendas();
   const metas = useMetas();
   const desempenho = desempenhoPorVendedor(vendedores, vendas, metas);
+  const melhor = desempenho.length ? desempenho.reduce((a, b) => (b.vendido > a.vendido ? b : a)) : null;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Vendedor | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -97,13 +104,18 @@ export default function VendedoresPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Vendedores</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            Gerencie a equipe e acompanhe o desempenho do mês
-          </p>
+    <PremiumStage>
+      <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>
+            <Users className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              Vendedores
+            </h1>
+            <p className="text-sm text-white/55">Gerencie a equipe e acompanhe o desempenho do mês</p>
+          </div>
         </div>
         <Button onClick={abrirNovo}>
           <Plus className="h-4 w-4" />
@@ -111,69 +123,133 @@ export default function VendedoresPage() {
         </Button>
       </header>
 
-      <Card className="p-0">
-        <div className="overflow-x-auto">
+      {/* Melhor vendedor — destaque dourado */}
+      {melhor && melhor.vendido > 0 && (
+        <div
+          className="lb-fade-up relative overflow-hidden rounded-2xl border p-4"
+          style={{
+            borderColor: "rgba(250,204,21,.5)",
+            background: "linear-gradient(120deg, rgba(250,204,21,.14), rgba(10,14,35,.72))",
+            boxShadow: "0 0 32px -8px rgba(250,204,21,.5), inset 0 1px 0 rgba(255,255,255,.1)",
+          }}
+        >
+          <div
+            className="lb-pulse-glow pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full blur-3xl"
+            style={{ background: "radial-gradient(circle, rgba(250,204,21,.4), transparent 70%)" }}
+          />
+          <div className="relative flex items-center gap-3">
+            <span
+              className="inline-grid shrink-0 place-items-center rounded-full p-0.5"
+              style={{ boxShadow: "0 0 0 2px #FACC15, 0 0 16px -2px #FACC15" }}
+            >
+              <Avatar id={melhor.id} nome={melhor.nome} size={48} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-widest text-amber-300/80">Melhor vendedor do mês</p>
+              <p className="truncate text-lg font-extrabold text-white">{melhor.nome}</p>
+              <p className="text-sm text-white/60">
+                {brl(melhor.vendido)} · {pct(melhor.pctMeta)} da meta
+              </p>
+            </div>
+            <Crown className="ml-auto h-7 w-7 shrink-0 text-amber-300" style={{ filter: "drop-shadow(0 0 8px rgba(250,204,21,.8))" }} />
+          </div>
+        </div>
+      )}
+
+      <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl">
+        <div className="lb-scroll overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[var(--color-text-dim)]">
+              <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
                 <th className="px-5 py-3">Nome</th>
-                <th className="px-5 py-3">Email</th>
-                <th className="px-5 py-3 text-right">Meta</th>
-                <th className="px-5 py-3 text-right">Comissão</th>
+                <th className="hidden px-5 py-3 lg:table-cell">Email</th>
+                <th className="hidden px-5 py-3 text-right sm:table-cell">Meta</th>
+                <th className="hidden px-5 py-3 text-right md:table-cell">Comissão</th>
                 <th className="px-5 py-3 text-right">Vendido (mês)</th>
                 <th className="px-5 py-3 text-right">% meta</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-border)]">
-              {desempenho.map((d) => (
-                <tr key={d.id} className="hover:bg-[var(--color-surface-2)]/40">
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar id={d.id} nome={d.nome} size={32} />
-                      <span className="font-medium">{d.nome}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-[var(--color-text-dim)]">{d.email}</td>
-                  <td className="px-5 py-3 text-right">{brl(d.metaMensal)}</td>
-                  <td className="px-5 py-3 text-right">{pct(d.comissaoPct)}</td>
-                  <td className="px-5 py-3 text-right">{brl(d.vendido)}</td>
-                  <td className="px-5 py-3 text-right">
-                    <Badge
-                      tone={d.pctMeta >= 100 ? "success" : d.pctMeta >= 70 ? "warn" : "danger"}
-                    >
-                      {pct(d.pctMeta)}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Badge tone={d.ativo ? "brand" : "neutral"}>
-                      {d.ativo ? "Ativo" : "Inativo"}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => abrirEditar(d)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => remover(d)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-white/5">
+              {desempenho.map((d) => {
+                const best = d.id === melhor?.id && d.vendido > 0;
+                const pc = pctColor(d.pctMeta);
+                const sc = d.ativo ? "#22C55E" : "#f43f5e";
+                return (
+                  <tr
+                    key={d.id}
+                    className={best ? "bg-amber-400/[0.06] transition-colors" : "transition-colors hover:bg-white/[0.05]"}
+                    style={best ? { boxShadow: "inset 3px 0 0 #FACC15" } : undefined}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar id={d.id} nome={d.nome} size={32} />
+                        <span className="min-w-0 truncate font-medium text-white">{d.nome}</span>
+                        {best && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-300" />}
+                      </div>
+                    </td>
+                    <td className="hidden px-5 py-3 text-white/45 lg:table-cell">{d.email || "—"}</td>
+                    <td className="hidden px-5 py-3 text-right text-white/70 tabular-nums sm:table-cell">{brl(d.metaMensal)}</td>
+                    <td className="hidden px-5 py-3 text-right text-white/70 tabular-nums md:table-cell">{pct(d.comissaoPct)}</td>
+                    <td className="px-5 py-3 text-right font-semibold text-white tabular-nums">{brl(d.vendido)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="hidden h-1.5 w-20 overflow-hidden rounded-full bg-white/10 sm:block">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-700"
+                            style={{ width: `${Math.min(d.pctMeta, 100)}%`, background: pc, boxShadow: `0 0 10px ${pc}` }}
+                          />
+                        </div>
+                        <span
+                          className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold tabular-nums"
+                          style={{ color: pc, borderColor: `${pc}66`, background: `${pc}1f`, boxShadow: `0 0 12px -4px ${pc}` }}
+                        >
+                          {pct(d.pctMeta)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                        style={{ color: sc, borderColor: `${sc}66`, background: `${sc}1a`, boxShadow: `0 0 12px -4px ${sc}` }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: sc, boxShadow: `0 0 6px ${sc}` }} />
+                        {d.ativo ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => abrirEditar(d)}
+                          title="Editar"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-[#3B82F6]/40 bg-[#3B82F6]/15 text-[#7aa2ff] transition-transform duration-150 hover:scale-110 hover:bg-[#3B82F6]/25"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => remover(d)}
+                          title="Excluir"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 transition-transform duration-150 hover:scale-110 hover:bg-rose-500/25"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {desempenho.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-[var(--color-text-dim)]">
-                    Nenhum vendedor cadastrado.
+                  <td colSpan={8} className="px-5 py-12 text-center text-white/45">
+                    Nenhum vendedor cadastrado. Clique em “Novo vendedor”.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Modal
         open={open}
@@ -256,6 +332,6 @@ export default function VendedoresPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PremiumStage>
   );
 }
