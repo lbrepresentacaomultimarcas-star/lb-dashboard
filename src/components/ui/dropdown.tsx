@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+
+// useLayoutEffect no client, useEffect no SSR (evita warning)
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export function Dropdown({
   trigger,
@@ -18,49 +22,108 @@ export function Dropdown({
   header?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const close = () => setOpen(false);
+
+  function calcLeft(r: DOMRect) {
+    const left = align === "end" ? r.right - width : r.left;
+    return Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  }
+
+  function toggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const el = triggerRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setCoords({ top: r.bottom + 6, left: calcLeft(r) });
+    }
+    setOpen(true);
+  }
+
+  // depois de renderizar o menu, mede a altura e vira pra cima se não couber
+  useIsoLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight ?? 0;
+    const margin = 6;
+    let top = r.bottom + margin;
+    if (menuH > 0 && top + menuH > window.innerHeight - 8) {
+      const above = r.top - margin - menuH;
+      top = above >= 8 ? above : Math.max(8, window.innerHeight - menuH - 8);
+    }
+    const left = calcLeft(r);
+    setCoords((c) => (c && c.top === top && c.left === left ? c : { top, left }));
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onClick);
+    function onScrollResize() {
+      setOpen(false);
+    }
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScrollResize, true);
+    window.addEventListener("resize", onScrollResize);
     return () => {
-      document.removeEventListener("mousedown", onClick);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScrollResize, true);
+      window.removeEventListener("resize", onScrollResize);
     };
   }, [open]);
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div className="relative inline-block">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-        className="rounded p-1 text-[var(--color-text-dim)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+        onClick={toggle}
+        className="rounded p-1 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         aria-label="Ações"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         {trigger}
       </button>
-      {open && (
-        <div
-          className={cn(
-            "absolute top-full z-30 mt-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl",
-            align === "end" ? "right-0" : "left-0",
-          )}
-          style={{ width }}
-        >
-          {header}
-          <div className="py-1">{children(() => setOpen(false))}</div>
-        </div>
-      )}
+      {open &&
+        coords &&
+        createPortal(
+          // camada acima de tudo (portal no body → fora do stacking context dos cards)
+          <div className="fixed inset-0 z-[9998]" style={{ isolation: "isolate" }}>
+            {/* backdrop: captura clique/hover e impede os cards de baixo de reagir */}
+            <button
+              type="button"
+              aria-label="Fechar menu"
+              tabIndex={-1}
+              className="absolute inset-0 h-full w-full cursor-default"
+              onClick={() => setOpen(false)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setOpen(false);
+              }}
+            />
+            {/* menu flutuante, totalmente opaco */}
+            <div
+              ref={menuRef}
+              role="menu"
+              className="absolute z-10 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/40"
+              style={{ top: coords.top, left: coords.left, width }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {header}
+              <div className="py-1">{children(close)}</div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -83,6 +146,7 @@ export function DropdownItem({
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={onClick}
       disabled={disabled}
       className={cn(

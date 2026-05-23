@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -14,6 +14,7 @@ import {
   FileText,
   Flame,
   GripVertical,
+  History,
   Home,
   MessageCircle,
   MoreVertical,
@@ -31,6 +32,7 @@ import {
   TrendingUp,
   Trophy,
   Truck,
+  User,
   Users,
   Wallet,
   Wrench,
@@ -109,6 +111,7 @@ type FormState = {
   email: string;
   origem: string;
   observacao: string;
+  novaObs: string;
 };
 
 const empty: FormState = {
@@ -121,6 +124,7 @@ const empty: FormState = {
   email: "",
   origem: "",
   observacao: "",
+  novaObs: "",
 };
 
 function timeAgo(iso: string) {
@@ -146,6 +150,45 @@ function waLink(telefone: string) {
 function telLink(telefone: string) {
   const d = onlyDigits(telefone);
   return d ? `tel:+${d.startsWith("55") ? d : "55" + d}` : null;
+}
+
+/** Carimbo "dd/mm/aaaa - hh:mm - Nome" pra cada observação. */
+function carimbo(nome: string) {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} - ${p(d.getHours())}:${p(d.getMinutes())} - ${nome}`;
+}
+
+type ObsEntry = { data: string; hora: string; nome: string; corpo: string };
+/** Quebra o texto de observações na timeline de atendimento. */
+function parseHistorico(texto: string): ObsEntry[] {
+  const t = (texto ?? "").trim();
+  if (!t) return [];
+  const re = /\[(\d{2}\/\d{2}\/\d{4}) - (\d{2}:\d{2}) - ([^\]]+)\]/g;
+  const matches = [...t.matchAll(re)];
+  if (matches.length === 0) return [{ data: "", hora: "", nome: "", corpo: t }];
+  const entries: ObsEntry[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? t.length) : t.length;
+    entries.push({ data: m[1], hora: m[2], nome: m[3].trim(), corpo: t.slice(start, end).trim() });
+  }
+  const preamble = t.slice(0, matches[0].index ?? 0).trim();
+  if (preamble) entries.push({ data: "", hora: "", nome: "", corpo: preamble });
+  return entries;
+}
+
+/** Textarea que cresce com o conteúdo (até 240px, depois rola). */
+function AutoTextarea({ value, onChange, className, ...rest }: React.ComponentProps<"textarea">) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [value]);
+  return <textarea ref={ref} value={value} onChange={onChange} className={className} {...rest} />;
 }
 
 function AnimatedBRL({ value, className }: { value: number; className?: string }) {
@@ -319,6 +362,8 @@ export default function LeadsPage() {
 
   const maxCount = Math.max(...STATUS_ORDER.map((s) => colunas[s].length), 1);
 
+  const historico = useMemo(() => parseHistorico(form.observacao), [form.observacao]);
+
   function abrirNovo(status?: LeadStatus) {
     setEditing(null);
     // Vendedor: já vincula a si mesmo. Gestor: escolhe no dropdown.
@@ -341,6 +386,7 @@ export default function LeadsPage() {
       email: l.email,
       origem: l.origem ?? "",
       observacao: l.observacao ?? "",
+      novaObs: "",
     });
     setOpen(true);
   }
@@ -360,6 +406,15 @@ export default function LeadsPage() {
     }
     setSalvando(true);
     try {
+      // Histórico de atendimento: nova observação carimbada vai pro topo.
+      const historicoExistente = (form.observacao ?? "").trim();
+      const nova = form.novaObs.trim();
+      const entrada = nova ? `[${carimbo(session?.nome ?? "Sistema")}]\n${nova}` : "";
+      const observacaoFinal = entrada
+        ? historicoExistente
+          ? `${entrada}\n\n${historicoExistente}`
+          : entrada
+        : historicoExistente;
       const payload = {
         nome: form.nome.trim(),
         email: form.email.trim(),
@@ -369,7 +424,7 @@ export default function LeadsPage() {
         tipo: form.tipo as LeadTipo,
         vendedorId: form.vendedorId || undefined,
         origem: form.origem.trim() || undefined,
-        observacao: form.observacao.trim() || undefined,
+        observacao: observacaoFinal || undefined,
       };
       if (editing) {
         await leadsApi.update(editing.id, payload);
@@ -1177,14 +1232,62 @@ export default function LeadsPage() {
           </div>
 
           <div>
-            <Label htmlFor="obs">Observação</Label>
-            <textarea
+            <Label htmlFor="obs">{editing ? "Adicionar observação" : "Observação"}</Label>
+            <AutoTextarea
               id="obs"
-              rows={3}
-              value={form.observacao}
-              onChange={(e) => setForm({ ...form, observacao: e.target.value })}
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm"
+              value={form.novaObs}
+              onChange={(e) => setForm({ ...form, novaObs: e.target.value })}
+              placeholder={
+                editing
+                  ? "Nova observação… vai pro topo do histórico com data, hora e seu nome."
+                  : "Primeira observação do atendimento…"
+              }
+              className="min-h-[76px] w-full resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--color-brand)]"
             />
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-[var(--color-text-dim)]">
+              <Clock className="h-3 w-3" />
+              Carimbada automaticamente com data, hora e {session?.nome ?? "seu nome"}.
+            </p>
+
+            {historico.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+                  <History className="h-3.5 w-3.5" /> Histórico de atendimento
+                </p>
+                <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {historico.map((h, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 p-2.5"
+                      style={
+                        i === 0
+                          ? { borderColor: "var(--color-brand)", boxShadow: "inset 2px 0 0 var(--color-brand)" }
+                          : undefined
+                      }
+                    >
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                        {h.data ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 font-medium text-[var(--color-text)]">
+                              <CalendarClock className="h-3 w-3 text-[var(--color-brand)]" />
+                              {h.data} · {h.hora}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[var(--color-text-dim)]">
+                              <User className="h-3 w-3" /> {h.nome}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="italic text-[var(--color-text-dim)]">Observação anterior</span>
+                        )}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--color-text)]">
+                        {h.corpo}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
