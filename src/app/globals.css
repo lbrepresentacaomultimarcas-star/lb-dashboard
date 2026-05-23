@@ -179,7 +179,43 @@ body {
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+/* Glass FORTE (cards do pódio) */
+.lb-glass-strong {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255,255,255,0.11), rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.05));
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 24px 60px -14px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 40px rgba(255,255,255,0.03);
+}
+.lb-glass-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 40%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), transparent);
+  pointer-events: none;
+}
+
+/* Curvatura de cilindro 3D */
+.lb-cyl::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(0,0,0,0.6) 0%, transparent 22%, rgba(255,255,255,0.18) 50%, transparent 78%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
+}
+
+/* Neblina do palco */
+@keyframes lb-fog {
+  0%, 100% { transform: translateX(-20px) scale(1); opacity: 0.45; }
+  50% { transform: translateX(30px) scale(1.12); opacity: 0.8; }
+}
+.lb-fog { animation: lb-fog 15s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
-  .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after { animation: none; }
+  .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog { animation: none; }
 }

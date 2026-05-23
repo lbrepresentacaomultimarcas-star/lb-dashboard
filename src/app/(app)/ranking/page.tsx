@@ -206,7 +206,24 @@ export default function RankingPage() {
           {top3.length === 0 ? (
             <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
           ) : (
-            <div className="flex items-end justify-center gap-2 pt-16 sm:gap-4 lg:gap-5">
+            <div className="relative pt-16">
+              {/* PALCO: disco de luz + neblina */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 flex justify-center">
+                <div
+                  className="h-40 w-[90%] rounded-[50%] blur-2xl"
+                  style={{ background: "radial-gradient(ellipse at center, rgba(250,204,21,0.22), rgba(99,102,241,0.12) 45%, transparent 72%)" }}
+                />
+              </div>
+              <div
+                className="lb-fog pointer-events-none absolute inset-x-6 bottom-2 -z-10 h-24 rounded-[50%] blur-2xl"
+                style={{ background: "radial-gradient(ellipse at center, rgba(255,255,255,0.10), transparent 70%)" }}
+              />
+              <div
+                className="lb-fog pointer-events-none absolute inset-x-16 bottom-8 -z-10 h-16 rounded-[50%] blur-2xl"
+                style={{ background: "radial-gradient(ellipse at center, rgba(168,85,247,0.16), transparent 70%)", animationDelay: "4s" }}
+              />
+
+              <div className="flex items-end justify-center gap-2 sm:gap-4 lg:gap-5">
               {PODIUM_ORDER.map((idx) => {
                 const d = top3[idx];
                 const tone = TONES[idx];
@@ -230,8 +247,8 @@ export default function RankingPage() {
 
                     {/* CARD DE VIDRO */}
                     <div
-                      className="lb-glass relative w-full rounded-2xl px-3 pb-4 pt-12 text-center"
-                      style={{ borderColor: `${tone.ring}66`, boxShadow: `0 0 36px -6px ${tone.ring}99, inset 0 1px 0 rgba(255,255,255,.1)` }}
+                      className="lb-glass-strong relative w-full rounded-2xl px-3 pb-4 pt-12 text-center"
+                      style={{ borderColor: `${tone.ring}80`, boxShadow: `0 0 60px -8px ${tone.ring}, 0 24px 60px -14px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.22)` }}
                     >
                       {/* avatar sobreposto */}
                       <div className="absolute -top-10 left-1/2 -translate-x-1/2">
@@ -288,7 +305,7 @@ export default function RankingPage() {
                       {/* topo elíptico */}
                       <div className="absolute inset-x-0 top-0 h-4 rounded-[50%]" style={{ background: tone.light, opacity: 0.9, boxShadow: `0 0 22px ${tone.light}` }} />
                       {/* corpo */}
-                      <div className="lb-pillar absolute inset-x-0 bottom-2 top-2 overflow-hidden rounded-b-[14px]" style={{ background: tone.drum, borderRadius: "8px 8px 14px 14px" }}>
+                      <div className="lb-pillar lb-cyl absolute inset-x-0 bottom-2 top-2 overflow-hidden" style={{ background: tone.drum, borderRadius: "10px 10px 16px 16px" }}>
                         {/* louros + número */}
                         <div className="absolute inset-0 grid place-items-center">
                           <div className="relative grid place-items-center">
@@ -303,6 +320,7 @@ export default function RankingPage() {
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
 
