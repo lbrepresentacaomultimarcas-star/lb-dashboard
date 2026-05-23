@@ -749,12 +749,12 @@ export default function LeadsPage() {
                                     >
                                       <GripVertical className="h-3.5 w-3.5" />
                                     </button>
-                                    <TipoIcon className="h-3.5 w-3.5 text-white/45" />
-                                    <span className="truncate text-[10px] uppercase tracking-wider text-white/50">
+                                    <TipoIcon className="h-3.5 w-3.5 shrink-0 text-white/45" />
+                                    <span className="min-w-0 truncate text-[10px] uppercase tracking-wider text-white/50">
                                       {tipoLabel}
                                     </span>
                                     {fechado && (
-                                      <span className="inline-flex items-center gap-0.5 rounded bg-emerald-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+                                      <span className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded bg-emerald-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
                                         ✓ Venda
                                       </span>
                                     )}
@@ -775,7 +775,10 @@ export default function LeadsPage() {
                                   </p>
                                 </button>
                                 {l.origem && (
-                                  <span className="relative mt-1 inline-flex max-w-full items-center truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55">
+                                  <span
+                                    className="relative mt-1 block max-w-full truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55"
+                                    style={{ width: "fit-content" }}
+                                  >
                                     {l.origem}
                                   </span>
                                 )}
@@ -797,8 +800,8 @@ export default function LeadsPage() {
 
                                 {l.telefone && (
                                   <div className="relative mt-1.5 flex items-center gap-1.5 text-xs text-white/55">
-                                    <Phone className="h-3 w-3 text-emerald-400" />
-                                    <span className="truncate">{l.telefone}</span>
+                                    <Phone className="h-3 w-3 shrink-0 text-emerald-400" />
+                                    <span className="min-w-0 truncate">{l.telefone}</span>
                                   </div>
                                 )}
 
@@ -807,7 +810,7 @@ export default function LeadsPage() {
                                   {vendedor ? (
                                     <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 py-0.5 pl-0.5 pr-2">
                                       <Avatar id={vendedor.id} nome={vendedor.nome} size={20} />
-                                      <span className="truncate text-xs font-medium text-white">
+                                      <span className="min-w-0 truncate text-xs font-medium text-white">
                                         {vendedor.nome}
                                       </span>
                                     </div>
@@ -824,12 +827,12 @@ export default function LeadsPage() {
                                 </div>
 
                                 {/* rodapé: ações + valor */}
-                                <div className="relative mt-2.5 flex items-center justify-between border-t border-white/10 pt-2.5">
-                                  <div className="flex items-center gap-1">
+                                <div className="relative mt-2.5 flex items-center justify-between gap-2 border-t border-white/10 pt-2.5">
+                                  <div className="flex min-w-0 flex-1 items-center gap-1">
                                     {tel && (
                                       <a
                                         href={tel}
-                                        className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
+                                        className="shrink-0 rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
                                         title="Ligar"
                                       >
                                         <Phone className="h-3.5 w-3.5" />
@@ -840,7 +843,7 @@ export default function LeadsPage() {
                                         href={wa}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
+                                        className="shrink-0 rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-emerald-300"
                                         title="WhatsApp"
                                       >
                                         <MessageCircle className="h-3.5 w-3.5" />
@@ -954,7 +957,7 @@ export default function LeadsPage() {
                                       value={l.status}
                                       onClick={(e) => e.stopPropagation()}
                                       onChange={(e) => mudarStatus(l, e.target.value as LeadStatus)}
-                                      className="ml-1 rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[10px] text-white/60"
+                                      className="ml-1 min-w-0 max-w-[104px] flex-1 truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[10px] text-white/60"
                                       title="Mover etapa"
                                     >
                                       {STATUS_ORDER.map((st) => (
@@ -964,7 +967,7 @@ export default function LeadsPage() {
                                       ))}
                                     </select>
                                   </div>
-                                  <span className="text-xs font-semibold text-white tabular-nums">
+                                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-white tabular-nums">
                                     {brl(l.valorEstimado)}
                                   </span>
                                 </div>
