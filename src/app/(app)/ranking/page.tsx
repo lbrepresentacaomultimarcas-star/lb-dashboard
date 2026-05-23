@@ -176,6 +176,30 @@ export default function RankingPage() {
           transformOrigin: "bottom",
         }}
       />
+      {/* partículas de luz subindo (fumaça futurista) */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <span
+            key={i}
+            className="lb-rise absolute rounded-full"
+            style={{
+              left: `${(i * 6.3 + 4) % 100}%`,
+              bottom: `${(i % 5) * 9}%`,
+              width: i % 3 === 0 ? 4 : 2,
+              height: i % 3 === 0 ? 4 : 2,
+              background: i % 2 === 0 ? "rgba(250,204,21,.85)" : "rgba(129,140,248,.85)",
+              boxShadow: i % 2 === 0 ? "0 0 8px rgba(250,204,21,.7)" : "0 0 8px rgba(129,140,248,.7)",
+              animationDuration: `${7 + (i % 5) * 1.7}s`,
+              animationDelay: `${(i % 7) * 0.9}s`,
+            }}
+          />
+        ))}
+      </div>
+      {/* vinheta — mais contraste entre fundo e elementos */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "radial-gradient(ellipse at 50% 34%, transparent 38%, rgba(0,0,0,0.55) 100%)" }}
+      />
 
       <div className="relative grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* ===================== COLUNA PRINCIPAL ===================== */}
@@ -206,7 +230,7 @@ export default function RankingPage() {
           {top3.length === 0 ? (
             <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
           ) : (
-            <div className="relative pt-16">
+            <div className="relative pt-24">
               {/* PALCO: disco de luz + neblina */}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 flex justify-center">
                 <div
@@ -228,9 +252,9 @@ export default function RankingPage() {
                 const d = top3[idx];
                 const tone = TONES[idx];
                 const champion = idx === 0;
-                const drumH = champion ? 132 : idx === 1 ? 104 : 84;
-                const avatar = champion ? 104 : 78;
-                const colW = champion ? "w-[40%] max-w-[280px]" : "w-[30%] max-w-[220px]";
+                const drumH = champion ? 160 : idx === 1 ? 108 : 88;
+                const avatar = champion ? 124 : 80;
+                const colW = champion ? "w-[44%] max-w-[330px]" : "w-[29%] max-w-[210px]";
                 if (!d) {
                   return <div key={`e-${idx}`} className={colW} />;
                 }
@@ -240,20 +264,32 @@ export default function RankingPage() {
                     {/* holofote campeão */}
                     {champion && (
                       <div
-                        className="lb-spotlight pointer-events-none absolute -top-10 left-1/2 -z-10 h-[26rem] w-64 -translate-x-1/2"
-                        style={{ background: "linear-gradient(to bottom, rgba(252,211,77,0.45), transparent 78%)", clipPath: "polygon(40% 0,60% 0,100% 100%,0 100%)", filter: "blur(10px)" }}
+                        className="lb-spotlight pointer-events-none absolute -top-24 left-1/2 -z-10 h-[36rem] w-72 -translate-x-1/2"
+                        style={{ background: "linear-gradient(to bottom, rgba(252,211,77,0.5), transparent 80%)", clipPath: "polygon(42% 0,58% 0,100% 100%,0 100%)", filter: "blur(12px)" }}
                       />
                     )}
 
-                    {/* CARD DE VIDRO */}
+                    {/* CARD DE VIDRO (flutuante) */}
+                    <div className="lb-bob w-full" style={{ animationDelay: `${idx * 0.7}s` }}>
                     <div
-                      className="lb-glass-strong relative w-full rounded-2xl px-3 pb-4 pt-12 text-center"
-                      style={{ borderColor: `${tone.ring}80`, boxShadow: `0 0 60px -8px ${tone.ring}, 0 24px 60px -14px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.22)` }}
+                      className={`lb-glass-strong lb-podium-card relative w-full rounded-2xl px-3 pb-4 text-center ${champion ? "pt-20" : "pt-12"}`}
+                      style={{
+                        borderColor: `${tone.ring}80`,
+                        boxShadow: champion
+                          ? `0 0 110px -4px ${tone.ring}, 0 0 44px -6px ${tone.light}, 0 28px 72px -14px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.28)`
+                          : `0 0 60px -8px ${tone.ring}, 0 24px 60px -14px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.22)`,
+                      }}
                     >
+                      {/* reflexo holográfico */}
+                      <span className="lb-holo pointer-events-none absolute inset-0 rounded-2xl" aria-hidden />
                       {/* avatar sobreposto */}
-                      <div className="absolute -top-10 left-1/2 -translate-x-1/2">
+                      <div className={`absolute left-1/2 -translate-x-1/2 ${champion ? "-top-14" : "-top-10"}`}>
                         <div className="relative">
-                          <div className="lb-aura absolute -inset-3 rounded-full" style={{ background: tone.glow }} />
+                          {/* luz ambiente atrás do avatar */}
+                          <div className="lb-aura absolute rounded-full" style={{ inset: champion ? "-2rem" : "-1.1rem", background: tone.glow, filter: "blur(3px)" }} />
+                          {champion && (
+                            <div className="lb-glow absolute -inset-10 rounded-full" style={{ background: tone.glow, opacity: 0.5 }} />
+                          )}
                           {champion && (
                             <>
                               <Crown className="lb-float absolute -top-8 left-1/2 z-20 h-8 w-8 -translate-x-1/2 text-yellow-300" fill="currentColor" style={{ filter: "drop-shadow(0 0 12px rgba(253,224,71,.95))" }} />
@@ -299,9 +335,13 @@ export default function RankingPage() {
                       </div>
                       <p className="mt-1.5 text-[10px] text-white/45">Meta: {brl(d.metaMensal)}</p>
                     </div>
+                    </div>
 
-                    {/* CILINDRO 3D (base) */}
-                    <div className="relative w-[78%]" style={{ height: drumH }}>
+                    {/* MONUMENTO 3D (pedestal) */}
+                    <div className="relative w-[80%]" style={{ height: drumH }}>
+                      {/* degraus do monumento (atrás) */}
+                      <div className="absolute -bottom-1 left-1/2 h-4 w-[116%] -translate-x-1/2 rounded-md" style={{ background: "linear-gradient(180deg,#2b3142,#0d1019)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 8px 18px -4px rgba(0,0,0,.75)" }} />
+                      <div className="absolute -bottom-5 left-1/2 h-4 w-[140%] -translate-x-1/2 rounded-md" style={{ background: "linear-gradient(180deg,#1b1f2d,#06080f)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 14px 26px -6px rgba(0,0,0,.85)" }} />
                       {/* topo elíptico */}
                       <div className="absolute inset-x-0 top-0 h-4 rounded-[50%]" style={{ background: tone.light, opacity: 0.9, boxShadow: `0 0 22px ${tone.light}` }} />
                       {/* corpo */}
@@ -309,8 +349,8 @@ export default function RankingPage() {
                         {/* louros + número */}
                         <div className="absolute inset-0 grid place-items-center">
                           <div className="relative grid place-items-center">
-                            <Laurel size={champion ? 104 : 80} color={tone.light} />
-                            <span className="absolute font-black tabular-nums" style={{ color: tone.light, fontSize: champion ? 44 : 34, textShadow: `0 0 22px ${tone.light}` }}>{idx + 1}</span>
+                            <Laurel size={champion ? 120 : 80} color={tone.light} />
+                            <span className="absolute font-black tabular-nums" style={{ color: tone.light, fontSize: champion ? 50 : 34, textShadow: `0 0 22px ${tone.light}` }}>{idx + 1}</span>
                           </div>
                         </div>
                       </div>

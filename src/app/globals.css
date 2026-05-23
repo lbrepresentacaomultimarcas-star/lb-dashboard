@@ -215,7 +215,49 @@ body {
 }
 .lb-fog { animation: lb-fog 15s ease-in-out infinite; }
 
+/* Flutuacao suave dos cards (monumento vivo) */
+@keyframes lb-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+.lb-bob { animation: lb-bob 4.5s ease-in-out infinite; }
+
+/* Reflexo holografico que cruza o card */
+@keyframes lb-holo {
+  0% { transform: translateX(-60%) skewX(-12deg); opacity: 0; }
+  35% { opacity: 0.55; }
+  70% { opacity: 0; }
+  100% { transform: translateX(220%) skewX(-12deg); opacity: 0; }
+}
+.lb-holo { position: relative; overflow: hidden; }
+.lb-holo::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  left: 0;
+  height: 180%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16) 38%, rgba(170,215,255,0.22) 50%, rgba(255,200,255,0.16) 62%, transparent);
+  filter: blur(3px);
+  animation: lb-holo 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Particulas subindo no fundo do palco */
+@keyframes lb-rise {
+  0% { transform: translateY(20px); opacity: 0; }
+  15% { opacity: 0.7; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(-150px); opacity: 0; }
+}
+.lb-rise { animation: lb-rise linear infinite; }
+
+/* Hover cinematografico nos podios */
+.lb-podium-card { transition: transform .35s cubic-bezier(.2,.8,.2,1), filter .35s ease; }
+.lb-podium-card:hover { transform: translateY(-8px) scale(1.025); filter: brightness(1.12) saturate(1.1); }
+
 @media (prefers-reduced-motion: reduce) {
   .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
-  .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog { animation: none; }
+  .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog,
+  .lb-bob, .lb-holo::after, .lb-rise { animation: none; }
 }
