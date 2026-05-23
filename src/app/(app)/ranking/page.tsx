@@ -132,6 +132,29 @@ export default function RankingPage() {
         }}
       />
 
+      {/* luz ambiente flutuante (blobs) */}
+      <div
+        className="lb-drift pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full opacity-60 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(99,102,241,0.35), transparent 70%)" }}
+      />
+      <div
+        className="lb-drift pointer-events-none absolute -right-32 top-40 h-[28rem] w-[28rem] rounded-full opacity-50 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.3), transparent 70%)", animationDelay: "5s" }}
+      />
+      {/* grid futurista no chão */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-64 opacity-25"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(99,102,241,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.5) 1px, transparent 1px)",
+          backgroundSize: "44px 44px",
+          maskImage: "linear-gradient(to top, #000, transparent)",
+          WebkitMaskImage: "linear-gradient(to top, #000, transparent)",
+          transform: "perspective(420px) rotateX(60deg)",
+          transformOrigin: "bottom",
+        }}
+      />
+
       <div className="relative grid gap-6 lg:grid-cols-[1fr_340px]">
         {/* ============ COLUNA PRINCIPAL ============ */}
         <div className="space-y-8">
@@ -153,19 +176,21 @@ export default function RankingPage() {
 
           {/* ============ PÓDIO ============ */}
           {top3.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center text-white/60">
+            <div className="lb-glass rounded-2xl p-12 text-center text-white/60">
               Sem vendedores pra ranquear ainda.
             </div>
           ) : (
-            <div className="flex items-end justify-center gap-3 pt-14 sm:gap-6 lg:gap-10">
+            <div className="flex items-end justify-center gap-2 pt-20 sm:gap-5 lg:gap-7">
               {PODIUM_ORDER.map((idx) => {
                 const d = top3[idx];
                 const tone = tones[idx];
                 const champion = idx === 0;
+                const avatarSize = champion ? 168 : 96;
+                const cardW = champion ? "w-36 sm:w-52" : "w-24 sm:w-36";
                 if (!d) {
                   return (
-                    <div key={`e-${idx}`} className="flex w-24 flex-col items-center sm:w-36 opacity-25">
-                      <div className="mb-4 h-20 w-20 rounded-full bg-white/5 sm:h-28 sm:w-28" />
+                    <div key={`e-${idx}`} className={`flex ${cardW} flex-col items-center opacity-20`}>
+                      <div className="mb-4 rounded-full bg-white/5" style={{ width: avatarSize * 0.7, height: avatarSize * 0.7 }} />
                       <div className="w-full rounded-t-xl border border-white/10" style={{ height: tone.h * 0.6, background: tone.base }} />
                     </div>
                   );
@@ -174,69 +199,94 @@ export default function RankingPage() {
                 return (
                   <div
                     key={d.id}
-                    className="lb-fade-up flex w-28 flex-col items-center sm:w-40"
+                    className={`lb-fade-up relative flex ${cardW} flex-col items-center ${champion ? "z-10" : ""}`}
                     style={{ animationDelay: `${idx * 0.12}s` }}
                   >
-                    {/* AVATAR + anel neon + coroa + partículas */}
-                    <div className="relative mb-4">
+                    {/* Holofote no campeão */}
+                    {champion && (
+                      <div
+                        className="lb-spotlight pointer-events-none absolute -top-16 left-1/2 -z-10 h-80 w-56 -translate-x-1/2"
+                        style={{
+                          background: "linear-gradient(to bottom, rgba(253,224,71,0.5), transparent 75%)",
+                          clipPath: "polygon(38% 0, 62% 0, 100% 100%, 0% 100%)",
+                          filter: "blur(8px)",
+                        }}
+                      />
+                    )}
+
+                    {/* AVATAR + aura + anel neon + coroa + partículas */}
+                    <div className="relative mb-5">
+                      {/* aura pulsante */}
+                      <div
+                        className="lb-aura absolute -inset-6 rounded-full"
+                        style={{ background: tone.glow }}
+                      />
                       {champion && (
                         <>
-                          <Crown className="lb-float absolute -top-9 left-1/2 z-20 h-9 w-9 -translate-x-1/2 text-yellow-300 drop-shadow-[0_0_10px_rgba(253,224,71,0.9)]" fill="currentColor" />
-                          {/* partículas */}
-                          {[0, 1, 2, 3, 4].map((p) => (
+                          <Crown
+                            className="lb-float absolute -top-12 left-1/2 z-20 h-12 w-12 -translate-x-1/2 text-yellow-300"
+                            fill="currentColor"
+                            style={{ filter: "drop-shadow(0 0 14px rgba(253,224,71,0.95))" }}
+                          />
+                          {[0, 1, 2, 3, 4, 5, 6, 7].map((p) => (
                             <span
                               key={p}
-                              className="pointer-events-none absolute bottom-2 left-1/2 h-1 w-1 rounded-full bg-yellow-300"
+                              className="pointer-events-none absolute bottom-3 left-1/2 h-1.5 w-1.5 rounded-full bg-yellow-300"
                               style={{
-                                animation: `lb-particle ${2 + (p % 3) * 0.5}s ease-in ${p * 0.4}s infinite`,
-                                marginLeft: `${(p - 2) * 14}px`,
+                                animation: `lb-particle ${2 + (p % 3) * 0.6}s ease-in ${p * 0.35}s infinite`,
+                                marginLeft: `${(p - 3.5) * 18}px`,
+                                boxShadow: "0 0 6px rgba(253,224,71,0.9)",
                               }}
                             />
                           ))}
                         </>
                       )}
                       <div
-                        className="absolute -inset-5 rounded-full"
-                        style={{ background: tone.glow }}
-                      />
-                      <div
                         className="lb-ring relative grid place-items-center rounded-full"
                         style={{ ["--ring-c" as string]: tone.ring }}
                       >
-                        <Avatar
-                          id={d.id}
-                          nome={d.nome}
-                          size={champion ? 132 : 100}
-                          className="relative"
-                        />
+                        <Avatar id={d.id} nome={d.nome} size={avatarSize} className="relative" />
                       </div>
                     </div>
 
-                    {/* PÓDIO (pilar) */}
+                    {/* base circular iluminada */}
                     <div
-                      className="relative w-full overflow-hidden rounded-t-xl border border-white/10"
+                      className="lb-glow pointer-events-none absolute left-1/2 h-6 w-[120%] -translate-x-1/2 rounded-[100%] blur-md"
+                      style={{ bottom: tone.h - 10, background: tone.light, opacity: 0.5 }}
+                    />
+
+                    {/* PÓDIO 3D */}
+                    <div
+                      className="lb-pillar relative w-full rounded-t-2xl border-x border-t border-white/15"
                       style={{ height: tone.h, background: tone.base }}
                     >
-                      {/* topo iluminado */}
                       <div
-                        className="absolute inset-x-0 top-0 h-1.5 lb-glow"
-                        style={{ background: tone.light, boxShadow: `0 0 18px ${tone.light}` }}
+                        className="absolute inset-x-0 top-0 h-2 lb-glow rounded-t-2xl"
+                        style={{ background: tone.light, boxShadow: `0 0 22px ${tone.light}` }}
                       />
                       <div
-                        className="grid h-full place-items-center text-7xl font-black tabular-nums sm:text-8xl"
-                        style={{ color: tone.light, textShadow: `0 0 22px ${tone.light}` }}
+                        className={`grid h-full place-items-center font-black tabular-nums ${champion ? "text-8xl sm:text-9xl" : "text-6xl sm:text-7xl"}`}
+                        style={{ color: tone.light, textShadow: `0 0 28px ${tone.light}` }}
                       >
                         {idx + 1}
                       </div>
                     </div>
 
                     {/* NOME + VALOR + BADGE */}
-                    <div className={`-mt-px w-full rounded-b-xl border border-white/10 bg-black/50 px-2 py-3 text-center backdrop-blur ${tone.text}`}>
-                      <p className="truncate text-sm font-bold sm:text-base">{d.nome}</p>
-                      <AnimatedBRL value={d.vendido} className="block text-xs font-semibold text-white tabular-nums" />
+                    <div className={`relative z-10 -mt-px w-full rounded-b-2xl border-x border-b border-white/15 bg-black/60 px-2 py-3 text-center backdrop-blur ${tone.text}`}>
+                      <p className={`truncate font-bold ${champion ? "text-base sm:text-lg" : "text-sm"}`}>{d.nome}</p>
+                      <AnimatedBRL value={d.vendido} className={`block font-bold text-white tabular-nums ${champion ? "text-sm" : "text-xs"}`} />
                       <span className={`mt-1.5 inline-flex items-center gap-1 rounded-full border bg-gradient-to-b px-2 py-0.5 text-[10px] font-bold ${b.cls}`}>
                         <b.icon className="h-2.5 w-2.5" /> {b.label}
                       </span>
+                    </div>
+
+                    {/* Reflexo no chão */}
+                    <div className="lb-reflection mt-1 w-full" aria-hidden>
+                      <div
+                        className="w-full rounded-b-2xl"
+                        style={{ height: tone.h * 0.4, background: tone.base }}
+                      />
                     </div>
                   </div>
                 );
@@ -246,7 +296,7 @@ export default function RankingPage() {
 
           {/* ============ TOP 10 ============ */}
           {top10.length > 0 && (
-            <div className="lb-fade-up rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+            <div className="lb-fade-up lb-glass rounded-2xl p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Trophy className="h-4 w-4 text-yellow-300" />
                 <h2 className="text-sm font-bold uppercase tracking-wider text-white">Top 10 vendedores</h2>
@@ -309,7 +359,7 @@ export default function RankingPage() {
         {/* ============ PAINEL LATERAL (widgets) ============ */}
         <aside className="space-y-4">
           {/* Logo */}
-          <div className="lb-fade-up rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+          <div className="lb-fade-up lb-glass rounded-2xl p-4">
             <div className="flex items-center justify-center gap-3">
               <Logo size={44} />
               <div className="border-l border-white/20 pl-3">
@@ -320,7 +370,7 @@ export default function RankingPage() {
           </div>
 
           {/* Meta global */}
-          <div className="lb-fade-up rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-500/10 to-transparent p-4 backdrop-blur-sm">
+          <div className="lb-glass lb-fade-up rounded-2xl p-4">
             <div className="mb-2 flex items-center gap-2 text-white/80">
               <Activity className="h-4 w-4 text-indigo-300" />
               <span className="text-xs font-semibold uppercase tracking-wider">Meta global da equipe</span>
@@ -358,7 +408,7 @@ export default function RankingPage() {
           </div>
 
           {/* Últimas conquistas */}
-          <div className="lb-fade-up rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+          <div className="lb-fade-up lb-glass rounded-2xl p-4">
             <div className="mb-2 flex items-center gap-2 text-white/80">
               <Award className="h-4 w-4 text-yellow-300" />
               <span className="text-xs font-semibold uppercase tracking-wider">Conquistas</span>
@@ -377,7 +427,7 @@ export default function RankingPage() {
           </div>
 
           {/* Motivação */}
-          <div className="lb-fade-up rounded-2xl border border-indigo-400/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/5 p-4 backdrop-blur-sm">
+          <div className="lb-glass lb-fade-up rounded-2xl border-indigo-400/20 p-4">
             <div className="mb-1 flex items-center gap-2 text-indigo-200">
               <Sparkles className="h-4 w-4" />
               <span className="text-xs font-semibold uppercase tracking-wider">Motivação do dia</span>
@@ -404,7 +454,7 @@ function Widget({
   small?: boolean;
 }) {
   return (
-    <div className="lb-fade-up rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
+    <div className="lb-glass lb-fade-up rounded-2xl p-3">
       <Icon className={`mb-1 h-4 w-4 ${tint}`} />
       <p className="text-[10px] uppercase tracking-wider text-white/50">{label}</p>
       <p className={`truncate font-bold text-white tabular-nums ${small ? "text-sm" : "text-xl"}`}>

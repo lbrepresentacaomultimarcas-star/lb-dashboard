@@ -119,6 +119,67 @@ body {
   animation: lb-shimmer 2.2s linear infinite;
 }
 
+/* aura pulsante (campeão), luz ambiente flutuante, holofote, brilho de vidro */
+@keyframes lb-aura {
+  0%, 100% { transform: scale(1); opacity: 0.45; }
+  50% { transform: scale(1.14); opacity: 0.85; }
+}
+@keyframes lb-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(40px, -30px); }
+}
+@keyframes lb-spotlight {
+  0%, 100% { opacity: 0.30; }
+  50% { opacity: 0.55; }
+}
+@keyframes lb-sheen {
+  0% { transform: translateX(-130%) skewX(-20deg); }
+  100% { transform: translateX(230%) skewX(-20deg); }
+}
+
+.lb-aura { animation: lb-aura 3.2s ease-in-out infinite; }
+.lb-drift { animation: lb-drift 16s ease-in-out infinite; }
+.lb-spotlight { animation: lb-spotlight 4s ease-in-out infinite; }
+
+/* Pilar 3D do pódio: bordas internas + sombra cinematográfica + brilho cruzando */
+.lb-pillar {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -50px 70px rgba(0, 0, 0, 0.6),
+    0 35px 70px -18px rgba(0, 0, 0, 0.85);
+}
+.lb-pillar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  width: 50%;
+  animation: lb-sheen 5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Reflexo no chão (espelhado, desfocado, esmaecido) */
+.lb-reflection {
+  transform: scaleY(-1);
+  filter: blur(3px);
+  opacity: 0.20;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent 60%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent 60%);
+  pointer-events: none;
+}
+
+/* Glassmorphism premium reutilizável */
+.lb-glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up { animation: none; }
+  .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
+  .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after { animation: none; }
 }
