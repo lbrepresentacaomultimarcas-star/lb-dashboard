@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Database, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { BarChart3, Database, Download, FileSpreadsheet, FileText, Trophy, TrendingUp } from "lucide-react";
 import {
   useClientes,
   useLeads,
@@ -13,9 +13,13 @@ import { desempenhoPorVendedor, faturamentoMensal } from "@/lib/selectors";
 import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
 import { exportBackupJson, exportCsv, exportPdf, exportXlsx } from "@/lib/export";
 import { notify } from "@/lib/notify";
-import { Card, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/avatar";
 import { SalesChart } from "@/components/sales-chart-loader";
+import { PremiumStage } from "@/components/premium-stage";
+
+function posColor(i: number) {
+  return i === 0 ? "#FACC15" : i === 1 ? "#93c5fd" : i === 2 ? "#fda4af" : "rgba(255,255,255,.5)";
+}
 
 export default function RelatoriosPage() {
   const vendedores = useVendedores();
@@ -122,85 +126,86 @@ export default function RelatoriosPage() {
     notify.success("Backup completo baixado");
   }
 
+  const exportacoes = [
+    { label: "Ranking", sub: "CSV", icon: Download, color: "#22C55E", onClick: exportarRankingCsv },
+    { label: "Vendas", sub: "CSV", icon: Download, color: "#3B82F6", onClick: exportarVendasCsv },
+    { label: "Ranking", sub: "PDF", icon: FileText, color: "#f43f5e", onClick: exportarRankingPdf },
+    { label: "Vendas", sub: "PDF", icon: FileText, color: "#f59e0b", onClick: exportarVendasPdf },
+    { label: "Tudo", sub: "Excel", icon: FileSpreadsheet, color: "#22C55E", onClick: exportarXlsxCompleto },
+    { label: "Backup completo", sub: "JSON", icon: Database, color: "#7C3AED", onClick: fazerBackup },
+  ];
+
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
+    <PremiumStage>
+      <header className="lb-fade-up flex items-center gap-3">
+        <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#3B82F6" }}>
+          <BarChart3 className="h-5 w-5" />
+        </span>
         <div>
-          <h1 className="text-2xl font-semibold">Relatórios</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            Evolução, comparação e exportação de dados
-          </p>
+          <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+            Relatórios
+          </h1>
+          <p className="text-sm text-white/55">Evolução, comparação e exportação de dados</p>
         </div>
       </header>
 
-      <Card>
-        <div className="mb-4 flex items-center justify-between">
-          <CardTitle>Exportações</CardTitle>
+      {/* Exportações */}
+      <div className="lb-card-premium lb-fade-up rounded-2xl p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Download className="h-4 w-4 text-indigo-300" />
+          <h2 className="text-sm font-bold uppercase tracking-wider text-white">Exportações</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <Button variant="secondary" onClick={exportarRankingCsv}>
-            <Download className="h-4 w-4" />
-            Ranking (CSV)
-          </Button>
-          <Button variant="secondary" onClick={exportarVendasCsv}>
-            <Download className="h-4 w-4" />
-            Vendas (CSV)
-          </Button>
-          <Button variant="secondary" onClick={exportarRankingPdf}>
-            <FileText className="h-4 w-4" />
-            Ranking (PDF)
-          </Button>
-          <Button variant="secondary" onClick={exportarVendasPdf}>
-            <FileText className="h-4 w-4" />
-            Vendas (PDF)
-          </Button>
-          <Button variant="secondary" onClick={exportarXlsxCompleto}>
-            <FileSpreadsheet className="h-4 w-4" />
-            Tudo (Excel)
-          </Button>
-          <Button onClick={fazerBackup}>
-            <Database className="h-4 w-4" />
-            Backup completo (JSON)
-          </Button>
+          {exportacoes.map((ex) => (
+            <button
+              key={`${ex.label}-${ex.sub}`}
+              onClick={ex.onClick}
+              className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06]"
+            >
+              <span className="lb-orb h-9 w-9 shrink-0" style={{ ["--orb" as string]: ex.color }}>
+                <ex.icon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{ex.label}</p>
+                <p className="text-[11px] uppercase tracking-wider text-white/40">{ex.sub}</p>
+              </div>
+            </button>
+          ))}
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        <CardTitle>Faturamento por mês (últimos 12)</CardTitle>
-        <div className="mt-2">
-          <SalesChart data={serie12} />
+      {/* Gráfico */}
+      <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-indigo-300" />
+          <h2 className="text-sm font-bold uppercase tracking-wider text-white">Faturamento por mês (últimos 12)</h2>
         </div>
-      </Card>
+        <SalesChart data={serie12} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardTitle>Comparação mês a mês</CardTitle>
-          <div className="mt-4 overflow-x-auto">
+        {/* Comparação mês a mês */}
+        <div className="lb-card-premium lb-fade-up rounded-2xl p-4">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white">Comparação mês a mês</h2>
+          <div className="lb-scroll overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wider text-[var(--color-text-dim)]">
+                <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
                   <th className="pb-3 pr-4">Mês</th>
                   <th className="pb-3 pr-4 text-right">Faturamento</th>
                   <th className="pb-3 text-right">vs anterior</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--color-border)]">
+              <tbody className="divide-y divide-white/5">
                 {serie12.map((s, i) => {
                   const prev = i > 0 ? serie12[i - 1].total : 0;
                   const diff = prev > 0 ? ((s.total - prev) / prev) * 100 : 0;
+                  const dc = diff > 0 ? "#22C55E" : diff < 0 ? "#f43f5e" : "rgba(255,255,255,.4)";
                   return (
-                    <tr key={s.mes}>
-                      <td className="py-2 pr-4">{monthLabel(s.mes)}</td>
-                      <td className="py-2 pr-4 text-right">{brl(s.total)}</td>
-                      <td
-                        className={`py-2 text-right ${
-                          diff > 0
-                            ? "text-[var(--color-success)]"
-                            : diff < 0
-                              ? "text-[var(--color-danger)]"
-                              : "text-[var(--color-text-dim)]"
-                        }`}
-                      >
+                    <tr key={s.mes} className="transition-colors hover:bg-white/[0.04]">
+                      <td className="py-2 pr-4 text-white/80">{monthLabel(s.mes)}</td>
+                      <td className="py-2 pr-4 text-right text-white tabular-nums">{brl(s.total)}</td>
+                      <td className="py-2 text-right font-semibold tabular-nums" style={{ color: dc }}>
                         {i === 0 ? "—" : `${diff > 0 ? "+" : ""}${pct(diff)}`}
                       </td>
                     </tr>
@@ -209,36 +214,46 @@ export default function RelatoriosPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
 
-        <Card>
-          <CardTitle>Ranking do mês</CardTitle>
-          <div className="mt-4 space-y-3">
+        {/* Ranking do mês */}
+        <div className="lb-card-premium lb-fade-up rounded-2xl p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-yellow-300" />
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white">Ranking do mês</h2>
+          </div>
+          <div className="space-y-2.5">
             {ranking.map((d, i) => (
-              <div key={d.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-surface-2)] text-xs font-semibold">
+              <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-white/[0.05]">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold tabular-nums"
+                    style={{
+                      color: i < 3 ? "#06070d" : "rgba(255,255,255,.6)",
+                      background: i < 3 ? posColor(i) : "transparent",
+                      boxShadow: i < 3 ? `0 0 12px -2px ${posColor(i)}` : undefined,
+                    }}
+                  >
                     {i + 1}
                   </span>
-                  <div>
-                    <p className="text-sm font-medium">{d.nome}</p>
-                    <p className="text-xs text-[var(--color-text-dim)]">{d.vendas} vendas</p>
+                  <Avatar id={d.id} nome={d.nome} size={28} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{d.nome}</p>
+                    <p className="text-xs text-white/45">{d.vendas} vendas</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">{brl(d.vendido)}</p>
-                  <p className="text-xs text-[var(--color-text-dim)]">{pct(d.pctMeta)} da meta</p>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-semibold text-white tabular-nums">{brl(d.vendido)}</p>
+                  <p className="text-xs text-white/45">{pct(d.pctMeta)} da meta</p>
                 </div>
               </div>
             ))}
             {ranking.length === 0 && (
-              <p className="py-8 text-center text-sm text-[var(--color-text-dim)]">
-                Sem dados ainda.
-              </p>
+              <p className="py-8 text-center text-sm text-white/45">Sem dados ainda.</p>
             )}
           </div>
-        </Card>
+        </div>
       </div>
-    </div>
+    </PremiumStage>
   );
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Mail, Pencil, Phone, Plus, Search, Trash2, UserCircle, Users } from "lucide-react";
 import { clientesApi, useClientes } from "@/lib/store";
 import type { Cliente } from "@/lib/types";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
+import { Avatar } from "@/components/avatar";
+import { PremiumStage } from "@/components/premium-stage";
 import { notify } from "@/lib/notify";
 
 type FormState = {
@@ -90,21 +91,31 @@ export default function ClientesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            {clientes.length} {clientes.length === 1 ? "cliente" : "clientes"} cadastrados
-          </p>
+    <PremiumStage>
+      <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#06b6d4" }}>
+            <Users className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              Clientes
+            </h1>
+            <p className="text-sm text-white/55">
+              {clientes.length} {clientes.length === 1 ? "cliente" : "clientes"} cadastrados
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Input
-            placeholder="Buscar nome, email ou empresa…"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-64"
-          />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <input
+              placeholder="Buscar nome, email ou empresa…"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-10 w-56 rounded-xl border border-white/12 bg-white/[0.04] pl-9 pr-3 text-sm text-white outline-none backdrop-blur transition-all duration-200 placeholder:text-white/35 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10 focus:shadow-[0_0_0_1px_rgba(59,130,246,.5),0_0_24px_-6px_rgba(59,130,246,.7)]"
+            />
+          </div>
           <Button onClick={abrirNovo}>
             <Plus className="h-4 w-4" />
             Novo cliente
@@ -113,12 +124,14 @@ export default function ClientesPage() {
       </header>
 
       {filtrados.length === 0 ? (
-        <Card>
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Users className="mb-3 h-10 w-10 text-[var(--color-text-dim)]" />
-            <CardTitle>
+        <div className="lb-card-premium lb-fade-up rounded-2xl">
+          <div className="flex flex-col items-center justify-center py-14 text-center">
+            <span className="lb-orb mb-3 h-12 w-12" style={{ ["--orb" as string]: "#06b6d4" }}>
+              <UserCircle className="h-6 w-6" />
+            </span>
+            <p className="text-base font-bold text-white">
               {busca ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
-            </CardTitle>
+            </p>
             {!busca && (
               <Button onClick={abrirNovo} className="mt-4">
                 <Plus className="h-4 w-4" />
@@ -126,33 +139,56 @@ export default function ClientesPage() {
               </Button>
             )}
           </div>
-        </Card>
+        </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filtrados.map((c) => (
-            <Card key={c.id} className="flex flex-col gap-2">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{c.nome}</p>
-                  <p className="truncate text-xs text-[var(--color-text-dim)]">{c.empresa}</p>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtrados.map((c, i) => (
+            <div
+              key={c.id}
+              className="lb-card-premium lb-fade-up rounded-2xl p-4"
+              style={{ animationDelay: `${(i % 9) * 0.04}s` }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar id={c.id} nome={c.nome} size={40} />
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{c.nome}</p>
+                    <p className="truncate text-xs text-white/45">{c.empresa || "—"}</p>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => abrirEditar(c)}>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => abrirEditar(c)}
+                    title="Editar"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#3B82F6]/40 bg-[#3B82F6]/15 text-[#7aa2ff] transition-transform duration-150 hover:scale-110 hover:bg-[#3B82F6]/25"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remover(c)}>
+                  </button>
+                  <button
+                    onClick={() => remover(c)}
+                    title="Excluir"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 transition-transform duration-150 hover:scale-110 hover:bg-rose-500/25"
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  </button>
                 </div>
               </div>
-              <div className="space-y-1 text-xs text-[var(--color-text-dim)]">
-                {c.email && <p>{c.email}</p>}
-                {c.telefone && <p>{c.telefone}</p>}
-                {c.notas && (
-                  <p className="mt-2 line-clamp-2 italic text-[var(--color-text)]">{c.notas}</p>
+              <div className="mt-3 space-y-1.5 text-xs text-white/55">
+                {c.email && (
+                  <p className="flex items-center gap-1.5">
+                    <Mail className="h-3 w-3 shrink-0 text-sky-300" />
+                    <span className="min-w-0 truncate">{c.email}</span>
+                  </p>
                 )}
+                {c.telefone && (
+                  <p className="flex items-center gap-1.5">
+                    <Phone className="h-3 w-3 shrink-0 text-emerald-300" />
+                    <span className="truncate">{c.telefone}</span>
+                  </p>
+                )}
+                {c.notas && <p className="mt-2 line-clamp-2 italic text-white/70">{c.notas}</p>}
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
@@ -219,6 +255,6 @@ export default function ClientesPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PremiumStage>
   );
 }
