@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Crown,
   Mail,
+  Search,
   Shield,
   Trash2,
   UserCheck,
@@ -15,12 +16,11 @@ import {
 import { useSession } from "@/lib/store";
 import { PAPEL_INFO, type Papel } from "@/lib/types";
 import { notify } from "@/lib/notify";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { StatCard } from "@/components/stat-card";
+import { PremiumStage } from "@/components/premium-stage";
+import { AnimatedNum } from "@/components/ui/spark";
 
 type DbProfile = {
   id: string;
@@ -35,6 +35,8 @@ type DbProfile = {
 type DbEquipe = { id: string; nome: string; cor: string | null };
 
 const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "vendedor"];
+const selCls =
+  "h-8 rounded-md border border-white/12 bg-white/5 px-2 text-xs text-white outline-none focus:border-[#3B82F6] disabled:opacity-60";
 
 export default function ColaboradoresPage() {
   const session = useSession();
@@ -192,14 +194,27 @@ export default function ColaboradoresPage() {
     }
   }
 
+  const kpis = [
+    { label: "Assentos restantes", value: stats.assentos, hint: `${stats.total}/20 em uso`, icon: Shield, color: "#3B82F6" },
+    { label: "Colaboradores ativos", value: stats.ativos, icon: UserCheck, color: "#22C55E" },
+    { label: "Sem equipe", value: stats.semEquipe, icon: Users, color: "#FACC15" },
+    { label: "Inativos", value: stats.inativos, icon: UserX, color: "#f43f5e" },
+    { label: "Total", value: stats.total, icon: Crown, color: "#7C3AED" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Gestão de Colaboradores</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            Gerencie e acompanhe todos os colaboradores ativos
-          </p>
+    <PremiumStage>
+      <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>
+            <Users className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              Gestão de Colaboradores
+            </h1>
+            <p className="text-sm text-white/55">Gerencie e acompanhe todos os colaboradores</p>
+          </div>
         </div>
         <Button onClick={() => setOpen(true)}>
           <UserPlus className="h-4 w-4" />
@@ -208,76 +223,60 @@ export default function ColaboradoresPage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          title="Assentos Restantes"
-          value={String(stats.assentos)}
-          hint={`${stats.total}/20 em uso`}
-          icon={Shield}
-          tone="brand"
-        />
-        <StatCard
-          title="Colaboradores Ativos"
-          value={String(stats.ativos)}
-          icon={UserCheck}
-          tone="success"
-        />
-        <StatCard
-          title="Sem Equipe"
-          value={String(stats.semEquipe)}
-          icon={Users}
-          tone="warn"
-        />
-        <StatCard
-          title="Inativos"
-          value={String(stats.inativos)}
-          icon={UserX}
-          tone="danger"
-        />
-        <StatCard
-          title="Total"
-          value={String(stats.total)}
-          icon={Crown}
-          tone="neutral"
-        />
+        {kpis.map((k, i) => (
+          <div key={k.label} className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl p-4" style={{ animationDelay: `${i * 0.05}s` }}>
+            <span className="lb-orb h-10 w-10" style={{ ["--orb" as string]: k.color }}>
+              <k.icon className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-[11px] uppercase tracking-wider text-white/55">{k.label}</p>
+            <AnimatedNum value={k.value} className="block text-2xl font-extrabold tabular-nums text-white" />
+            {k.hint && <p className="text-[11px] text-white/40">{k.hint}</p>}
+          </div>
+        ))}
       </div>
 
       {erro && (
-        <Card className="border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10">
-          <p className="text-sm text-[var(--color-danger)]">{erro}</p>
-        </Card>
+        <div className="lb-fade-up rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4">
+          <p className="text-sm text-rose-300">{erro}</p>
+        </div>
       )}
 
-      <Card className="p-0">
-        <div className="border-b border-[var(--color-border)] p-4">
-          <Input
-            placeholder="Buscar nome, email ou cargo…"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="max-w-md"
-          />
+      <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl">
+        <div className="border-b border-white/10 p-4">
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <input
+              placeholder="Buscar nome, email ou cargo…"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-10 w-full rounded-xl border border-white/12 bg-white/[0.04] pl-9 pr-3 text-sm text-white outline-none backdrop-blur transition-all duration-200 placeholder:text-white/35 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10 focus:shadow-[0_0_0_1px_rgba(59,130,246,.5),0_0_24px_-6px_rgba(59,130,246,.7)]"
+            />
+          </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="lb-scroll overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[var(--color-text-dim)]">
+              <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
                 <th className="px-5 py-3">Colaborador</th>
                 <th className="px-5 py-3">Cargo</th>
                 <th className="px-5 py-3">Equipe</th>
                 <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Criado</th>
+                <th className="hidden px-5 py-3 lg:table-cell">Criado</th>
                 <th className="px-5 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-border)]">
+            <tbody className="divide-y divide-white/5">
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-[var(--color-text-dim)]">
-                    Carregando…
-                  </td>
-                </tr>
+                [0, 1, 2, 3].map((i) => (
+                  <tr key={i}>
+                    <td colSpan={6} className="px-5 py-3">
+                      <div className="h-8 w-full animate-pulse rounded-lg bg-white/5" />
+                    </td>
+                  </tr>
+                ))
               ) : filtrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-[var(--color-text-dim)]">
+                  <td colSpan={6} className="px-5 py-12 text-center text-white/45">
                     Nenhum colaborador.
                   </td>
                 </tr>
@@ -285,12 +284,13 @@ export default function ColaboradoresPage() {
                 filtrados.map((u) => {
                   const isMe = u.id === session?.id;
                   const equipe = equipes.find((e) => e.id === u.equipe_id);
+                  const sc = u.ativo ? "#22C55E" : "rgba(255,255,255,.4)";
                   return (
-                    <tr key={u.id} className="hover:bg-[var(--color-surface-2)]/40">
+                    <tr key={u.id} className="transition-colors hover:bg-white/[0.05]">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <div
-                            className="grid h-8 w-8 place-items-center rounded-full text-xs font-bold text-white"
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white"
                             style={{
                               background: `linear-gradient(135deg, hsl(${(u.email.charCodeAt(0) * 7) % 360}, 60%, 50%), rgba(0,0,0,0.5))`,
                             }}
@@ -298,17 +298,15 @@ export default function ColaboradoresPage() {
                             {u.nome.slice(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-medium">
+                            <p className="flex items-center gap-2 truncate font-medium text-white">
                               {u.nome}
                               {isMe && (
-                                <Badge tone="brand" className="ml-2">
+                                <span className="rounded-full border border-[#2563FF]/50 bg-[#2563FF]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7aa2ff]">
                                   você
-                                </Badge>
+                                </span>
                               )}
                             </p>
-                            <p className="truncate text-xs text-[var(--color-text-dim)]">
-                              {u.email}
-                            </p>
+                            <p className="truncate text-xs text-white/45">{u.email}</p>
                           </div>
                         </div>
                       </td>
@@ -317,58 +315,67 @@ export default function ColaboradoresPage() {
                           value={u.papel}
                           onChange={(e) => mudarPapel(u.id, e.target.value as Papel)}
                           disabled={isMe}
-                          className="h-8 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-xs disabled:opacity-60"
+                          className={selCls}
                         >
                           {PAPEIS.map((p) => (
-                            <option key={p} value={p}>
+                            <option key={p} value={p} className="bg-[#0b0d16]">
                               {PAPEL_INFO[p].label}
                             </option>
                           ))}
                         </select>
                       </td>
                       <td className="px-5 py-3">
-                        <select
-                          value={u.equipe_id ?? ""}
-                          onChange={(e) => mudarEquipe(u.id, e.target.value)}
-                          className="h-8 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-xs"
-                        >
-                          <option value="">— sem equipe —</option>
-                          {equipes.map((eq) => (
-                            <option key={eq.id} value={eq.id}>
-                              {eq.nome}
-                            </option>
-                          ))}
-                        </select>
-                        {equipe && (
-                          <span
-                            className="ml-2 inline-block h-2 w-2 rounded-full align-middle"
-                            style={{ background: equipe.cor ?? "#6366f1" }}
-                          />
-                        )}
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={u.equipe_id ?? ""}
+                            onChange={(e) => mudarEquipe(u.id, e.target.value)}
+                            className={selCls}
+                          >
+                            <option value="" className="bg-[#0b0d16]">— sem equipe —</option>
+                            {equipes.map((eq) => (
+                              <option key={eq.id} value={eq.id} className="bg-[#0b0d16]">
+                                {eq.nome}
+                              </option>
+                            ))}
+                          </select>
+                          {equipe && (
+                            <span
+                              className="inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ background: equipe.cor ?? "#6366f1", boxShadow: `0 0 6px ${equipe.cor ?? "#6366f1"}` }}
+                            />
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3">
-                        <Badge tone={u.ativo ? "success" : "neutral"}>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                          style={{ color: sc, borderColor: `${sc}66`, background: `${sc}1a` }}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: sc, boxShadow: `0 0 6px ${sc}` }} />
                           {u.ativo ? "Ativo" : "Inativo"}
-                        </Badge>
+                        </span>
                       </td>
-                      <td className="px-5 py-3 text-xs text-[var(--color-text-dim)]">
+                      <td className="hidden px-5 py-3 text-xs text-white/45 lg:table-cell">
                         {new Date(u.criado_em).toLocaleDateString("pt-BR")}
                       </td>
-                      <td className="px-5 py-3 text-right">
-                        <div className="flex justify-end gap-1">
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1.5">
                           {!isMe && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <button
                                 onClick={() => toggleAtivo(u)}
                                 title={u.ativo ? "Desativar" : "Reativar"}
+                                className="grid h-8 w-8 place-items-center rounded-lg border border-amber-400/40 bg-amber-400/15 text-amber-300 transition-transform duration-150 hover:scale-110 hover:bg-amber-400/25"
                               >
                                 <UserMinus className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => remover(u)}>
+                              </button>
+                              <button
+                                onClick={() => remover(u)}
+                                title="Remover"
+                                className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 transition-transform duration-150 hover:scale-110 hover:bg-rose-500/25"
+                              >
                                 <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              </button>
                             </>
                           )}
                         </div>
@@ -380,7 +387,7 @@ export default function ColaboradoresPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Modal
         open={open}
@@ -506,6 +513,6 @@ export default function ColaboradoresPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PremiumStage>
   );
 }
