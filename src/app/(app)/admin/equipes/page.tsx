@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Crown, Pencil, Plus, Trash2, Users, UsersRound } from "lucide-react";
+import { Crown, Pencil, Plus, Search, Trash2, Users, UsersRound } from "lucide-react";
 import { PAPEL_INFO, type Papel } from "@/lib/types";
 import { notify } from "@/lib/notify";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { StatCard } from "@/components/stat-card";
+import { Avatar } from "@/components/avatar";
+import { PremiumStage } from "@/components/premium-stage";
+import { AnimatedNum } from "@/components/ui/spark";
 
 type DbEquipe = {
   id: string;
@@ -28,6 +28,38 @@ type DbProfile = {
 };
 
 const CORES = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4", "#ec4899", "#84cc16"];
+
+/** Cor neon do papel pra badges. */
+function papelTone(p: Papel): string {
+  switch (p) {
+    case "admin":
+      return "#FACC15";
+    case "coordenador":
+      return "#7C3AED";
+    case "supervisor":
+      return "#3B82F6";
+    default:
+      return "#22C55E";
+  }
+}
+
+function PapelBadge({ papel }: { papel: Papel }) {
+  const tc = papelTone(papel);
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+      style={{
+        color: tc,
+        borderColor: `${tc}55`,
+        background: `${tc}1a`,
+        boxShadow: papel === "admin" ? "0 0 12px -3px #FACC15" : undefined,
+      }}
+    >
+      {papel === "admin" && <Crown className="h-2.5 w-2.5" />}
+      {PAPEL_INFO[papel].label}
+    </span>
+  );
+}
 
 export default function EquipesPage() {
   const [equipes, setEquipes] = useState<DbEquipe[]>([]);
@@ -124,14 +156,26 @@ export default function EquipesPage() {
     }
   }
 
+  const kpis = [
+    { label: "Equipes", value: stats.equipes, icon: UsersRound, color: "#2563FF" },
+    { label: "Total de Membros", value: stats.totalMembros, icon: Users, color: "#22C55E" },
+    { label: "Sem Equipe", value: stats.semEquipe, icon: Users, color: "#f43f5e" },
+    { label: "Líderes Disponíveis", value: stats.lideres, icon: Crown, color: "#FACC15" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Gerenciamento de Equipes</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            Gerencie suas equipes de vendas
-          </p>
+    <PremiumStage>
+      <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#7C3AED" }}>
+            <UsersRound className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              Gerenciamento de Equipes
+            </h1>
+            <p className="text-sm text-white/55">Gerencie suas equipes de vendas</p>
+          </div>
         </div>
         <Button onClick={abrirNovo}>
           <Plus className="h-4 w-4" />
@@ -139,53 +183,49 @@ export default function EquipesPage() {
         </Button>
       </header>
 
+      {/* KPIs com contadores animados + ícone neon flutuando */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Equipes"
-          value={String(stats.equipes)}
-          icon={UsersRound}
-          tone="brand"
-        />
-        <StatCard
-          title="Total de Membros"
-          value={String(stats.totalMembros)}
-          icon={Users}
-          tone="success"
-        />
-        <StatCard
-          title="Sem Equipe"
-          value={String(stats.semEquipe)}
-          icon={Users}
-          tone="danger"
-        />
-        <StatCard
-          title="Líderes Disponíveis"
-          value={String(stats.lideres)}
-          hint="coordenadores + supervisores"
-          icon={Crown}
-          tone="warn"
+        {kpis.map((k, i) => (
+          <div
+            key={k.label}
+            className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl p-4"
+            style={{ animationDelay: `${i * 0.06}s` }}
+          >
+            <span className="lb-orb lb-float h-10 w-10" style={{ ["--orb" as string]: k.color }}>
+              <k.icon className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-[11px] uppercase tracking-wider text-white/55">{k.label}</p>
+            <AnimatedNum value={k.value} className="block text-2xl font-extrabold tabular-nums text-white" />
+          </div>
+        ))}
+      </div>
+
+      {/* Busca glass premium */}
+      <div className="lb-fade-up relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+        <input
+          placeholder="Buscar equipes…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none backdrop-blur transition-all duration-200 placeholder:text-white/35 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10 focus:shadow-[0_0_0_1px_rgba(59,130,246,.5),0_0_24px_-6px_rgba(59,130,246,.7)]"
         />
       </div>
 
-      <Card>
-        <Input
-          placeholder="Buscar equipes ou líderes…"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
-      </Card>
-
       {loading ? (
-        <Card>
-          <p className="py-8 text-center text-[var(--color-text-dim)]">Carregando…</p>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="lb-card-premium h-48 animate-pulse rounded-2xl" />
+          ))}
+        </div>
       ) : filtradas.length === 0 ? (
-        <Card>
+        <div className="lb-card-premium lb-fade-up rounded-2xl">
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <UsersRound className="mb-3 h-10 w-10 text-[var(--color-text-dim)]" />
-            <CardTitle>
+            <span className="lb-orb mb-3 h-12 w-12" style={{ ["--orb" as string]: "#7C3AED" }}>
+              <UsersRound className="h-6 w-6" />
+            </span>
+            <p className="text-base font-bold text-white">
               {busca ? "Nenhuma equipe encontrada" : "Nenhuma equipe ainda"}
-            </CardTitle>
+            </p>
             {!busca && (
               <Button onClick={abrirNovo} className="mt-4">
                 <Plus className="h-4 w-4" />
@@ -193,69 +233,96 @@ export default function EquipesPage() {
               </Button>
             )}
           </div>
-        </Card>
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtradas.map((e) => {
+          {filtradas.map((e, i) => {
             const lider = users.find((u) => u.id === e.lider_id);
             const membros = users.filter((u) => u.equipe_id === e.id);
+            const cor = e.cor ?? "#6366f1";
             return (
-              <Card key={e.id}>
-                <div className="mb-3 flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="grid h-10 w-10 place-items-center rounded-lg text-white"
-                      style={{ background: e.cor ?? "#6366f1" }}
-                    >
-                      <UsersRound className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">{e.nome}</p>
-                      <p className="text-xs text-[var(--color-text-dim)]">
-                        {membros.length} {membros.length === 1 ? "membro" : "membros"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => abrirEditar(e)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remover(e)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+              <div
+                key={e.id}
+                className="lb-card-premium lb-fade-up relative overflow-hidden rounded-2xl p-5"
+                style={{ animationDelay: `${i * 0.05}s` }}
+              >
+                {/* glow ambiente da cor da equipe */}
+                <div
+                  className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-40 blur-2xl"
+                  style={{ background: cor }}
+                />
+                {/* linha luminosa superior */}
+                <div
+                  className="pointer-events-none absolute inset-x-4 top-0 h-px"
+                  style={{ background: `linear-gradient(90deg,transparent,${cor},transparent)`, boxShadow: `0 0 8px ${cor}` }}
+                />
 
-                {lider && (
-                  <div className="mb-3 flex items-center gap-2 rounded-md bg-[var(--color-surface-2)] px-3 py-2 text-xs">
-                    <Crown className="h-3.5 w-3.5 text-[var(--color-warn)]" />
-                    <span className="font-medium">{lider.nome}</span>
-                    <Badge tone={PAPEL_INFO[lider.papel].tone}>
-                      {PAPEL_INFO[lider.papel].label}
-                    </Badge>
-                  </div>
-                )}
-
-                {membros.length > 0 ? (
-                  <div className="space-y-1">
-                    {membros.map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-center justify-between text-xs text-[var(--color-text-dim)]"
+                <div className="relative">
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white"
+                        style={{ background: cor, boxShadow: `0 0 20px -4px ${cor}` }}
                       >
-                        <span className="truncate">{m.nome}</span>
-                        <Badge tone={PAPEL_INFO[m.papel].tone}>
-                          {PAPEL_INFO[m.papel].label}
-                        </Badge>
+                        <UsersRound className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-bold text-white">{e.nome}</p>
+                        <p className="text-xs text-white/50">
+                          {membros.length} {membros.length === 1 ? "membro" : "membros"}
+                        </p>
                       </div>
-                    ))}
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        onClick={() => abrirEditar(e)}
+                        title="Editar"
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-[#3B82F6]/40 bg-[#3B82F6]/15 text-[#7aa2ff] transition-transform duration-150 hover:scale-110 hover:bg-[#3B82F6]/25"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => remover(e)}
+                        title="Excluir"
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 transition-transform duration-150 hover:scale-110 hover:bg-rose-500/25"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-xs text-[var(--color-text-dim)]">
-                    Sem membros. Atribua em Colaboradores.
-                  </p>
-                )}
-              </Card>
+
+                  {lider && (
+                    <div className="mb-3 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+                      <span
+                        className="inline-grid shrink-0 place-items-center rounded-full p-0.5"
+                        style={{ boxShadow: "0 0 0 2px #FACC15, 0 0 12px -2px #FACC15" }}
+                      >
+                        <Avatar id={lider.id} nome={lider.nome} size={26} />
+                      </span>
+                      <Crown className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-white">{lider.nome}</span>
+                      <PapelBadge papel={lider.papel} />
+                    </div>
+                  )}
+
+                  {membros.length > 0 ? (
+                    <div className="lb-scroll max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                      {membros.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-white/[0.05]"
+                        >
+                          <Avatar id={m.id} nome={m.nome} size={24} />
+                          <span className="min-w-0 flex-1 truncate text-xs text-white/80">{m.nome}</span>
+                          <PapelBadge papel={m.papel} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-white/40">Sem membros. Atribua em Colaboradores.</p>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -324,6 +391,6 @@ export default function EquipesPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PremiumStage>
   );
 }
