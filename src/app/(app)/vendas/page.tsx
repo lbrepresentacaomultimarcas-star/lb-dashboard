@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Receipt, Trash2 } from "lucide-react";
 import { useVendas, useVendedores, vendasApi } from "@/lib/store";
 import { brl, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Avatar } from "@/components/avatar";
+import { PremiumStage } from "@/components/premium-stage";
 
 type FormState = {
   vendedorId: string;
@@ -87,22 +88,30 @@ export default function VendasPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Vendas</h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            {filtradas.length} vendas em {monthLabel(mes)} — total {brl(totalMes)}
-          </p>
+    <PremiumStage>
+      <header className="lb-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#22C55E" }}>
+            <Receipt className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              Vendas
+            </h1>
+            <p className="text-sm text-white/55">
+              {filtradas.length} vendas em {monthLabel(mes)} — total{" "}
+              <span className="font-semibold text-emerald-400">{brl(totalMes)}</span>
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <select
             value={mes}
             onChange={(e) => setMes(e.target.value)}
-            className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
+            className="h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white outline-none backdrop-blur focus:border-[#3B82F6]"
           >
             {mesesDisponiveis.map((m) => (
-              <option key={m} value={m}>
+              <option key={m} value={m} className="bg-[#0b0d16]">
                 {monthLabel(m)}
               </option>
             ))}
@@ -114,54 +123,59 @@ export default function VendasPage() {
         </div>
       </header>
 
-      <Card className="p-0">
-        <div className="overflow-x-auto">
+      <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl">
+        <div className="lb-scroll overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[var(--color-text-dim)]">
+              <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
                 <th className="px-5 py-3">Data</th>
                 <th className="px-5 py-3">Cliente</th>
                 <th className="px-5 py-3">Vendedor</th>
                 <th className="px-5 py-3 text-right">Valor</th>
-                <th className="px-5 py-3">Observação</th>
+                <th className="hidden px-5 py-3 md:table-cell">Observação</th>
                 <th className="px-5 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-border)]">
+            <tbody className="divide-y divide-white/5">
               {filtradas.map((v) => (
-                <tr key={v.id} className="hover:bg-[var(--color-surface-2)]/40">
-                  <td className="px-5 py-3 text-[var(--color-text-dim)]">
+                <tr key={v.id} className="transition-colors hover:bg-white/[0.05]">
+                  <td className="px-5 py-3 text-white/55">
                     {new Date(v.data).toLocaleDateString("pt-BR")}
                   </td>
-                  <td className="px-5 py-3 font-medium">{v.cliente}</td>
-                  <td className="px-5 py-3">{nomeVendedor(v.vendedorId)}</td>
-                  <td className="px-5 py-3 text-right text-[var(--color-success)]">
+                  <td className="px-5 py-3 font-medium text-white">{v.cliente}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <Avatar id={v.vendedorId} nome={nomeVendedor(v.vendedorId)} size={24} />
+                      <span className="min-w-0 truncate text-white/80">{nomeVendedor(v.vendedorId)}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 text-right font-semibold text-emerald-400 tabular-nums">
                     {brl(v.valor)}
                   </td>
-                  <td className="px-5 py-3 text-[var(--color-text-dim)]">
-                    {v.observacao ?? "—"}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={async () => {
-                        if (!confirm("Remover esta venda?")) return;
-                        try {
-                          await vendasApi.remove(v.id);
-                        } catch (e) {
-                          alert(e instanceof Error ? e.message : "Erro ao remover");
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <td className="hidden px-5 py-3 text-white/45 md:table-cell">{v.observacao ?? "—"}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex justify-end">
+                      <button
+                        title="Remover"
+                        onClick={async () => {
+                          if (!confirm("Remover esta venda?")) return;
+                          try {
+                            await vendasApi.remove(v.id);
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Erro ao remover");
+                          }
+                        }}
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 transition-transform duration-150 hover:scale-110 hover:bg-rose-500/25"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-[var(--color-text-dim)]">
+                  <td colSpan={6} className="px-5 py-12 text-center text-white/45">
                     Nenhuma venda em {monthLabel(mes)}.
                   </td>
                 </tr>
@@ -169,7 +183,7 @@ export default function VendasPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Nova venda">
         <form onSubmit={salvar} className="space-y-4">
@@ -242,6 +256,6 @@ export default function VendasPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PremiumStage>
   );
 }
