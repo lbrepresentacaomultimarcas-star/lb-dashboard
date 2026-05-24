@@ -53,7 +53,7 @@ body {
   background: var(--color-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: linear-gradient(180deg, #2563ff, #7c3aed);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {

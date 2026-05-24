@@ -29,13 +29,19 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
         onClick={onClose}
         aria-hidden
       />
-      <div className="relative w-full max-w-2xl rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl">
+      <div
+        className="lb-scroll lb-fade-up relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[rgba(80,120,255,0.22)] bg-[var(--color-surface)] p-6"
+        style={{
+          boxShadow:
+            "0 30px 80px rgba(0,0,0,.6), 0 0 44px -12px rgba(37,99,255,.45), inset 0 1px 0 rgba(255,255,255,.06)",
+        }}
+      >
         <div className="mb-5 flex items-start justify-between">
           <div className="flex items-start gap-3">
             {icon && (

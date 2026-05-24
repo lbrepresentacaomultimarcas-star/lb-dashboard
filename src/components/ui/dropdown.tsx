@@ -97,7 +97,7 @@ export function Dropdown({
         coords &&
         createPortal(
           // camada acima de tudo (portal no body → fora do stacking context dos cards)
-          <div className="fixed inset-0 z-[9998]" style={{ isolation: "isolate" }}>
+          <div className="fixed inset-0 z-[99999]" style={{ isolation: "isolate" }}>
             {/* backdrop: captura clique/hover e impede os cards de baixo de reagir */}
             <button
               type="button"
