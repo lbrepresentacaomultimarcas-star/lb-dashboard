@@ -4,20 +4,21 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sessionApi, useSession } from "@/lib/store";
 import { supabaseEnabled } from "@/lib/supabase/client";
+import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
-import { LogIn, UserPlus } from "lucide-react";
+import { KeyRound, LogIn, UserPlus } from "lucide-react";
 
-type Mode = "entrar" | "criar";
+type Mode = "entrar" | "criar" | "recuperar";
 
 export default function LoginPage() {
   const router = useRouter();
   const session = useSession();
   const [mode, setMode] = useState<Mode>("entrar");
   const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("admin@lb.com");
-  const [senha, setSenha] = useState("123456");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -30,6 +31,16 @@ export default function LoginPage() {
     setErro(null);
     setLoading(true);
     try {
+      if (mode === "recuperar") {
+        if (!email.includes("@")) throw new Error("Informe um email válido.");
+        await sessionApi.resetPasswordForEmail(email.trim());
+        notify.success(
+          "Link enviado",
+          "Se o email existir, você vai receber um link pra redefinir a senha.",
+        );
+        setMode("entrar");
+        return;
+      }
       if (!email.includes("@") || senha.length < 4) {
         throw new Error("Informe um email válido e senha com pelo menos 4 caracteres.");
       }
@@ -56,7 +67,11 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-semibold">LB Representações</h1>
           <p className="mt-1 text-sm text-[var(--color-text-dim)]">
-            {mode === "entrar" ? "Entre para acessar o sistema" : "Crie sua conta"}
+            {mode === "entrar"
+              ? "Entre para acessar o sistema"
+              : mode === "criar"
+                ? "Crie sua conta"
+                : "Recupere o acesso à sua conta"}
           </p>
         </div>
         <form
@@ -86,35 +101,73 @@ export default function LoginPage() {
               required
             />
           </div>
-          <div>
-            <Label htmlFor="senha">Senha</Label>
-            <Input
-              id="senha"
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              autoComplete={mode === "criar" ? "new-password" : "current-password"}
-              required
-            />
-          </div>
+          {mode !== "recuperar" && (
+            <div>
+              <Label htmlFor="senha">Senha</Label>
+              <Input
+                id="senha"
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                autoComplete={mode === "criar" ? "new-password" : "current-password"}
+                required
+              />
+            </div>
+          )}
           {erro && (
             <p className="rounded-md bg-[var(--color-danger)]/15 px-3 py-2 text-xs text-[var(--color-danger)]">
               {erro}
             </p>
           )}
           <Button type="submit" disabled={loading} className="w-full">
-            {mode === "entrar" ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
-            {loading ? "Aguarde…" : mode === "entrar" ? "Entrar" : "Criar conta"}
+            {mode === "recuperar" ? (
+              <KeyRound className="h-4 w-4" />
+            ) : mode === "entrar" ? (
+              <LogIn className="h-4 w-4" />
+            ) : (
+              <UserPlus className="h-4 w-4" />
+            )}
+            {loading
+              ? "Aguarde…"
+              : mode === "recuperar"
+                ? "Enviar link de recuperação"
+                : mode === "entrar"
+                  ? "Entrar"
+                  : "Criar conta"}
           </Button>
-          {supabaseEnabled && (
+          {supabaseEnabled && mode !== "recuperar" && (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setMode(mode === "entrar" ? "criar" : "entrar")}
+                className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+              >
+                {mode === "entrar" ? "Não tem conta? Criar agora" : "Já tem conta? Entrar"}
+              </button>
+              {mode === "entrar" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErro(null);
+                    setMode("recuperar");
+                  }}
+                  className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                >
+                  Esqueci minha senha
+                </button>
+              )}
+            </div>
+          )}
+          {supabaseEnabled && mode === "recuperar" && (
             <button
               type="button"
-              onClick={() => setMode(mode === "entrar" ? "criar" : "entrar")}
+              onClick={() => {
+                setErro(null);
+                setMode("entrar");
+              }}
               className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
             >
-              {mode === "entrar"
-                ? "Não tem conta? Criar agora"
-                : "Já tem conta? Entrar"}
+              Voltar ao login
             </button>
           )}
           <p className="text-center text-xs text-[var(--color-text-dim)]">

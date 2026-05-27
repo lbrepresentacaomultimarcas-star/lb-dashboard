@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     // Convite via email (magic link / definir senha)
     const { data, error } = await admin.auth.admin.inviteUserByEmail(body.email, {
       data: { nome },
+      redirectTo: `${req.nextUrl.origin}/auth/callback`,
     });
     if (error || !data.user) {
       return Response.json({ error: error?.message ?? "Falha ao convidar" }, { status: 400 });

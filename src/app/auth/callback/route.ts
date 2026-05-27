@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/dashboard";
+  // Recuperação de senha cai na página de definir nova senha; o resto vai pro dashboard.
+  const next =
+    searchParams.get("next") ?? (type === "recovery" ? "/redefinir-senha" : "/dashboard");
 
   const sb = await supabaseServer();
 

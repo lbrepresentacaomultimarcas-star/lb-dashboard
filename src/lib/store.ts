@@ -724,4 +724,26 @@ export const sessionApi = {
     notify();
     void logAudit({ acao: "logout", entidade: "sessao", detalhes: email });
   },
+  /** Envia email com link de recuperação de senha. */
+  async resetPasswordForEmail(email: string) {
+    if (!supabaseEnabled) {
+      throw new Error("Recuperação de senha exige Supabase configurado.");
+    }
+    const sb = supabaseBrowser();
+    const redirectTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/auth/callback?next=/redefinir-senha`
+        : undefined;
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw error;
+  },
+  /** Define uma nova senha (usuário já autenticado via link de recuperação). */
+  async updatePassword(novaSenha: string) {
+    if (!supabaseEnabled) {
+      throw new Error("Troca de senha exige Supabase configurado.");
+    }
+    const sb = supabaseBrowser();
+    const { error } = await sb.auth.updateUser({ password: novaSenha });
+    if (error) throw error;
+  },
 };
