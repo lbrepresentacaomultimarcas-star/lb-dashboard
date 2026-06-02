@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   Award,
@@ -16,12 +16,14 @@ import {
 } from "lucide-react";
 import { useMetas, useVendas, useVendedores } from "@/lib/store";
 import { faturamentoMensal } from "@/lib/selectors";
-import { useRankingMensal } from "@/lib/use-ranking";
+import { useRankingPeriodo } from "@/lib/use-ranking";
 import { useCountUp } from "@/lib/use-count-up";
-import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
+import { brl, pct } from "@/lib/utils";
+import { formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
 import type { VendedorComDesempenho } from "@/lib/types";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
+import { PeriodFilter } from "@/components/period-filter";
 
 const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º
 
@@ -125,9 +127,9 @@ export default function RankingPage() {
   const vendedores = useVendedores();
   const vendas = useVendas();
   const metas = useMetas();
-  const mes = todayMonth();
+  const [period, setPeriod] = useState<Period>(() => periodFromPreset("mes-atual"));
 
-  const ranking = useRankingMensal(mes, vendedores, vendas, metas);
+  const ranking = useRankingPeriodo(period, vendedores, vendas, metas);
   const top3 = ranking.slice(0, 3);
   const resto = ranking.slice(3, 10); // posições 4-10 na tabela
   const total = ranking.reduce((a, d) => a + d.vendido, 0);
@@ -210,19 +212,22 @@ export default function RankingPage() {
               <Trophy className="h-8 w-8 text-yellow-400" style={{ filter: "drop-shadow(0 0 10px rgba(250,204,21,.6))" }} />
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Ranking de vendas</h1>
-                <p className="text-sm text-white/55">{monthLabel(mes)}</p>
+                <p className="text-sm text-white/55">{formatPeriodLabel(period)}</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest text-white/50">Total faturamento</p>
-              <div className="flex items-center justify-end gap-2">
-                <AnimatedBRL value={total} className="text-2xl font-bold text-emerald-400 tabular-nums md:text-3xl" />
-                <span className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold ${crescimento >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
-                  {crescimento >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {pct(Math.abs(crescimento))}
-                </span>
+            <div className="flex flex-wrap items-end justify-end gap-4">
+              <PeriodFilter period={period} onChange={setPeriod} />
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-widest text-white/50">Total faturamento</p>
+                <div className="flex items-center justify-end gap-2">
+                  <AnimatedBRL value={total} className="text-2xl font-bold text-emerald-400 tabular-nums md:text-3xl" />
+                  <span className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold ${crescimento >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                    {crescimento >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {pct(Math.abs(crescimento))}
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/40">vs mês anterior</p>
               </div>
-              <p className="text-[11px] text-white/40">vs mês anterior</p>
             </div>
           </header>
 

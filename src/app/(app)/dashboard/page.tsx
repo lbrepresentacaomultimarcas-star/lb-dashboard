@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { DollarSign, Sparkles, Target, TrendingUp, Trophy, UserCircle, Users } from "lucide-react";
 import {
   useClientes,
@@ -9,13 +10,20 @@ import {
   useVendas,
   useVendedores,
 } from "@/lib/store";
-import { faturamentoMensal, metaTotalDoMes, totalFaturado, vendasNoMes } from "@/lib/selectors";
-import { useRankingMensal } from "@/lib/use-ranking";
+import {
+  faturamentoMensal,
+  metaTotalDoPeriodo,
+  totalFaturado,
+  vendasNoPeriodo,
+} from "@/lib/selectors";
+import { useRankingPeriodo } from "@/lib/use-ranking";
 import { temPermissao } from "@/lib/permissions";
-import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
+import { brl, pct } from "@/lib/utils";
+import { formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
 import { SalesChart } from "@/components/sales-chart-loader";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
+import { PeriodFilter } from "@/components/period-filter";
 import { AnimatedBRL, AnimatedNum } from "@/components/ui/spark";
 
 function StatPremium({
@@ -64,7 +72,7 @@ export default function DashboardPage() {
   const clientes = useClientes();
   const leads = useLeads();
   const metas = useMetas();
-  const mes = todayMonth();
+  const [period, setPeriod] = useState<Period>(() => periodFromPreset("mes-atual"));
 
   // Gestor (admin/coordenador/supervisor) vê a operação inteira;
   // vendedor vê só os próprios números (já filtrados por RLS).
@@ -73,37 +81,42 @@ export default function DashboardPage() {
   const leadsAtivos = leads.filter((l) => l.status !== "fechamento" && l.status !== "perdido");
   const valorPipeline = leadsAtivos.reduce((acc, l) => acc + l.valorEstimado, 0);
 
-  const doMes = vendasNoMes(vendas, mes);
-  const fatMes = totalFaturado(doMes);
+  // Vendas/faturamento RESPEITAM o filtro de período.
+  const doPeriodo = vendasNoPeriodo(vendas, period);
+  const fatPeriodo = totalFaturado(doPeriodo);
   const ativos = vendedores.filter((v) => v.ativo).length;
-  const metaTotal = metaTotalDoMes(vendedores, metas, mes);
-  const pctMeta = metaTotal > 0 ? (fatMes / metaTotal) * 100 : 0;
+  const metaTotal = metaTotalDoPeriodo(vendedores, metas, period);
+  const pctMeta = metaTotal > 0 ? (fatPeriodo / metaTotal) * 100 : 0;
 
-  const ranking = useRankingMensal(mes, vendedores, vendas, metas);
+  const ranking = useRankingPeriodo(period, vendedores, vendas, metas);
+  // Gráfico mantém visão de 12 meses (tendência histórica) independente do filtro.
   const serie = faturamentoMensal(vendas, 12);
 
   return (
     <PremiumStage>
-      <header className="lb-fade-up flex items-center gap-3">
-        <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>
-          <TrendingUp className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
-            {gestor ? "Visão Geral da Operação" : "Meu Desempenho"}
-          </h1>
-          <p className="text-sm text-white/55">
-            {gestor ? "Toda a equipe" : `Olá, ${session?.nome ?? ""}`} · {monthLabel(mes)}
-          </p>
+      <header className="lb-fade-up flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>
+            <TrendingUp className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
+              {gestor ? "Visão Geral da Operação" : "Meu Desempenho"}
+            </h1>
+            <p className="text-sm text-white/55">
+              {gestor ? "Toda a equipe" : `Olá, ${session?.nome ?? ""}`} · {formatPeriodLabel(period)}
+            </p>
+          </div>
         </div>
+        <PeriodFilter period={period} onChange={setPeriod} />
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatPremium
           icon={DollarSign}
-          label={gestor ? "Faturamento do mês" : "Minhas vendas"}
-          value={<AnimatedBRL value={fatMes} />}
-          hint={`${doMes.length} vendas no mês`}
+          label={gestor ? "Faturamento" : "Minhas vendas"}
+          value={<AnimatedBRL value={fatPeriodo} />}
+          hint={`${doPeriodo.length} vendas no período`}
           color="#22C55E"
           delay={0}
         />
@@ -138,7 +151,7 @@ export default function DashboardPage() {
           icon={TrendingUp}
           label="% da meta"
           value={<span style={{ color: pctColor(pctMeta) }}>{pct(pctMeta)}</span>}
-          hint={pctMeta >= 100 ? "meta superada 🎉" : `faltam ${brl(Math.max(metaTotal - fatMes, 0))}`}
+          hint={pctMeta >= 100 ? "meta superada 🎉" : `faltam ${brl(Math.max(metaTotal - fatPeriodo, 0))}`}
           color={pctColor(pctMeta)}
           delay={0.18}
         />
@@ -166,7 +179,7 @@ export default function DashboardPage() {
         <div className="mb-3 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-yellow-300" />
           <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-            Ranking de vendedores — {monthLabel(mes)}
+            Ranking de vendedores — {formatPeriodLabel(period)}
           </h2>
         </div>
         <div className="lb-scroll overflow-x-auto">
