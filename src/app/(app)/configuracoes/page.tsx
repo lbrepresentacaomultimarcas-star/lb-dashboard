@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Trash2, Upload } from "lucide-react";
+import { ImagePlus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { readFileAsDataUrl, settings, useImageSetting, type ImageSettingKey } from "@/lib/settings";
+import { setAutoRefresh, useAutoRefresh } from "@/lib/refresh";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
@@ -138,6 +139,51 @@ function SlotCard({ slot }: { slot: Slot }) {
   );
 }
 
+function AutoRefreshCard() {
+  const enabled = useAutoRefresh();
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+            <RefreshCw className="h-5 w-5" />
+          </span>
+          <div>
+            <CardTitle>Atualização automática</CardTitle>
+            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+              Quando ligado, o CRM recarrega os dados a cada 60 segundos em segundo plano.
+              Você ainda pode usar o botão de atualizar no topo a qualquer momento.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => {
+            const novo = !enabled;
+            setAutoRefresh(novo);
+            notify.success(
+              novo ? "Atualização automática ligada" : "Atualização automática desligada",
+              novo ? "Dados serão atualizados a cada 60s." : undefined,
+            );
+          }}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+            enabled ? "bg-[var(--color-brand)]" : "bg-[var(--color-surface-2)] border border-[var(--color-border)]"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+              enabled ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 export default function ConfiguracoesPage() {
   return (
     <div className="space-y-6">
@@ -147,6 +193,13 @@ export default function ConfiguracoesPage() {
           Personalize a aparência do sistema — todas as imagens ficam salvas neste navegador.
         </p>
       </header>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+          Dados em tempo real
+        </h2>
+        <AutoRefreshCard />
+      </section>
 
       <section className="space-y-4">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">

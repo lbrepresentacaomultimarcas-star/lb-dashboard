@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarRange, CheckCircle2, Clock, Pencil, Plus, Trash2 } from "lucide-react";
 import { notify } from "@/lib/notify";
+import { useRefreshTick } from "@/lib/refresh";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
@@ -47,6 +48,7 @@ export default function ProducoesPage() {
     dataFim: "",
     ativa: false,
   });
+  const refreshTick = useRefreshTick();
 
   async function carregar() {
     setLoading(true);
@@ -64,7 +66,7 @@ export default function ProducoesPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar();
-  }, []);
+  }, [refreshTick]);
 
   const ativa = useMemo(() => producoes.find((p) => p.ativa) ?? null, [producoes]);
 

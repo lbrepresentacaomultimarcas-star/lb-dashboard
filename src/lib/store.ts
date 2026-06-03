@@ -373,6 +373,23 @@ async function reloadMetas() {
   }
 }
 
+/**
+ * Re-busca todos os datasets do store em paralelo. Usado pelo botão
+ * "Atualizar Dados" e pelo auto-refresh. Sem efeito em modo demo
+ * (localStorage não muda sozinho — não há fonte externa pra refazer).
+ */
+export async function reloadAllData(): Promise<void> {
+  if (!supabaseEnabled) return;
+  await Promise.all([
+    reloadVendedores(),
+    reloadVendas(),
+    reloadClientes(),
+    reloadLeads(),
+    reloadMetas(),
+    reloadAudit(),
+  ]);
+}
+
 function attachRealtime() {
   if (realtimeAttached) return;
   realtimeAttached = true;

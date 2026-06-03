@@ -16,6 +16,7 @@ import {
 import { useSession } from "@/lib/store";
 import { PAPEL_INFO, type Papel } from "@/lib/types";
 import { notify } from "@/lib/notify";
+import { useRefreshTick } from "@/lib/refresh";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
@@ -55,6 +56,7 @@ export default function ColaboradoresPage() {
     papel: "vendedor" as Papel,
     equipeId: "",
   });
+  const refreshTick = useRefreshTick();
 
   async function carregar() {
     setLoading(true);
@@ -76,7 +78,7 @@ export default function ColaboradoresPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar();
-  }, []);
+  }, [refreshTick]);
 
   const stats = useMemo(() => {
     const ativos = users.filter((u) => u.ativo).length;

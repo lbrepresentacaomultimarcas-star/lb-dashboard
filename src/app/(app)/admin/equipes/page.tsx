@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Crown, Pencil, Plus, Search, Trash2, Users, UsersRound } from "lucide-react";
 import { PAPEL_INFO, type Papel } from "@/lib/types";
 import { notify } from "@/lib/notify";
+import { useRefreshTick } from "@/lib/refresh";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
@@ -70,6 +71,7 @@ export default function EquipesPage() {
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState({ nome: "", cor: CORES[0], liderId: "" });
+  const refreshTick = useRefreshTick();
 
   async function carregar() {
     setLoading(true);
@@ -89,7 +91,7 @@ export default function EquipesPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar();
-  }, []);
+  }, [refreshTick]);
 
   const stats = useMemo(() => {
     const totalMembros = users.filter((u) => u.equipe_id).length;

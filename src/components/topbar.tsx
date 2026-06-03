@@ -5,6 +5,7 @@ import { LogOut, Menu } from "lucide-react";
 import { sessionApi, useSession } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { RefreshButton } from "@/components/refresh-button";
 import { Avatar } from "@/components/avatar";
 import { useMobileNav } from "@/components/mobile-nav-context";
 
@@ -31,10 +32,11 @@ export function Topbar() {
           <p className="text-sm font-medium">{session?.nome ?? "Convidado"}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <span className="hidden text-xs text-[var(--color-text-dim)] sm:inline">
           {session?.email}
         </span>
+        <RefreshButton />
         <ThemeToggle />
         <Button
           variant="ghost"
