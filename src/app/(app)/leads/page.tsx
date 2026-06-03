@@ -390,7 +390,7 @@ export default function LeadsPage() {
     });
     setOpen(true);
   }
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.nome.trim()) {
       notify.error("Informe o nome do contato");
@@ -404,6 +404,17 @@ export default function LeadsPage() {
       notify.error("Selecione o tipo de negócio");
       return;
     }
+    // Mobile-safe: força blur pra commitar último char do IME, depois lê o
+    // valor monetário direto do DOM via FormData. Em iOS/Android, o setState
+    // disparado pelo onBlur pode não ter flush quando o submit roda, fazendo
+    // o React state ficar "" mesmo com o DOM mostrando "60.145,80".
+    const formEl = e.currentTarget;
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const valorRaw =
+      (new FormData(formEl).get("valor") as string | null) ?? form.valorEstimado;
+
     setSalvando(true);
     try {
       // Histórico de atendimento: nova observação carimbada vai pro topo.
@@ -419,7 +430,7 @@ export default function LeadsPage() {
         nome: form.nome.trim(),
         email: form.email.trim(),
         telefone: form.telefone.trim(),
-        valorEstimado: parseNumBR(form.valorEstimado),
+        valorEstimado: parseNumBR(valorRaw),
         status: form.status,
         tipo: form.tipo as LeadTipo,
         vendedorId: form.vendedorId || undefined,
@@ -1158,6 +1169,7 @@ export default function LeadsPage() {
               <Label htmlFor="val">Valor do Crédito (opcional)</Label>
               <MoneyInput
                 id="val"
+                name="valor"
                 value={form.valorEstimado}
                 onChange={(v) => setForm({ ...form, valorEstimado: v })}
               />

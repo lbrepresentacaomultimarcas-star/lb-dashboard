@@ -62,16 +62,28 @@ export default function VendasPage() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!form.vendedorId || !form.cliente || !form.valor) return;
+    if (!form.vendedorId || !form.cliente) return;
+
+    // Mobile-safe: força blur pra commitar último char do IME, depois lê o
+    // valor monetário direto do DOM via FormData. Sem isso, em iOS/Android
+    // o React state pode ficar "" mesmo com o DOM mostrando "60.145,80".
+    const formEl = e.currentTarget;
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const valorRaw = (new FormData(formEl).get("valor") as string | null) ?? form.valor;
+    const valorNum = parseNumBR(valorRaw);
+    if (!valorNum) return;
+
     setErro(null);
     setSalvando(true);
     try {
       await vendasApi.add({
         vendedorId: form.vendedorId,
         cliente: form.cliente.trim(),
-        valor: parseNumBR(form.valor),
+        valor: valorNum,
         data: new Date(form.data).toISOString(),
         observacao: form.observacao.trim() || undefined,
       });
@@ -217,6 +229,7 @@ export default function VendasPage() {
               <Label htmlFor="val">Valor (R$)</Label>
               <MoneyInput
                 id="val"
+                name="valor"
                 value={form.valor}
                 onChange={(v) => setForm({ ...form, valor: v })}
                 required

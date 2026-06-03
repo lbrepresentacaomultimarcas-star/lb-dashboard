@@ -9,23 +9,36 @@ import { formatNumBR, parseNumBR } from "@/lib/utils";
  * - Sem limite de valor (não usa type=number)
  * - Reformata pro padrão BR quando sai do campo (onBlur)
  * - O `value` no estado é a string exibida; converta com parseNumBR ao salvar
+ *
+ * IMPORTANTE — fix mobile (Cenário iOS/Android Chrome):
+ * Em mobile, quando o usuário toca direto no botão "Salvar" sem tocar fora
+ * antes, o evento `blur` do input e o `click` do botão competem. O setState
+ * disparado pelo onBlur pode não estar flush quando o submit roda — fazendo
+ * o handler ler `""` em vez do valor digitado.
+ *
+ * SOLUÇÃO: o caller deve ler o valor pelo DOM (FormData) no submit, não pelo
+ * React state. Pra isso a gente expõe `name` como prop — quem usar passa,
+ * o submit lê via `new FormData(form).get(name)`.
  */
 export function MoneyInput({
   value,
   onChange,
   id,
+  name,
   placeholder = "0,00",
   required,
 }: {
   value: string;
   onChange: (v: string) => void;
   id?: string;
+  name?: string;
   placeholder?: string;
   required?: boolean;
 }) {
   return (
     <Input
       id={id}
+      name={name}
       type="text"
       inputMode="decimal"
       autoComplete="off"
