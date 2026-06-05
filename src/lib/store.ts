@@ -260,9 +260,14 @@ async function buildSession(
     u.email?.split("@")[0] ??
     "Usuário";
   try {
+    // IMPORTANTE: a coluna real no schema e `vendedor_id` (nao vendedor_ref).
+    // O nome confunde porque NAO aponta pra tabela vendedores — ele guarda o
+    // UUID do admin dono da org. Usado pela current_org_id() na RLS.
+    // Bug historico: pedir "vendedor_ref" fazia o SELECT falhar e zerava
+    // session.papel + session.vendedorId pra TODO usuario (admin inclusive).
     const { data: prof } = await sb
       .from("profiles")
-      .select("nome, papel, vendedor_ref")
+      .select("nome, papel, vendedor_id")
       .eq("id", u.id)
       .single();
     return {
@@ -270,7 +275,7 @@ async function buildSession(
       nome: prof?.nome ?? fallbackNome,
       email: u.email ?? "",
       papel: (prof?.papel as SessionUser["papel"]) ?? "vendedor",
-      vendedorId: (prof?.vendedor_ref as string | null) ?? undefined,
+      vendedorId: (prof?.vendedor_id as string | null) ?? undefined,
     };
   } catch {
     // Se falhar (ex: coluna ainda não migrada), assume vendedor (mais restrito)

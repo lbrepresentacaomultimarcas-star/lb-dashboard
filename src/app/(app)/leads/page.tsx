@@ -40,7 +40,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeads, useSession, useVendedores } from "@/lib/store";
+import { leadsApi, useLeads, useSession, useVendedores, vendasApi } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { Avatar } from "@/components/avatar";
 import {
@@ -471,10 +471,40 @@ export default function LeadsPage() {
     }
     try {
       await leadsApi.update(l.id, { status });
-      if (status === "fechamento") {
+
+      // Bug B fix — fechamento gera venda automática (sem isso o ranking
+      // nunca atualiza porque ele lê da tabela `vendas`, não de `leads`).
+      // Idempotência protegida em vendas.observacao (auto-gerada do lead X).
+      if (status === "fechamento" && l.vendedorId) {
+        try {
+          await vendasApi.add({
+            vendedorId: l.vendedorId,
+            cliente: l.nome,
+            valor: l.valorEstimado,
+            data: new Date().toISOString(),
+            observacao: `Auto-gerada do lead ${l.id}`,
+          });
+        } catch (err) {
+          // Lead já foi fechado (status persistiu), mas a venda falhou.
+          // Avisa o user pra lançar manual via /vendas, não esconde o erro.
+          notify.error(
+            "Negócio fechado, mas a venda não foi registrada",
+            err instanceof Error
+              ? `${err.message}. Lança manual em /vendas.`
+              : "Lança a venda manual em /vendas pra subir no ranking.",
+          );
+          return;
+        }
         notify.success(
           "Negócio fechado! 🎉",
-          "Venda gerada automaticamente — financeiro, comissão e ranking atualizados.",
+          "Venda gerada — financeiro, comissão e ranking atualizados.",
+        );
+      } else if (status === "fechamento") {
+        // Edge case: status virou fechamento mas vendedor não estava setado.
+        // O guard no topo já previne isso, mas defensive.
+        notify.success(
+          "Negócio movido pra Fechamento",
+          "Atribui um vendedor com ⋮ → Compartilhar pra gerar venda.",
         );
       } else {
         notify.success(`Movido para ${LEAD_STATUS_INFO[status].label}`);

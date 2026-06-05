@@ -55,7 +55,9 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (body.papel !== undefined) patch.papel = body.papel;
   if (body.equipeId !== undefined) patch.equipe_id = body.equipeId;
-  if (body.vendedorRef !== undefined) patch.vendedor_ref = body.vendedorRef;
+  // Schema usa `vendedor_id` (nao vendedor_ref) — semanticamente o UUID do
+  // admin dono da org, usado pela current_org_id() na RLS multi-tenant.
+  if (body.vendedorRef !== undefined) patch.vendedor_id = body.vendedorRef;
   if (body.ativo !== undefined) patch.ativo = body.ativo;
   if (body.nome !== undefined) patch.nome = body.nome;
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);
