@@ -446,7 +446,32 @@ export default function LeadsPage() {
       }
       setOpen(false);
     } catch (e) {
-      notify.error("Erro ao salvar", e instanceof Error ? e.message : undefined);
+      // Observabilidade: PostgrestError do Supabase NAO e instancia de Error,
+      // entao o check antigo `e instanceof Error` caia em `undefined` e o toast
+      // sumia com a descricao. Aqui extraimos message/code/details/hint
+      // defensivamente, alem de logar o objeto completo no console.
+      console.error("[CRIAR_NEGOCIO]", JSON.stringify(e, null, 2));
+      console.error("[CRIAR_NEGOCIO] (raw)", e);
+
+      const pick = (key: string): string | undefined => {
+        if (typeof e === "object" && e !== null && key in e) {
+          const v = (e as Record<string, unknown>)[key];
+          return v == null ? undefined : String(v);
+        }
+        return undefined;
+      };
+      const msg = e instanceof Error ? e.message : pick("message");
+      const code = pick("code");
+      const details = pick("details");
+      const hint = pick("hint");
+      const partes = [
+        msg ?? "Falha desconhecida",
+        code ? `code: ${code}` : null,
+        details ? `details: ${details}` : null,
+        hint ? `hint: ${hint}` : null,
+      ].filter((p): p is string => Boolean(p));
+
+      notify.error("Erro ao salvar", partes.join(" · "));
     } finally {
       setSalvando(false);
     }
