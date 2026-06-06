@@ -260,22 +260,39 @@ async function buildSession(
     u.email?.split("@")[0] ??
     "Usuário";
   try {
-    // IMPORTANTE: a coluna real no schema e `vendedor_id` (nao vendedor_ref).
-    // O nome confunde porque NAO aponta pra tabela vendedores — ele guarda o
-    // UUID do admin dono da org. Usado pela current_org_id() na RLS.
-    // Bug historico: pedir "vendedor_ref" fazia o SELECT falhar e zerava
-    // session.papel + session.vendedorId pra TODO usuario (admin inclusive).
+    // IMPORTANTE: a coluna `profiles.vendedor_id` NAO aponta pra tabela
+    // vendedores — ela guarda o UUID do admin dono da org, usado SOMENTE
+    // pela current_org_id() na RLS server-side.
+    //
+    // Pra UI (form de criar negocio, "(voce)" em selects), precisamos do id
+    // REAL na tabela vendedores. Como nao ha FK direta entre auth.users e
+    // vendedores, o vinculo e por EMAIL. Lookup extra abaixo resolve.
     const { data: prof } = await sb
       .from("profiles")
-      .select("nome, papel, vendedor_id")
+      .select("nome, papel")
       .eq("id", u.id)
       .single();
+
+    // Busca o id na tabela vendedores pelo email. Se nao existir (admin
+    // puro, sem registro de vendedor), `vendedorId` fica undefined e o
+    // form simplesmente nao pre-preenche.
+    let vendedorRecordId: string | undefined;
+    if (u.email) {
+      const { data: vRow } = await sb
+        .from("vendedores")
+        .select("id")
+        .eq("email", u.email)
+        .eq("ativo", true)
+        .maybeSingle();
+      vendedorRecordId = (vRow?.id as string | undefined) ?? undefined;
+    }
+
     return {
       id: u.id,
       nome: prof?.nome ?? fallbackNome,
       email: u.email ?? "",
       papel: (prof?.papel as SessionUser["papel"]) ?? "vendedor",
-      vendedorId: (prof?.vendedor_id as string | null) ?? undefined,
+      vendedorId: vendedorRecordId,
     };
   } catch {
     // Se falhar (ex: coluna ainda não migrada), assume vendedor (mais restrito)
