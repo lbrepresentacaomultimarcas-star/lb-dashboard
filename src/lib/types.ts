@@ -150,7 +150,7 @@ export const LEAD_STATUS_INFO: Record<
   oportunidade: { label: "Oportunidade", tone: "brand" },
   primeiro_contato: { label: "Primeiro contato", tone: "neutral" },
   reuniao_agendada: { label: "Reunião agendada", tone: "warn" },
-  reuniao: { label: "Reunião", tone: "warn" },
+  reuniao: { label: "Fazer e passar proposta", tone: "warn" },
   acompanhamento: { label: "Acompanhamento p/ fechar", tone: "warn" },
   fechamento: { label: "Fechamento", tone: "success" },
   perdido: { label: "Perdido", tone: "danger" },

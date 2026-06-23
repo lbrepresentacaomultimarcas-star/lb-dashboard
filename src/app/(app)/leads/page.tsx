@@ -61,8 +61,8 @@ import { MoneyInput } from "@/components/ui/money-input";
 const STATUS_ORDER: LeadStatus[] = [
   "oportunidade",
   "primeiro_contato",
-  "reuniao_agendada",
   "reuniao",
+  "reuniao_agendada",
   "acompanhamento",
   "fechamento",
   "perdido",
