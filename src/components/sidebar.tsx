@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  CalendarClock,
   ChevronDown,
   History,
   LayoutDashboard,
@@ -67,6 +68,7 @@ const NAV: (NavItem | NavGroup)[] = [
       { href: "/admin/colaboradores", label: "Colaboradores", icon: Shield, minimo: "admin" },
       { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
       { href: "/admin/producoes", label: "Produções", icon: BarChart3, minimo: "admin" },
+      { href: "/admin/fechamento", label: "Fechamento", icon: CalendarClock, minimo: "admin" },
       { href: "/vendedores", label: "Vendedores", icon: Users, minimo: "supervisor" },
     ],
   },

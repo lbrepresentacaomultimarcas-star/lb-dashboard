@@ -10,7 +10,8 @@ import {
   useVendedores,
 } from "@/lib/store";
 import { desempenhoPorVendedor, faturamentoMensal } from "@/lib/selectors";
-import { brl, monthLabel, pct, todayMonth } from "@/lib/utils";
+import { useCicloProducao } from "@/lib/use-ciclo";
+import { brl, monthLabel, pct } from "@/lib/utils";
 import { exportBackupJson, exportCsv, exportPdf, exportXlsx } from "@/lib/export";
 import { notify } from "@/lib/notify";
 import { Avatar } from "@/components/avatar";
@@ -27,10 +28,14 @@ export default function RelatoriosPage() {
   const clientes = useClientes();
   const leads = useLeads();
   const metas = useMetas();
-  const serie12 = useMemo(() => faturamentoMensal(vendas, 12), [vendas]);
+  const { config, feriados, chaveAtual } = useCicloProducao();
+  const serie12 = useMemo(() => faturamentoMensal(vendas, 12, config, feriados), [vendas, config, feriados]);
   const ranking = useMemo(
-    () => desempenhoPorVendedor(vendedores, vendas, metas).sort((a, b) => b.vendido - a.vendido),
-    [vendedores, vendas, metas],
+    () =>
+      desempenhoPorVendedor(vendedores, vendas, metas, chaveAtual, config, feriados).sort(
+        (a, b) => b.vendido - a.vendido,
+      ),
+    [vendedores, vendas, metas, chaveAtual, config, feriados],
   );
 
   const vendasRows = useMemo(
@@ -62,15 +67,15 @@ export default function RelatoriosPage() {
   );
 
   function exportarVendasCsv() {
-    exportCsv(`vendas-${todayMonth()}.csv`, vendasRows);
+    exportCsv(`vendas-${chaveAtual}.csv`, vendasRows);
     notify.success("CSV de vendas baixado");
   }
   function exportarRankingCsv() {
-    exportCsv(`ranking-${todayMonth()}.csv`, rankingRows);
+    exportCsv(`ranking-${chaveAtual}.csv`, rankingRows);
     notify.success("CSV de ranking baixado");
   }
   async function exportarXlsxCompleto() {
-    await exportXlsx(`lb-dashboard-${todayMonth()}.xlsx`, {
+    await exportXlsx(`lb-dashboard-${chaveAtual}.xlsx`, {
       Ranking: rankingRows,
       Vendas: vendasRows,
       Vendedores: [
@@ -96,9 +101,9 @@ export default function RelatoriosPage() {
   }
   async function exportarRankingPdf() {
     await exportPdf({
-      filename: `ranking-${todayMonth()}.pdf`,
+      filename: `ranking-${chaveAtual}.pdf`,
       titulo: "Ranking de vendedores",
-      subtitulo: monthLabel(todayMonth()),
+      subtitulo: monthLabel(chaveAtual),
       head: rankingRows[0] as string[],
       body: rankingRows.slice(1),
     });
@@ -106,9 +111,9 @@ export default function RelatoriosPage() {
   }
   async function exportarVendasPdf() {
     await exportPdf({
-      filename: `vendas-${todayMonth()}.pdf`,
+      filename: `vendas-${chaveAtual}.pdf`,
       titulo: "Relatório de vendas",
-      subtitulo: monthLabel(todayMonth()),
+      subtitulo: monthLabel(chaveAtual),
       head: vendasRows[0] as string[],
       body: vendasRows.slice(1),
     });
@@ -122,7 +127,7 @@ export default function RelatoriosPage() {
       clientes,
       leads,
     };
-    exportBackupJson(`backup-${todayMonth()}.json`, data);
+    exportBackupJson(`backup-${chaveAtual}.json`, data);
     notify.success("Backup completo baixado");
   }
 

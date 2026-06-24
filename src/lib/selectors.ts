@@ -1,10 +1,25 @@
 import type { Meta, Venda, Vendedor, VendedorComDesempenho } from "./types";
 import type { Period } from "./period";
 import { monthCoverage } from "./period";
-import { monthKey, todayMonth } from "./utils";
+import { cicloDeData, CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
+import { todayMonth } from "./utils";
 
-export function vendasNoMes(vendas: Venda[], mes = todayMonth()) {
-  return vendas.filter((v) => monthKey(v.data) === mes);
+/** Sem feriados (default seguro). */
+const SEM_FERIADOS: Set<string> = new Set();
+
+/**
+ * Bucketiza vendas por CICLO de produção em vez de mês-calendário.
+ * Com a config padrão (regra desligada) e para datas anteriores ao cutover,
+ * `cicloDeData` devolve exatamente o mês-calendário — então o passado fica
+ * IDÊNTICO. Só datas a partir do cutover mudam de bucket.
+ */
+export function vendasNoMes(
+  vendas: Venda[],
+  mes = todayMonth(),
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = SEM_FERIADOS,
+) {
+  return vendas.filter((v) => cicloDeData(v.data, config, feriados) === mes);
 }
 
 export function totalFaturado(vendas: Venda[]) {
@@ -28,8 +43,10 @@ export function desempenhoPorVendedor(
   vendas: Venda[],
   metas: Meta[] = [],
   mes = todayMonth(),
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = SEM_FERIADOS,
 ): VendedorComDesempenho[] {
-  const doMes = vendasNoMes(vendas, mes);
+  const doMes = vendasNoMes(vendas, mes, config, feriados);
   return vendedores.map((v) => {
     const minhas = doMes.filter((s) => s.vendedorId === v.id);
     const vendido = totalFaturado(minhas);
@@ -45,15 +62,20 @@ export function desempenhoPorVendedor(
   });
 }
 
-export function faturamentoMensal(vendas: Venda[], meses = 12) {
+export function faturamentoMensal(
+  vendas: Venda[],
+  meses = 12,
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = SEM_FERIADOS,
+) {
   const agora = new Date();
   const buckets: { mes: string; total: number }[] = [];
   for (let i = meses - 1; i >= 0; i--) {
     const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
-    buckets.push({ mes: monthKey(d), total: 0 });
+    buckets.push({ mes: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, total: 0 });
   }
   for (const v of vendas) {
-    const k = monthKey(v.data);
+    const k = cicloDeData(v.data, config, feriados);
     const b = buckets.find((b) => b.mes === k);
     if (b) b.total += v.valor;
   }
@@ -76,7 +98,18 @@ export function metaTotalDoMes(
 // ============================================================
 
 /** Filtra vendas cuja `data` cai dentro do intervalo [period.from, period.to]. */
-export function vendasNoPeriodo(vendas: Venda[], period: Period): Venda[] {
+export function vendasNoPeriodo(
+  vendas: Venda[],
+  period: Period,
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = SEM_FERIADOS,
+): Venda[] {
+  // Período que representa um CICLO → filtra pela MESMA bucketização do resto
+  // do app (cicloDeData). Garante que Dashboard/Ranking batam com Metas e
+  // Financeiro, sem sofrer o deslocamento de fuso do intervalo de datas.
+  if (period.cicloKey) {
+    return vendas.filter((v) => cicloDeData(v.data, config, feriados) === period.cicloKey);
+  }
   const from = period.from.getTime();
   const to = period.to.getTime();
   return vendas.filter((v) => {
@@ -99,6 +132,14 @@ export function metaProporcionalDoVendedor(
   metas: Meta[],
   period: Period,
 ): number {
+  // Período que representa um CICLO de produção → meta CHEIA do ciclo
+  // (sem rateio por dia), buscada pela chave do ciclo.
+  if (period.cicloKey) {
+    const espec = metas.find(
+      (m) => m.vendedorId === vendedor.id && m.anoMes === period.cicloKey,
+    );
+    return espec?.valor ?? vendedor.metaMensal;
+  }
   const cobertura = monthCoverage(period);
   return cobertura.reduce((acc, mc) => {
     const especifica = metas.find(
@@ -132,8 +173,10 @@ export function desempenhoPorPeriodo(
   vendas: Venda[],
   metas: Meta[],
   period: Period,
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = SEM_FERIADOS,
 ): VendedorComDesempenho[] {
-  const doPeriodo = vendasNoPeriodo(vendas, period);
+  const doPeriodo = vendasNoPeriodo(vendas, period, config, feriados);
   return vendedores.map((v) => {
     const minhas = doPeriodo.filter((s) => s.vendedorId === v.id);
     const vendido = totalFaturado(minhas);

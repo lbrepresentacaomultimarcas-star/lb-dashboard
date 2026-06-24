@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Award,
@@ -19,7 +19,8 @@ import { faturamentoMensal } from "@/lib/selectors";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { useCountUp } from "@/lib/use-count-up";
 import { brl, pct } from "@/lib/utils";
-import { formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
+import { formatPeriodLabel, periodFromPreset, type Period, type PeriodPreset } from "@/lib/period";
+import { useCicloProducao } from "@/lib/use-ciclo";
 import type { VendedorComDesempenho } from "@/lib/types";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
@@ -127,16 +128,30 @@ export default function RankingPage() {
   const vendedores = useVendedores();
   const vendas = useVendas();
   const metas = useMetas();
-  const [period, setPeriod] = useState<Period>(() => periodFromPreset("mes-atual"));
+  const { config, feriados } = useCicloProducao();
+  const resolvePreset = useCallback(
+    (p: PeriodPreset) => periodFromPreset(p, new Date(), config, feriados),
+    [config, feriados],
+  );
+  const [period, setPeriod] = useState<Period>(() => resolvePreset("mes-atual"));
+  const periodoTocado = useRef(false);
+  const onChangePeriod = useCallback((p: Period) => {
+    periodoTocado.current = true;
+    setPeriod(p);
+  }, []);
+  useEffect(() => {
+    if (periodoTocado.current) return;
+    setPeriod(resolvePreset("mes-atual"));
+  }, [resolvePreset]);
 
-  const ranking = useRankingPeriodo(period, vendedores, vendas, metas);
+  const ranking = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
   const top3 = ranking.slice(0, 3);
   const resto = ranking.slice(3, 10); // posições 4-10 na tabela
   const total = ranking.reduce((a, d) => a + d.vendido, 0);
   const metaGlobal = ranking.reduce((a, d) => a + d.metaMensal, 0);
   const pctGlobal = metaGlobal > 0 ? (total / metaGlobal) * 100 : 0;
 
-  const serie = useMemo(() => faturamentoMensal(vendas, 8), [vendas]);
+  const serie = useMemo(() => faturamentoMensal(vendas, 8, config, feriados), [vendas, config, feriados]);
   const crescimento = useMemo(() => {
     const s = serie.slice(-2);
     if (s.length < 2 || s[0].total === 0) return 0;
@@ -216,7 +231,7 @@ export default function RankingPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-end justify-end gap-4">
-              <PeriodFilter period={period} onChange={setPeriod} />
+              <PeriodFilter period={period} onChange={onChangePeriod} resolvePreset={resolvePreset} />
               <div className="text-right">
                 <p className="text-[10px] uppercase tracking-widest text-white/50">Total faturamento</p>
                 <div className="flex items-center justify-end gap-2">

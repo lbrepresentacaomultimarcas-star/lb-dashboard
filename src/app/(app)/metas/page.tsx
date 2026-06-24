@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Target } from "lucide-react";
 import { metasApi, useMetas, useVendas, useVendedores } from "@/lib/store";
 import { desempenhoPorVendedor } from "@/lib/selectors";
+import { useCicloProducao } from "@/lib/use-ciclo";
 import { brl, formatNumBR, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { Avatar } from "@/components/avatar";
@@ -31,13 +32,14 @@ export default function MetasPage() {
   const vendedores = useVendedores();
   const metas = useMetas();
   const vendas = useVendas();
-  const meses = useMemo(() => monthsRange(), []);
+  const { config, feriados, chaveAtual } = useCicloProducao();
+  const meses = useMemo(() => monthsRange(chaveAtual), [chaveAtual]);
   const [salvando, setSalvando] = useState<string | null>(null);
 
   const pctById = useMemo(() => {
-    const d = desempenhoPorVendedor(vendedores, vendas, metas, todayMonth());
+    const d = desempenhoPorVendedor(vendedores, vendas, metas, chaveAtual, config, feriados);
     return Object.fromEntries(d.map((x) => [x.id, x.pctMeta])) as Record<string, number>;
-  }, [vendedores, vendas, metas]);
+  }, [vendedores, vendas, metas, chaveAtual, config, feriados]);
 
   function valorAtual(vendedorId: string, anoMes: string, fallback: number) {
     const especifica = metas.find(

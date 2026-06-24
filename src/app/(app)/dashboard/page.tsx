@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DollarSign, Sparkles, Target, TrendingUp, Trophy, UserCircle, Users } from "lucide-react";
 import {
   useClientes,
@@ -19,7 +19,8 @@ import {
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { temPermissao } from "@/lib/permissions";
 import { brl, pct } from "@/lib/utils";
-import { formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
+import { formatPeriodLabel, periodFromPreset, type Period, type PeriodPreset } from "@/lib/period";
+import { useCicloProducao } from "@/lib/use-ciclo";
 import { SalesChart } from "@/components/sales-chart-loader";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
@@ -72,7 +73,23 @@ export default function DashboardPage() {
   const clientes = useClientes();
   const leads = useLeads();
   const metas = useMetas();
-  const [period, setPeriod] = useState<Period>(() => periodFromPreset("mes-atual"));
+  const { config, feriados } = useCicloProducao();
+  const resolvePreset = useCallback(
+    (p: PeriodPreset) => periodFromPreset(p, new Date(), config, feriados),
+    [config, feriados],
+  );
+  const [period, setPeriod] = useState<Period>(() => resolvePreset("mes-atual"));
+  const periodoTocado = useRef(false);
+  const onChangePeriod = useCallback((p: Period) => {
+    periodoTocado.current = true;
+    setPeriod(p);
+  }, []);
+  // Quando a config do ciclo carrega do banco, atualiza o período padrão —
+  // a menos que o usuário já tenha escolhido outro.
+  useEffect(() => {
+    if (periodoTocado.current) return;
+    setPeriod(resolvePreset("mes-atual"));
+  }, [resolvePreset]);
 
   // Gestor (admin/coordenador/supervisor) vê a operação inteira;
   // vendedor vê só os próprios números (já filtrados por RLS).
@@ -82,15 +99,15 @@ export default function DashboardPage() {
   const valorPipeline = leadsAtivos.reduce((acc, l) => acc + l.valorEstimado, 0);
 
   // Vendas/faturamento RESPEITAM o filtro de período.
-  const doPeriodo = vendasNoPeriodo(vendas, period);
+  const doPeriodo = vendasNoPeriodo(vendas, period, config, feriados);
   const fatPeriodo = totalFaturado(doPeriodo);
   const ativos = vendedores.filter((v) => v.ativo).length;
   const metaTotal = metaTotalDoPeriodo(vendedores, metas, period);
   const pctMeta = metaTotal > 0 ? (fatPeriodo / metaTotal) * 100 : 0;
 
-  const ranking = useRankingPeriodo(period, vendedores, vendas, metas);
+  const ranking = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
   // Gráfico mantém visão de 12 meses (tendência histórica) independente do filtro.
-  const serie = faturamentoMensal(vendas, 12);
+  const serie = faturamentoMensal(vendas, 12, config, feriados);
 
   return (
     <PremiumStage>
@@ -108,7 +125,7 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <PeriodFilter period={period} onChange={setPeriod} />
+        <PeriodFilter period={period} onChange={onChangePeriod} resolvePreset={resolvePreset} />
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

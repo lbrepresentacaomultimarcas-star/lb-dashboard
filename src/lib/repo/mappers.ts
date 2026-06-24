@@ -1,4 +1,5 @@
-import type { AuditLog, Cliente, Equipe, Lead, LeadStatus, LeadTipo, Meta, Papel, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, Papel, Producao, Profile, Venda, Vendedor } from "../types";
+import type { ConfigProducao, InicioCiclo } from "../ciclo";
 
 const num = (v: number | string) => (typeof v === "string" ? Number(v) : v);
 
@@ -287,3 +288,59 @@ export const producaoToDb = (p: Partial<Producao>): Partial<DbProducao> => {
   if (p.ativa !== undefined) out.ativa = p.ativa;
   return out;
 };
+
+// ============================================================
+// Feriado (regra de fechamento)
+// ============================================================
+export type DbFeriado = {
+  id: string;
+  data: string;
+  descricao: string | null;
+  criado_em: string;
+};
+
+export const feriadoFromDb = (r: DbFeriado): Feriado => ({
+  id: r.id,
+  data: r.data,
+  descricao: r.descricao ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const feriadoToDb = (f: Partial<Feriado>): Partial<DbFeriado> => {
+  const out: Partial<DbFeriado> = {};
+  if (f.data !== undefined) out.data = f.data;
+  if (f.descricao !== undefined) out.descricao = f.descricao || null;
+  return out;
+};
+
+// ============================================================
+// Config de produção (1 linha por org) — mapeia p/ ConfigProducao do ciclo.ts
+// ============================================================
+export type DbConfigProducao = {
+  org_id: string;
+  dia_base: number | string;
+  prorrogar_dia_util: boolean;
+  considerar_sab_dom: boolean;
+  considerar_feriados: boolean;
+  inicio_proximo_ciclo: InicioCiclo;
+  data_inicio_regra: string;
+  atualizado_em: string;
+};
+
+export const configProducaoFromDb = (r: DbConfigProducao): ConfigProducao => ({
+  diaBase: num(r.dia_base),
+  prorrogarDiaUtil: r.prorrogar_dia_util,
+  considerarSabDom: r.considerar_sab_dom,
+  considerarFeriados: r.considerar_feriados,
+  inicioProximoCiclo: r.inicio_proximo_ciclo,
+  dataInicioRegra: r.data_inicio_regra,
+});
+
+export const configProducaoToDb = (c: ConfigProducao): Partial<DbConfigProducao> => ({
+  dia_base: c.diaBase,
+  prorrogar_dia_util: c.prorrogarDiaUtil,
+  considerar_sab_dom: c.considerarSabDom,
+  considerar_feriados: c.considerarFeriados,
+  inicio_proximo_ciclo: c.inicioProximoCiclo,
+  data_inicio_regra: c.dataInicioRegra,
+});

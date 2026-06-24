@@ -136,6 +136,14 @@ export type Producao = {
   criadoEm: string;
 };
 
+/** Feriado cadastrado pelo admin — usado pela regra de fechamento (ciclo.ts). */
+export type Feriado = {
+  id: string;
+  data: string; // "YYYY-MM-DD"
+  descricao?: string;
+  criadoEm: string;
+};
+
 export type VendedorComDesempenho = Vendedor & {
   vendido: number;
   vendas: number;

@@ -1,4 +1,5 @@
 import { monthLabel } from "./utils";
+import { cicloAtual, cicloPorChave, dataInicioRegraDate, type ConfigProducao } from "./ciclo";
 
 /**
  * Presets de período disponíveis no filtro global.
@@ -24,6 +25,11 @@ export type Period = {
   from: Date;
   to: Date;
   preset: PeriodPreset;
+  /**
+   * Quando o período representa um CICLO de produção (mês de fechamento),
+   * guarda a chave "AAAA-MM" do ciclo — usada pra buscar a meta cheia do ciclo.
+   */
+  cicloKey?: string;
 };
 
 export const PERIOD_LABELS: Record<PeriodPreset, string> = {
@@ -85,7 +91,19 @@ function daysInMonth(year: number, monthZeroBased: number): number {
  *
  * `now` é injectable pra teste; em produção sempre `new Date()`.
  */
-export function periodFromPreset(preset: PeriodPreset, now: Date = new Date()): Period {
+export function periodFromPreset(
+  preset: PeriodPreset,
+  now: Date = new Date(),
+  config?: ConfigProducao,
+  feriados?: Set<string>,
+): Period {
+  // "Mês atual/anterior" passam a significar CICLO DE PRODUÇÃO quando a regra
+  // está configurada. Ciclos inteiramente antes do cutover caem no mês-calendário
+  // (histórico intacto) via `cicloComoPeriodo` retornando null.
+  if ((preset === "mes-atual" || preset === "mes-anterior") && config && feriados) {
+    const ciclo = cicloComoPeriodo(preset, now, config, feriados);
+    if (ciclo) return ciclo;
+  }
   switch (preset) {
     case "hoje":
       return { preset, from: startOfDay(now), to: endOfDay(now) };
@@ -125,6 +143,36 @@ export function periodFromPreset(preset: PeriodPreset, now: Date = new Date()): 
       return { preset: "personalizado", from: startOfDay(from), to: endOfDay(now) };
     }
   }
+}
+
+/** Chave "AAAA-MM" do mês imediatamente anterior a `chave`. */
+function chaveAnterior(chave: string): string {
+  const [y, m] = chave.split("-").map(Number); // m 1-based
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Converte o preset "mes-atual"/"mes-anterior" no CICLO de produção correspondente.
+ * Retorna null quando o ciclo termina antes do cutover (aí o histórico continua
+ * em mês-calendário, regra antiga). No primeiro ciclo, o início é "preso" ao
+ * cutover pra não puxar dias anteriores à virada da regra.
+ */
+function cicloComoPeriodo(
+  preset: "mes-atual" | "mes-anterior",
+  now: Date,
+  config: ConfigProducao,
+  feriados: Set<string>,
+): Period | null {
+  const cutover = dataInicioRegraDate(config);
+  const atual = cicloAtual(config, feriados, now);
+  const alvo =
+    preset === "mes-atual"
+      ? atual
+      : cicloPorChave(chaveAnterior(atual.chave), config, feriados);
+  if (alvo.fim.getTime() < cutover.getTime()) return null; // ciclo todo no passado → calendário
+  const from = alvo.inicio.getTime() >= cutover.getTime() ? alvo.inicio : cutover;
+  return { preset, from: startOfDay(from), to: endOfDay(alvo.fim), cicloKey: alvo.chave };
 }
 
 /**

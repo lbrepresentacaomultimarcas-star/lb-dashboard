@@ -26,6 +26,11 @@ type Props = {
   className?: string;
   /** Lado de abertura. Default "end" (alinha pela direita do trigger). */
   align?: "start" | "end";
+  /**
+   * Resolve um preset em período. Default = `periodFromPreset` (mês-calendário).
+   * Dashboard/Ranking passam um resolver ciente do ciclo de produção.
+   */
+  resolvePreset?: (p: PeriodPreset) => Period;
 };
 
 /**
@@ -36,7 +41,8 @@ type Props = {
  * Quando aberto, mostra opções estilo radio-list e (se "Personalizado")
  * dois inputs de data com botão "Aplicar".
  */
-export function PeriodFilter({ period, onChange, className, align = "end" }: Props) {
+export function PeriodFilter({ period, onChange, className, align = "end", resolvePreset }: Props) {
+  const resolve = resolvePreset ?? ((p: PeriodPreset) => periodFromPreset(p));
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -111,7 +117,7 @@ export function PeriodFilter({ period, onChange, className, align = "end" }: Pro
       onChange(periodFromCustomDates(fromValue, toValue));
       return;
     }
-    onChange(periodFromPreset(p));
+    onChange(resolve(p));
     setOpen(false);
   }
 

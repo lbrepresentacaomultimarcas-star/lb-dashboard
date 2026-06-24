@@ -5,6 +5,7 @@ import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
 import { desempenhoPorPeriodo, desempenhoPorVendedor } from "./selectors";
 import type { Period } from "./period";
 import { periodAsMonth } from "./period";
+import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import type { Meta, Venda, Vendedor, VendedorComDesempenho } from "./types";
 
 type RpcRow = {
@@ -85,8 +86,10 @@ export function useRankingPeriodo(
   vendedores: Vendedor[],
   vendas: Venda[],
   metas: Meta[],
+  config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
+  feriados: Set<string> = new Set(),
 ): VendedorComDesempenho[] {
-  const local = desempenhoPorPeriodo(vendedores, vendas, metas, period).sort(
+  const local = desempenhoPorPeriodo(vendedores, vendas, metas, period, config, feriados).sort(
     (a, b) => b.vendido - a.vendido,
   );
   const anoMes = periodAsMonth(period);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Crown, DollarSign, PiggyBank, TrendingUp, Wallet } from "lucide-react";
 import { useMetas, useVendas, useVendedores } from "@/lib/store";
 import {
@@ -9,7 +9,9 @@ import {
   totalFaturado,
   vendasNoMes,
 } from "@/lib/selectors";
-import { brl, monthKey, monthLabel, todayMonth } from "@/lib/utils";
+import { cicloDeData } from "@/lib/ciclo";
+import { useCicloProducao } from "@/lib/use-ciclo";
+import { brl, monthLabel } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
 import { AnimatedBRL, Sparkline } from "@/components/ui/spark";
@@ -19,21 +21,28 @@ export default function FinanceiroPage() {
   const vendas = useVendas();
   const metas = useMetas();
 
-  const mesAtual = todayMonth();
+  const { config, feriados, chaveAtual } = useCicloProducao();
+  const mesAtual = chaveAtual;
   const mesesDisp = useMemo(() => {
-    const set = new Set(vendas.map((v) => monthKey(v.data)));
+    const set = new Set(vendas.map((v) => cicloDeData(v.data, config, feriados)));
     set.add(mesAtual);
     return Array.from(set).sort().reverse();
-  }, [vendas, mesAtual]);
+  }, [vendas, mesAtual, config, feriados]);
 
   const [mes, setMes] = useState(mesAtual);
-  const doMes = vendasNoMes(vendas, mes);
+  const mesTocado = useRef(false);
+  // Segue o ciclo atual enquanto o usuário não escolher um mês na lista.
+  useEffect(() => {
+    if (mesTocado.current) return;
+    setMes(chaveAtual);
+  }, [chaveAtual]);
+  const doMes = vendasNoMes(vendas, mes, config, feriados);
   const fatMes = totalFaturado(doMes);
-  const desempenho = desempenhoPorVendedor(vendedores, vendas, metas, mes);
+  const desempenho = desempenhoPorVendedor(vendedores, vendas, metas, mes, config, feriados);
   const comissaoTotal = desempenho.reduce((acc, d) => acc + d.comissao, 0);
   const lucroEstimado = fatMes - comissaoTotal;
 
-  const serie = faturamentoMensal(vendas, 6);
+  const serie = faturamentoMensal(vendas, 6, config, feriados);
   const serieTotals = serie.map((s) => s.total);
   const mediaUltimos = serieTotals.reduce((acc, t) => acc + t, 0) / Math.max(serieTotals.length, 1);
   const previsao = mediaUltimos;
@@ -67,7 +76,10 @@ export default function FinanceiroPage() {
         </div>
         <select
           value={mes}
-          onChange={(e) => setMes(e.target.value)}
+          onChange={(e) => {
+            mesTocado.current = true;
+            setMes(e.target.value);
+          }}
           className="h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white backdrop-blur"
         >
           {mesesDisp.map((m) => (

@@ -7,6 +7,10 @@ import {
   auditToDb,
   clienteFromDb,
   clienteToDb,
+  configProducaoFromDb,
+  configProducaoToDb,
+  feriadoFromDb,
+  feriadoToDb,
   leadFromDb,
   leadToDb,
   metaFromDb,
@@ -17,6 +21,8 @@ import {
   vendedorToDb,
   type DbAuditLog,
   type DbCliente,
+  type DbConfigProducao,
+  type DbFeriado,
   type DbLead,
   type DbMeta,
   type DbVenda,
@@ -25,12 +31,14 @@ import {
 import type {
   AuditLog,
   Cliente,
+  Feriado,
   Lead,
   Meta,
   SessionUser,
   Venda,
   Vendedor,
 } from "./types";
+import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import { uid } from "./utils";
 
 // ============================================================
@@ -42,6 +50,8 @@ const K_CLIENTES = "lb:clientes";
 const K_LEADS = "lb:leads";
 const K_METAS = "lb:metas";
 const K_AUDIT = "lb:audit";
+const K_FERIADOS = "lb:feriados";
+const K_CONFIG_PROD = "lb:config_producao";
 const K_SESSION = "lb:session";
 
 // ============================================================
@@ -53,6 +63,8 @@ type State = {
   clientes: Cliente[];
   leads: Lead[];
   metas: Meta[];
+  feriados: Feriado[];
+  configProducao: ConfigProducao;
   audit: AuditLog[];
   session: SessionUser | null;
   ready: boolean;
@@ -64,6 +76,8 @@ const state: State = {
   clientes: [],
   leads: [],
   metas: [],
+  feriados: [],
+  configProducao: CONFIG_PRODUCAO_PADRAO,
   audit: [],
   session: null,
   ready: false,
@@ -319,6 +333,8 @@ export function initStore(): Promise<void> {
           reloadClientes(),
           reloadLeads(),
           reloadMetas(),
+          reloadFeriados(),
+          reloadConfigProducao(),
           reloadAudit(),
         ]);
         attachRealtime();
@@ -333,6 +349,8 @@ export function initStore(): Promise<void> {
       state.clientes = lsRead<Cliente[]>(K_CLIENTES, []);
       state.leads = lsRead<Lead[]>(K_LEADS, []);
       state.metas = lsRead<Meta[]>(K_METAS, []);
+      state.feriados = lsRead<Feriado[]>(K_FERIADOS, []);
+      state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
       state.session = lsRead<SessionUser | null>(K_SESSION, null);
     }
@@ -394,6 +412,25 @@ async function reloadMetas() {
     notify();
   }
 }
+async function reloadFeriados() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb.from("feriados").select("*").order("data", { ascending: true });
+  if (!error && data) {
+    state.feriados = (data as DbFeriado[]).map(feriadoFromDb);
+    notify();
+  }
+}
+async function reloadConfigProducao() {
+  const sb = supabaseBrowser();
+  // 1 linha por org (ou nenhuma). Sem linha → mantém o padrão SEGURO (desligado).
+  const { data, error } = await sb.from("config_producao").select("*").maybeSingle();
+  if (!error) {
+    state.configProducao = data
+      ? configProducaoFromDb(data as DbConfigProducao)
+      : CONFIG_PRODUCAO_PADRAO;
+    notify();
+  }
+}
 
 /**
  * Re-busca todos os datasets do store em paralelo. Usado pelo botão
@@ -408,6 +445,8 @@ export async function reloadAllData(): Promise<void> {
     reloadClientes(),
     reloadLeads(),
     reloadMetas(),
+    reloadFeriados(),
+    reloadConfigProducao(),
     reloadAudit(),
   ]);
 }
@@ -425,6 +464,8 @@ function attachRealtime() {
   sub("clientes", reloadClientes);
   sub("leads", reloadLeads);
   sub("metas", reloadMetas);
+  sub("feriados", reloadFeriados);
+  sub("config_producao", reloadConfigProducao);
   sub("audit_log", reloadAudit);
 }
 
@@ -448,6 +489,12 @@ export function useAudit(): AuditLog[] {
 }
 export function useMetas(): Meta[] {
   return useSyncExternalStore(subscribe, () => state.metas, () => state.metas);
+}
+export function useFeriados(): Feriado[] {
+  return useSyncExternalStore(subscribe, () => state.feriados, () => state.feriados);
+}
+export function useConfigProducao(): ConfigProducao {
+  return useSyncExternalStore(subscribe, () => state.configProducao, () => state.configProducao);
 }
 export function useSession(): SessionUser | null {
   return useSyncExternalStore(subscribe, () => state.session, () => state.session);
@@ -696,6 +743,82 @@ export const metasApi = {
 };
 
 // ============================================================
+// API — feriados (regra de fechamento)
+// ============================================================
+export const feriadosApi = {
+  async add(input: { data: string; descricao?: string }) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb.from("feriados").insert(feriadoToDb(input)).select().single();
+      if (error) throw error;
+      state.feriados = [...state.feriados, feriadoFromDb(data as DbFeriado)].sort((a, b) =>
+        a.data.localeCompare(b.data),
+      );
+    } else {
+      const novo: Feriado = {
+        id: uid(),
+        data: input.data,
+        descricao: input.descricao,
+        criadoEm: new Date().toISOString(),
+      };
+      state.feriados = [...state.feriados, novo].sort((a, b) => a.data.localeCompare(b.data));
+      lsWrite(K_FERIADOS, state.feriados);
+    }
+    notify();
+    void logAudit({
+      acao: "criar",
+      entidade: "feriado",
+      detalhes: `${input.data}${input.descricao ? ` — ${input.descricao}` : ""}`,
+    });
+  },
+  async remove(id: string) {
+    const f = state.feriados.find((x) => x.id === id);
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("feriados").delete().eq("id", id);
+      if (error) throw error;
+    }
+    state.feriados = state.feriados.filter((x) => x.id !== id);
+    if (!supabaseEnabled) lsWrite(K_FERIADOS, state.feriados);
+    notify();
+    void logAudit({ acao: "remover", entidade: "feriado", entidadeId: id, detalhes: f?.data });
+  },
+};
+
+// ============================================================
+// API — config de produção (1 linha por org)
+// ============================================================
+export const configProducaoApi = {
+  async save(cfg: ConfigProducao) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      // Existe linha? Atualiza. Senão, insere (org_id preenchido pelo default da tabela).
+      const { data: existing } = await sb.from("config_producao").select("org_id").maybeSingle();
+      if (existing) {
+        const { error } = await sb
+          .from("config_producao")
+          .update({ ...configProducaoToDb(cfg), atualizado_em: new Date().toISOString() })
+          .eq("org_id", (existing as { org_id: string }).org_id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("config_producao").insert(configProducaoToDb(cfg));
+        if (error) throw error;
+      }
+      state.configProducao = cfg;
+    } else {
+      state.configProducao = cfg;
+      lsWrite(K_CONFIG_PROD, cfg);
+    }
+    notify();
+    void logAudit({
+      acao: "editar",
+      entidade: "config_producao",
+      detalhes: `dia ${cfg.diaBase} · início ${cfg.dataInicioRegra}`,
+    });
+  },
+};
+
+// ============================================================
 // API — sessão
 // ============================================================
 export const sessionApi = {
@@ -713,6 +836,8 @@ export const sessionApi = {
         reloadClientes(),
         reloadLeads(),
         reloadMetas(),
+        reloadFeriados(),
+        reloadConfigProducao(),
         reloadAudit(),
       ]);
       attachRealtime();
@@ -730,6 +855,8 @@ export const sessionApi = {
       state.clientes = lsRead<Cliente[]>(K_CLIENTES, []);
       state.leads = lsRead<Lead[]>(K_LEADS, []);
       state.metas = lsRead<Meta[]>(K_METAS, []);
+      state.feriados = lsRead<Feriado[]>(K_FERIADOS, []);
+      state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
     }
     notify();
@@ -760,6 +887,8 @@ export const sessionApi = {
     state.clientes = [];
     state.leads = [];
     state.metas = [];
+    state.feriados = [];
+    state.configProducao = CONFIG_PRODUCAO_PADRAO;
     notify();
     void logAudit({ acao: "logout", entidade: "sessao", detalhes: email });
   },
