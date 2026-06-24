@@ -37,6 +37,7 @@ export const NAV: (NavItem | NavGroup)[] = [
     icon: Trophy,
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
+      { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
     ],
   },
@@ -58,6 +59,7 @@ export const NAV: (NavItem | NavGroup)[] = [
       { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
       { href: "/admin/producoes", label: "Produções", icon: BarChart3, minimo: "admin" },
       { href: "/admin/fechamento", label: "Fechamento", icon: CalendarClock, minimo: "admin" },
+      { href: "/admin/performance", label: "Índice de Performance", icon: Trophy, minimo: "admin" },
       { href: "/vendedores", label: "Vendedores", icon: Users, minimo: "supervisor" },
     ],
   },

@@ -6,6 +6,7 @@ import {
   useClientes,
   useLeads,
   useMetas,
+  usePerformanceConfig,
   useSession,
   useVendas,
   useVendedores,
@@ -21,6 +22,9 @@ import { temPermissao } from "@/lib/permissions";
 import { brl, pct } from "@/lib/utils";
 import { formatPeriodLabel, periodFromPreset, type Period, type PeriodPreset } from "@/lib/period";
 import { useCicloProducao } from "@/lib/use-ciclo";
+import { usePerformanceEquipe } from "@/lib/use-performance";
+import { versusMeta } from "@/lib/performance";
+import { EvolucaoTag, FaixaBadge } from "@/components/perf-badge";
 import { SalesChart } from "@/components/sales-chart-loader";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
@@ -105,6 +109,12 @@ export default function DashboardPage() {
   const metaTotal = metaTotalDoPeriodo(vendedores, metas, period);
   const pctMeta = metaTotal > 0 ? (fatPeriodo / metaTotal) * 100 : 0;
 
+  // Performance comercial (Índice LB) — bloco aditivo, não mexe nos números acima.
+  const perfConfig = usePerformanceConfig();
+  const { linhas: perfLinhas, media: perfMedia } = usePerformanceEquipe();
+  const minhaPerf = perfLinhas.find((l) => l.vendedor.id === session?.vendedorId) ?? null;
+  const perfFoco = minhaPerf ?? perfLinhas[0] ?? null;
+
   const ranking = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
   // Gráfico mantém visão de 12 meses (tendência histórica) independente do filtro.
   const serie = faturamentoMensal(vendas, 12, config, feriados);
@@ -173,6 +183,58 @@ export default function DashboardPage() {
           delay={0.18}
         />
       </div>
+
+      {/* PERFORMANCE COMERCIAL (Índice LB) — aditivo */}
+      {perfFoco && (
+        <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-white">
+              <Trophy className="h-4 w-4 text-yellow-300" />
+              {minhaPerf ? "Minha Performance" : "Performance da equipe"}
+            </h2>
+            <div className="flex items-center gap-2">
+              <FaixaBadge faixa={perfFoco.resultado.faixa} />
+              <EvolucaoTag tendencia={perfFoco.tendencia} delta={perfFoco.delta} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+            <div>
+              <p className="text-3xl font-extrabold tabular-nums text-white">
+                {perfFoco.resultado.nota.toFixed(1)}<span className="text-base text-white/40">%</span>
+              </p>
+              {(() => {
+                const vm = versusMeta(perfFoco.resultado.nota, perfConfig.metas.metaEmpresa);
+                return (
+                  <p className="text-[11px] font-semibold" style={{ color: vm.atingiu ? "#22C55E" : "#fb923c" }}>
+                    Meta {Math.round(perfConfig.metas.metaEmpresa)}% ·{" "}
+                    {vm.atingiu ? `acima em ${vm.diferenca.toFixed(0)}%` : `faltam ${vm.diferenca.toFixed(0)}%`}
+                  </p>
+                );
+              })()}
+            </div>
+            <p className="text-[11px] text-white/55">
+              {perfFoco.comparacao >= 0 ? "▲" : "▼"} {Math.abs(perfFoco.comparacao).toFixed(0)}%{" "}
+              {perfFoco.comparacao >= 0 ? "acima" : "abaixo"} da média ({perfMedia.toFixed(0)}%)
+              {perfFoco.notaAnterior != null && <> · ciclo anterior {perfFoco.notaAnterior.toFixed(0)}%</>}
+            </p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Conversão", v: `${Math.round(perfFoco.resultado.conversaoPct)}%` },
+              { label: "Agendamentos", v: perfFoco.brutos.agendamentos },
+              { label: "Propostas", v: perfFoco.brutos.propostas },
+              { label: "Fechamentos", v: perfFoco.brutos.fechados },
+            ].map((m) => (
+              <div key={m.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] uppercase tracking-wider text-white/45">{m.label}</p>
+                <p className="text-xl font-bold tabular-nums text-white">{m.v}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {gestor && (
         <div className="grid gap-4 sm:grid-cols-3">

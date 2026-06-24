@@ -1,5 +1,6 @@
-import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, Papel, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
+import type { ConfigPerformance } from "../performance";
 
 const num = (v: number | string) => (typeof v === "string" ? Number(v) : v);
 
@@ -344,3 +345,104 @@ export const configProducaoToDb = (c: ConfigProducao): Partial<DbConfigProducao>
   inicio_proximo_ciclo: c.inicioProximoCiclo,
   data_inicio_regra: c.dataInicioRegra,
 });
+
+// ============================================================
+// Performance config (1 linha por org) — pesos + metas
+// ============================================================
+export type DbPerformanceConfig = {
+  org_id: string;
+  peso_conversao: number | string;
+  peso_fechamentos: number | string;
+  peso_agendamentos: number | string;
+  peso_propostas: number | string;
+  peso_atualizacao: number | string;
+  meta_conversao: number | string;
+  meta_fechamentos: number | string;
+  meta_agendamentos: number | string;
+  meta_propostas: number | string;
+  dias_frescor: number | string;
+  limiar_evolucao: number | string;
+  meta_empresa: number | string;
+  atualizado_em: string;
+};
+
+export const performanceConfigFromDb = (r: DbPerformanceConfig): ConfigPerformance => ({
+  pesos: {
+    conversao: num(r.peso_conversao),
+    fechamentos: num(r.peso_fechamentos),
+    agendamentos: num(r.peso_agendamentos),
+    propostas: num(r.peso_propostas),
+    atualizacao: num(r.peso_atualizacao),
+  },
+  metas: {
+    conversao: num(r.meta_conversao),
+    fechamentos: num(r.meta_fechamentos),
+    agendamentos: num(r.meta_agendamentos),
+    propostas: num(r.meta_propostas),
+    diasFrescor: num(r.dias_frescor),
+    limiarEvolucao: num(r.limiar_evolucao),
+    metaEmpresa: num(r.meta_empresa ?? 80),
+  },
+});
+
+export const performanceConfigToDb = (c: ConfigPerformance): Partial<DbPerformanceConfig> => ({
+  peso_conversao: c.pesos.conversao,
+  peso_fechamentos: c.pesos.fechamentos,
+  peso_agendamentos: c.pesos.agendamentos,
+  peso_propostas: c.pesos.propostas,
+  peso_atualizacao: c.pesos.atualizacao,
+  meta_conversao: c.metas.conversao,
+  meta_fechamentos: c.metas.fechamentos,
+  meta_agendamentos: c.metas.agendamentos,
+  meta_propostas: c.metas.propostas,
+  dias_frescor: c.metas.diasFrescor,
+  limiar_evolucao: c.metas.limiarEvolucao,
+  meta_empresa: c.metas.metaEmpresa,
+});
+
+// ============================================================
+// Performance histórico (snapshot por vendedor/ciclo)
+// ============================================================
+export type DbPerformanceHistorico = {
+  id: string;
+  vendedor_id: string;
+  ciclo: string;
+  nota: number | string;
+  sub_conversao: number | string;
+  sub_fechamentos: number | string;
+  sub_agendamentos: number | string;
+  sub_propostas: number | string;
+  sub_atualizacao: number | string;
+  classificacao: string;
+  criado_em: string;
+};
+
+export const performanceSnapFromDb = (r: DbPerformanceHistorico): PerformanceSnapshot => ({
+  id: r.id,
+  vendedorId: r.vendedor_id,
+  ciclo: r.ciclo,
+  nota: num(r.nota),
+  subConversao: num(r.sub_conversao),
+  subFechamentos: num(r.sub_fechamentos),
+  subAgendamentos: num(r.sub_agendamentos),
+  subPropostas: num(r.sub_propostas),
+  subAtualizacao: num(r.sub_atualizacao),
+  classificacao: r.classificacao,
+  criadoEm: r.criado_em,
+});
+
+export const performanceSnapToDb = (
+  s: Partial<PerformanceSnapshot>,
+): Partial<DbPerformanceHistorico> => {
+  const out: Partial<DbPerformanceHistorico> = {};
+  if (s.vendedorId !== undefined) out.vendedor_id = s.vendedorId;
+  if (s.ciclo !== undefined) out.ciclo = s.ciclo;
+  if (s.nota !== undefined) out.nota = s.nota;
+  if (s.subConversao !== undefined) out.sub_conversao = s.subConversao;
+  if (s.subFechamentos !== undefined) out.sub_fechamentos = s.subFechamentos;
+  if (s.subAgendamentos !== undefined) out.sub_agendamentos = s.subAgendamentos;
+  if (s.subPropostas !== undefined) out.sub_propostas = s.subPropostas;
+  if (s.subAtualizacao !== undefined) out.sub_atualizacao = s.subAtualizacao;
+  if (s.classificacao !== undefined) out.classificacao = s.classificacao;
+  return out;
+};

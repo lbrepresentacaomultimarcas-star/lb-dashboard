@@ -15,6 +15,10 @@ import {
   leadToDb,
   metaFromDb,
   metaToDb,
+  performanceConfigFromDb,
+  performanceConfigToDb,
+  performanceSnapFromDb,
+  performanceSnapToDb,
   vendaFromDb,
   vendaToDb,
   vendedorFromDb,
@@ -25,6 +29,8 @@ import {
   type DbFeriado,
   type DbLead,
   type DbMeta,
+  type DbPerformanceConfig,
+  type DbPerformanceHistorico,
   type DbVenda,
   type DbVendedor,
 } from "./repo/mappers";
@@ -34,11 +40,13 @@ import type {
   Feriado,
   Lead,
   Meta,
+  PerformanceSnapshot,
   SessionUser,
   Venda,
   Vendedor,
 } from "./types";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
+import { CONFIG_PERFORMANCE_PADRAO, type ConfigPerformance } from "./performance";
 import { uid } from "./utils";
 
 // ============================================================
@@ -52,6 +60,8 @@ const K_METAS = "lb:metas";
 const K_AUDIT = "lb:audit";
 const K_FERIADOS = "lb:feriados";
 const K_CONFIG_PROD = "lb:config_producao";
+const K_PERF_CONFIG = "lb:performance_config";
+const K_PERF_HIST = "lb:performance_historico";
 const K_SESSION = "lb:session";
 
 // ============================================================
@@ -65,6 +75,8 @@ type State = {
   metas: Meta[];
   feriados: Feriado[];
   configProducao: ConfigProducao;
+  performanceConfig: ConfigPerformance;
+  performanceHistorico: PerformanceSnapshot[];
   audit: AuditLog[];
   session: SessionUser | null;
   ready: boolean;
@@ -78,6 +90,8 @@ const state: State = {
   metas: [],
   feriados: [],
   configProducao: CONFIG_PRODUCAO_PADRAO,
+  performanceConfig: CONFIG_PERFORMANCE_PADRAO,
+  performanceHistorico: [],
   audit: [],
   session: null,
   ready: false,
@@ -335,6 +349,8 @@ export function initStore(): Promise<void> {
           reloadMetas(),
           reloadFeriados(),
           reloadConfigProducao(),
+          reloadPerformanceConfig(),
+          reloadPerformanceHistorico(),
           reloadAudit(),
         ]);
         attachRealtime();
@@ -351,6 +367,8 @@ export function initStore(): Promise<void> {
       state.metas = lsRead<Meta[]>(K_METAS, []);
       state.feriados = lsRead<Feriado[]>(K_FERIADOS, []);
       state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
+      state.performanceConfig = lsRead<ConfigPerformance>(K_PERF_CONFIG, CONFIG_PERFORMANCE_PADRAO);
+      state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
       state.session = lsRead<SessionUser | null>(K_SESSION, null);
     }
@@ -431,6 +449,27 @@ async function reloadConfigProducao() {
     notify();
   }
 }
+async function reloadPerformanceConfig() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb.from("performance_config").select("*").maybeSingle();
+  if (!error) {
+    state.performanceConfig = data
+      ? performanceConfigFromDb(data as DbPerformanceConfig)
+      : CONFIG_PERFORMANCE_PADRAO;
+    notify();
+  }
+}
+async function reloadPerformanceHistorico() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb
+    .from("performance_historico")
+    .select("*")
+    .order("ciclo", { ascending: false });
+  if (!error && data) {
+    state.performanceHistorico = (data as DbPerformanceHistorico[]).map(performanceSnapFromDb);
+    notify();
+  }
+}
 
 /**
  * Re-busca todos os datasets do store em paralelo. Usado pelo botão
@@ -447,6 +486,8 @@ export async function reloadAllData(): Promise<void> {
     reloadMetas(),
     reloadFeriados(),
     reloadConfigProducao(),
+    reloadPerformanceConfig(),
+    reloadPerformanceHistorico(),
     reloadAudit(),
   ]);
 }
@@ -466,6 +507,8 @@ function attachRealtime() {
   sub("metas", reloadMetas);
   sub("feriados", reloadFeriados);
   sub("config_producao", reloadConfigProducao);
+  sub("performance_config", reloadPerformanceConfig);
+  sub("performance_historico", reloadPerformanceHistorico);
   sub("audit_log", reloadAudit);
 }
 
@@ -495,6 +538,12 @@ export function useFeriados(): Feriado[] {
 }
 export function useConfigProducao(): ConfigProducao {
   return useSyncExternalStore(subscribe, () => state.configProducao, () => state.configProducao);
+}
+export function usePerformanceConfig(): ConfigPerformance {
+  return useSyncExternalStore(subscribe, () => state.performanceConfig, () => state.performanceConfig);
+}
+export function usePerformanceHistorico(): PerformanceSnapshot[] {
+  return useSyncExternalStore(subscribe, () => state.performanceHistorico, () => state.performanceHistorico);
 }
 export function useSession(): SessionUser | null {
   return useSyncExternalStore(subscribe, () => state.session, () => state.session);
@@ -819,6 +868,67 @@ export const configProducaoApi = {
 };
 
 // ============================================================
+// API — config de performance (1 linha por org)
+// ============================================================
+export const performanceConfigApi = {
+  async save(cfg: ConfigPerformance) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data: existing } = await sb.from("performance_config").select("org_id").maybeSingle();
+      if (existing) {
+        const { error } = await sb
+          .from("performance_config")
+          .update({ ...performanceConfigToDb(cfg), atualizado_em: new Date().toISOString() })
+          .eq("org_id", (existing as { org_id: string }).org_id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("performance_config").insert(performanceConfigToDb(cfg));
+        if (error) throw error;
+      }
+      state.performanceConfig = cfg;
+    } else {
+      state.performanceConfig = cfg;
+      lsWrite(K_PERF_CONFIG, cfg);
+    }
+    notify();
+    void logAudit({ acao: "editar", entidade: "performance_config", detalhes: "pesos/metas" });
+  },
+};
+
+// ============================================================
+// API — histórico de performance (snapshot por vendedor/ciclo)
+// ============================================================
+export const performanceHistoricoApi = {
+  async upsert(snap: Omit<PerformanceSnapshot, "id" | "criadoEm">) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from("performance_historico")
+        .upsert(performanceSnapToDb(snap), { onConflict: "org_id,vendedor_id,ciclo" })
+        .select()
+        .single();
+      if (error) throw error;
+      const novo = performanceSnapFromDb(data as DbPerformanceHistorico);
+      const idx = state.performanceHistorico.findIndex(
+        (h) => h.vendedorId === snap.vendedorId && h.ciclo === snap.ciclo,
+      );
+      if (idx >= 0) state.performanceHistorico = state.performanceHistorico.map((h, i) => (i === idx ? novo : h));
+      else state.performanceHistorico = [novo, ...state.performanceHistorico];
+    } else {
+      const idx = state.performanceHistorico.findIndex(
+        (h) => h.vendedorId === snap.vendedorId && h.ciclo === snap.ciclo,
+      );
+      const existenteId = idx >= 0 ? state.performanceHistorico[idx].id : uid();
+      const novo: PerformanceSnapshot = { ...snap, id: existenteId, criadoEm: new Date().toISOString() };
+      if (idx >= 0) state.performanceHistorico = state.performanceHistorico.map((h, i) => (i === idx ? novo : h));
+      else state.performanceHistorico = [novo, ...state.performanceHistorico];
+      lsWrite(K_PERF_HIST, state.performanceHistorico);
+    }
+    notify();
+  },
+};
+
+// ============================================================
 // API — sessão
 // ============================================================
 export const sessionApi = {
@@ -838,6 +948,8 @@ export const sessionApi = {
         reloadMetas(),
         reloadFeriados(),
         reloadConfigProducao(),
+        reloadPerformanceConfig(),
+        reloadPerformanceHistorico(),
         reloadAudit(),
       ]);
       attachRealtime();
@@ -857,6 +969,8 @@ export const sessionApi = {
       state.metas = lsRead<Meta[]>(K_METAS, []);
       state.feriados = lsRead<Feriado[]>(K_FERIADOS, []);
       state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
+      state.performanceConfig = lsRead<ConfigPerformance>(K_PERF_CONFIG, CONFIG_PERFORMANCE_PADRAO);
+      state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
     }
     notify();
@@ -889,6 +1003,8 @@ export const sessionApi = {
     state.metas = [];
     state.feriados = [];
     state.configProducao = CONFIG_PRODUCAO_PADRAO;
+    state.performanceConfig = CONFIG_PERFORMANCE_PADRAO;
+    state.performanceHistorico = [];
     notify();
     void logAudit({ acao: "logout", entidade: "sessao", detalhes: email });
   },

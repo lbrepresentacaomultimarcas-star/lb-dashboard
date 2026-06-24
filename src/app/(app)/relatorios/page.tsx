@@ -11,6 +11,9 @@ import {
 } from "@/lib/store";
 import { desempenhoPorVendedor, faturamentoMensal } from "@/lib/selectors";
 import { useCicloProducao } from "@/lib/use-ciclo";
+import { usePerformanceEquipe } from "@/lib/use-performance";
+import { FAIXA_INFO, type FaixaPerf } from "@/lib/performance";
+import { EvolucaoTag } from "@/components/perf-badge";
 import { brl, monthLabel, pct } from "@/lib/utils";
 import { exportBackupJson, exportCsv, exportPdf, exportXlsx } from "@/lib/export";
 import { notify } from "@/lib/notify";
@@ -29,6 +32,7 @@ export default function RelatoriosPage() {
   const leads = useLeads();
   const metas = useMetas();
   const { config, feriados, chaveAtual } = useCicloProducao();
+  const { linhas: perfLinhas, media: perfMedia } = usePerformanceEquipe();
   const serie12 = useMemo(() => faturamentoMensal(vendas, 12, config, feriados), [vendas, config, feriados]);
   const ranking = useMemo(
     () =>
@@ -257,6 +261,59 @@ export default function RelatoriosPage() {
               <p className="py-8 text-center text-sm text-white/45">Sem dados ainda.</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* PERFORMANCE DA EQUIPE (Índice LB) — aditivo, separado do ranking de vendas */}
+      <div className="lb-card-premium lb-fade-up overflow-hidden rounded-2xl">
+        <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
+          <Trophy className="h-4 w-4 text-yellow-300" />
+          <h2 className="text-sm font-bold uppercase tracking-wider text-white">Performance da equipe (Índice LB)</h2>
+          <span className="ml-auto text-[11px] text-white/45">média {perfMedia.toFixed(0)}%</span>
+        </div>
+        <div className="lb-scroll overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
+                <th className="px-5 py-3">#</th>
+                <th className="px-5 py-3">Vendedor</th>
+                <th className="px-5 py-3 text-right">Nota</th>
+                <th className="hidden px-5 py-3 sm:table-cell">Classificação</th>
+                <th className="hidden px-5 py-3 text-right md:table-cell">Conversão</th>
+                <th className="px-5 py-3 text-right">Evolução</th>
+                <th className="hidden px-5 py-3 text-right md:table-cell">vs equipe</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {perfLinhas.map((l, i) => (
+                <tr key={l.vendedor.id} className="transition-colors hover:bg-white/[0.04]">
+                  <td className="px-5 py-3 font-bold tabular-nums text-white/60">{i + 1}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <Avatar id={l.vendedor.id} nome={l.vendedor.nome} size={26} />
+                      <span className="min-w-0 truncate font-medium text-white">{l.vendedor.nome}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 text-right font-bold tabular-nums" style={{ color: FAIXA_INFO[l.resultado.faixa as FaixaPerf].cor }}>
+                    {l.resultado.nota.toFixed(1)}%
+                  </td>
+                  <td className="hidden px-5 py-3 sm:table-cell">
+                    <span className="text-xs" style={{ color: FAIXA_INFO[l.resultado.faixa as FaixaPerf].cor }}>
+                      {FAIXA_INFO[l.resultado.faixa as FaixaPerf].label}
+                    </span>
+                  </td>
+                  <td className="hidden px-5 py-3 text-right text-white/70 tabular-nums md:table-cell">{Math.round(l.resultado.conversaoPct)}%</td>
+                  <td className="px-5 py-3 text-right"><EvolucaoTag tendencia={l.tendencia} delta={l.delta} /></td>
+                  <td className="hidden px-5 py-3 text-right tabular-nums md:table-cell" style={{ color: l.comparacao >= 0 ? "#22C55E" : "#f43f5e" }}>
+                    {l.comparacao >= 0 ? "+" : ""}{l.comparacao.toFixed(0)}%
+                  </td>
+                </tr>
+              ))}
+              {perfLinhas.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-white/45">Sem dados de performance ainda.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </PremiumStage>

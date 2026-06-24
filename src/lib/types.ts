@@ -144,6 +144,21 @@ export type Feriado = {
   criadoEm: string;
 };
 
+/** Snapshot mensal do Índice de Performance (1 por vendedor por ciclo). */
+export type PerformanceSnapshot = {
+  id: string;
+  vendedorId: string;
+  ciclo: string; // "AAAA-MM"
+  nota: number;
+  subConversao: number;
+  subFechamentos: number;
+  subAgendamentos: number;
+  subPropostas: number;
+  subAtualizacao: number;
+  classificacao: string;
+  criadoEm: string;
+};
+
 export type VendedorComDesempenho = Vendedor & {
   vendido: number;
   vendas: number;

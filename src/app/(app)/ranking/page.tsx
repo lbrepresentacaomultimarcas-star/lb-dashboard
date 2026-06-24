@@ -21,9 +21,12 @@ import { useCountUp } from "@/lib/use-count-up";
 import { brl, pct } from "@/lib/utils";
 import { formatPeriodLabel, periodFromPreset, type Period, type PeriodPreset } from "@/lib/period";
 import { useCicloProducao } from "@/lib/use-ciclo";
+import { usePerformanceEquipe } from "@/lib/use-performance";
+import { FAIXA_INFO, type FaixaPerf } from "@/lib/performance";
 import type { VendedorComDesempenho } from "@/lib/types";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
+import { EvolucaoTag } from "@/components/perf-badge";
 import { PeriodFilter } from "@/components/period-filter";
 
 const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º
@@ -129,6 +132,7 @@ export default function RankingPage() {
   const vendas = useVendas();
   const metas = useMetas();
   const { config, feriados } = useCicloProducao();
+  const { linhas: perfLinhas } = usePerformanceEquipe();
   const resolvePreset = useCallback(
     (p: PeriodPreset) => periodFromPreset(p, new Date(), config, feriados),
     [config, feriados],
@@ -464,6 +468,29 @@ export default function RankingPage() {
               <p className="text-sm font-bold text-white">Representações</p>
             </div>
           </div>
+
+          {/* Índice de Performance (aditivo — separado do ranking de vendas) */}
+          {perfLinhas.length > 0 && (
+            <div className="lb-glass lb-fade-up rounded-2xl p-4">
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
+                <Sparkles className="h-4 w-4 text-amber-300" /> Índice de Performance
+              </p>
+              <div className="space-y-2">
+                {perfLinhas.slice(0, 5).map((l, i) => (
+                  <div key={l.vendedor.id} className="flex items-center gap-2">
+                    <span className="w-4 shrink-0 text-[11px] font-bold tabular-nums text-white/50">{i + 1}</span>
+                    <Avatar id={l.vendedor.id} nome={l.vendedor.nome} size={26} />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-white">{l.vendedor.nome}</span>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: FAIXA_INFO[l.resultado.faixa as FaixaPerf].cor }}>
+                      {l.resultado.nota.toFixed(0)}%
+                    </span>
+                    <EvolucaoTag tendencia={l.tendencia} delta={l.delta} />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-white/35">Desempenho comercial — não é o ranking de vendas.</p>
+            </div>
+          )}
 
           {/* Desempenho geral */}
           <div className="lb-glass lb-fade-up rounded-2xl p-4">
