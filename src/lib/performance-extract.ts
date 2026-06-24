@@ -1,19 +1,21 @@
 /**
- * Extração dos indicadores brutos de performance a partir dos dados que JÁ
- * existem (leads, vendas, audit_log), por vendedor e por CICLO de produção.
- * Função PURA (sem store, sem React) → testável isolada.
+ * Extração dos indicadores brutos de performance EXCLUSIVAMENTE do funil que já
+ * existe: os leads e a MOVIMENTAÇÃO real dos cards entre etapas (audit_log).
+ * Nenhum contador paralelo, nenhuma tabela de vendas, nenhum dado que o vendedor
+ * precise alimentar. Função PURA (sem store, sem React) → testável isolada.
  *
- * Definições (v1, documentadas):
- * - fechados      = vendas do vendedor no ciclo (cicloDeData(venda.data)).
- * - agendamentos  = transições "→ reuniao_agendada" no ciclo (audit_log),
- *                   atribuídas ao DONO ATUAL do lead.
+ * Definições (tudo do funil):
+ * - fechados      = chegadas do card em "Fechado" no ciclo (transição "→ fechamento").
+ * - perdidos      = chegadas do card em "Perdido" no ciclo (transição "→ perdido").
+ * - agendamentos  = transições "→ reuniao_agendada" no ciclo.
  * - propostas     = transições "→ reuniao" (= "fazer e passar proposta") no ciclo.
- * - oportunidades = leads do vendedor trabalhados no ciclo (criados no ciclo OU
- *                   com evento no ciclo); nunca menos que os fechados.
- * - leadsAtivos   = leads não fechados/perdidos do vendedor.
- * - leadsAtualizados = ativos mexidos nos últimos `diasFrescor` dias.
+ * - oportunidades = cards do vendedor trabalhados no ciclo (criados OU movidos).
+ * - conversão     = fechados ÷ oportunidades (cálculo do próprio funil, no motor).
+ * - leadsAtivos   = cards não fechados/perdidos do vendedor.
+ * - leadsAtualizados = ativos movidos/mexidos nos últimos `diasFrescor` dias.
+ * Atribuição: cada evento é contado pro DONO ATUAL do lead.
  */
-import type { AuditLog, Lead, Venda } from "./types";
+import type { AuditLog, Lead } from "./types";
 import { cicloDeData, type ConfigProducao } from "./ciclo";
 import type { IndicadoresBrutos } from "./performance";
 
@@ -27,7 +29,6 @@ export function statusDoEvento(detalhes?: string): string | null {
 export function indicadoresDoVendedor(
   vendedorId: string,
   leads: Lead[],
-  vendas: Venda[],
   audit: AuditLog[],
   chave: string,
   configProd: ConfigProducao,
@@ -37,10 +38,9 @@ export function indicadoresDoVendedor(
   const leadsV = leads.filter((l) => l.vendedorId === vendedorId);
   const donoDoLead = new Map(leads.map((l) => [l.id, l.vendedorId]));
 
-  const fechados = vendas.filter(
-    (s) => s.vendedorId === vendedorId && cicloDeData(s.data, configProd, feriados) === chave,
-  ).length;
-
+  // TUDO vem da movimentação dos cards no funil (audit_log "status → etapa").
+  let fechados = 0;
+  let perdidos = 0;
   let agendamentos = 0;
   let propostas = 0;
   const trabalhados = new Set<string>();
@@ -52,12 +52,14 @@ export function indicadoresDoVendedor(
     const st = statusDoEvento(a.detalhes);
     if (st === "reuniao_agendada") agendamentos++;
     else if (st === "reuniao") propostas++;
+    else if (st === "fechamento") fechados++;
+    else if (st === "perdido") perdidos++;
   }
-  // leads criados no ciclo também contam como "trabalhados"
+  // cards criados no ciclo também contam como "trabalhados"
   for (const l of leadsV) {
     if (cicloDeData(l.criadoEm, configProd, feriados) === chave) trabalhados.add(l.id);
   }
-  const oportunidades = Math.max(trabalhados.size, fechados);
+  const oportunidades = trabalhados.size;
 
   const ativos = leadsV.filter((l) => l.status !== "fechamento" && l.status !== "perdido");
   const limiteMs = diasFrescor * 86_400_000;
@@ -68,6 +70,7 @@ export function indicadoresDoVendedor(
 
   return {
     fechados,
+    perdidos,
     oportunidades,
     agendamentos,
     propostas,

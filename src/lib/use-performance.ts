@@ -7,7 +7,6 @@ import {
   useLeads,
   usePerformanceConfig,
   usePerformanceHistorico,
-  useVendas,
   useVendedores,
 } from "./store";
 import { supabaseEnabled } from "./supabase/client";
@@ -54,7 +53,6 @@ export function usePerformanceEquipe(): {
   chaveAnterior: string;
 } {
   const vendedores = useVendedores();
-  const vendas = useVendas();
   const leads = useLeads();
   const audit = useAudit();
   const perfConfig = usePerformanceConfig();
@@ -69,7 +67,6 @@ export function usePerformanceEquipe(): {
       const brutos = indicadoresDoVendedor(
         v.id,
         leads,
-        vendas,
         audit,
         chaveAtual,
         configProd,
@@ -96,7 +93,7 @@ export function usePerformanceEquipe(): {
       })
       .sort((a, b) => b.resultado.nota - a.resultado.nota);
     return { linhas, media };
-  }, [vendedores, leads, vendas, audit, perfConfig, historico, configProd, feriados, chaveAtual, chaveAnterior]);
+  }, [vendedores, leads, audit, perfConfig, historico, configProd, feriados, chaveAtual, chaveAnterior]);
 
   // Grava o snapshot do ciclo atual (só quando a nota muda — evita escrita à toa).
   const gravado = useRef("");

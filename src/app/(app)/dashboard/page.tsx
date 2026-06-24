@@ -220,12 +220,13 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               { label: "Conversão", v: `${Math.round(perfFoco.resultado.conversaoPct)}%` },
               { label: "Agendamentos", v: perfFoco.brutos.agendamentos },
               { label: "Propostas", v: perfFoco.brutos.propostas },
               { label: "Fechamentos", v: perfFoco.brutos.fechados },
+              { label: "Perdas", v: perfFoco.brutos.perdidos ?? 0 },
             ].map((m) => (
               <div key={m.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                 <p className="text-[10px] uppercase tracking-wider text-white/45">{m.label}</p>

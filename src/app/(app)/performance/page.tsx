@@ -162,6 +162,11 @@ export default function PerformancePage() {
               ))}
             </div>
 
+            <p className="mt-2 text-[11px] text-white/45">
+              Perdas no ciclo (cards que chegaram em “Perdido”):{" "}
+              <span className="font-semibold text-rose-300">{perfil.brutos.perdidos ?? 0}</span>
+            </p>
+
             {/* evolução histórica */}
             <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>

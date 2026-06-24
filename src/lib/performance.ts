@@ -41,9 +41,10 @@ export const CONFIG_PERFORMANCE_PADRAO: ConfigPerformance = {
   metas: { conversao: 30, fechamentos: 6, agendamentos: 20, propostas: 30, diasFrescor: 7, limiarEvolucao: 2, metaEmpresa: 80 },
 };
 
-/** Indicadores brutos de UM vendedor num ciclo (vindos de leads/vendas/audit). */
+/** Indicadores brutos de UM vendedor num ciclo — TODOS vindos do funil (leads
+ *  + movimentação dos cards no audit_log). Nenhum contador paralelo. */
 export type IndicadoresBrutos = {
-  /** vendas (fechamentos) no ciclo */
+  /** chegadas do card em "Fechado" no ciclo (movimentação do funil) */
   fechados: number;
   /** leads/oportunidades trabalhados no ciclo (base da conversão) */
   oportunidades: number;
@@ -51,6 +52,8 @@ export type IndicadoresBrutos = {
   agendamentos: number;
   /** transições "→ fazer e passar proposta" no ciclo */
   propostas: number;
+  /** chegadas do card em "Perdido" no ciclo (informativo, fora da nota) */
+  perdidos?: number;
   /** leads ativos (não fechados/perdidos) do vendedor */
   leadsAtivos: number;
   /** leads ativos atualizados dentro de diasFrescor */
