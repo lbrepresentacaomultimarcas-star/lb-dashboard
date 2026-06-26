@@ -14,7 +14,7 @@ import {
   TrendingUp,
   Trophy,
 } from "lucide-react";
-import { useMetas, useVendas, useVendedores } from "@/lib/store";
+import { useMetas, useTemaAtivo, useVendas, useVendedores } from "@/lib/store";
 import { faturamentoMensal } from "@/lib/selectors";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { useCountUp } from "@/lib/use-count-up";
@@ -24,10 +24,13 @@ import { useCicloProducao } from "@/lib/use-ciclo";
 import { usePerformanceEquipe } from "@/lib/use-performance";
 import { FAIXA_INFO, type FaixaPerf } from "@/lib/performance";
 import type { VendedorComDesempenho } from "@/lib/types";
+import type { BarraConfig, MetricaBarra, Tema } from "@/lib/temas";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/avatar";
 import { EvolucaoTag } from "@/components/perf-badge";
 import { PeriodFilter } from "@/components/period-filter";
+import { TemaProvider } from "@/components/tema-provider";
+import { BannerCampanha, BarraProgresso, EfeitosTema, Premiacoes } from "@/components/tema-gamificacao";
 
 const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º
 
@@ -66,6 +69,17 @@ const TONES: Tone[] = [
     glow: "radial-gradient(circle,rgba(244,63,94,0.4),transparent 70%)",
   },
 ];
+
+/** Deriva os tons do pódio (1º/2º/3º) das cores de medalha do tema. */
+function tonsDoTema(tema: Tema): Tone[] {
+  const m = [tema.estilo.ouro ?? "#f59e0b", tema.estilo.prata ?? "#3b82f6", tema.estilo.bronze ?? "#f43f5e"];
+  return m.map((c) => ({
+    ring: c,
+    drum: `linear-gradient(180deg, ${c} 0%, color-mix(in srgb, ${c} 35%, #07070d) 55%, #07070d 100%)`,
+    light: c,
+    glow: `radial-gradient(circle, color-mix(in srgb, ${c} 55%, transparent), transparent 70%)`,
+  }));
+}
 
 function badgeFor(d: VendedorComDesempenho, index: number) {
   if (index === 0) return { label: "Top Closer", cls: "border-yellow-400/50 bg-yellow-400/15 text-yellow-300", icon: Crown };
@@ -165,14 +179,31 @@ export default function RankingPage() {
   const champ = top3[0];
   const mot = MOTIVACAO[new Date().getDate() % MOTIVACAO.length];
 
+  // ===== Tema ativo (camada VISUAL) — LB Premium reproduz o atual =====
+  const tema = useTemaAtivo();
+  const temaCustom = tema.slug !== "lb-premium";
+  const tonesAtivo = temaCustom ? tonsDoTema(tema) : TONES;
+  const totalFech = ranking.reduce((a, d) => a + d.vendas, 0);
+  const mediaPerf = perfLinhas.length
+    ? perfLinhas.reduce((a, l) => a + l.resultado.nota, 0) / perfLinhas.length
+    : 0;
+  const valorMetrica = (m?: MetricaBarra) =>
+    m === "fechamentos" ? totalFech : m === "performance" ? mediaPerf : total;
+  const barras = tema.estilo.barras ?? {};
+  const barrasAtivas = [barras.coletiva, barras.equipe].filter(
+    (b): b is BarraConfig => !!b && !!b.ativa && !!b.alvo,
+  );
+  const algumaMetaBatida = barrasAtivas.some((b) => valorMetrica(b.metrica) >= (b.alvo ?? Infinity));
+
   return (
-    <div
+    <TemaProvider
+      tema={tema}
       className="-m-4 md:-m-6 relative min-h-[calc(100vh-4rem)] overflow-hidden p-4 md:p-6 pb-24 md:pb-6"
-      style={{
-        background:
-          "radial-gradient(ellipse at 25% 0%, rgba(99,102,241,0.16), transparent 55%), radial-gradient(ellipse at 85% 95%, rgba(168,85,247,0.15), transparent 55%), #06070d",
-      }}
+      style={{ background: "var(--tema-bg)" }}
     >
+      {/* Efeitos: LB Premium mantém os atuais; tema custom usa o motor de efeitos. */}
+      {!temaCustom && (
+      <>
       {/* estrelas */}
       <div
         className="pointer-events-none absolute inset-0 opacity-50"
@@ -221,6 +252,9 @@ export default function RankingPage() {
         className="pointer-events-none absolute inset-0"
         style={{ background: "radial-gradient(ellipse at 50% 34%, transparent 38%, rgba(0,0,0,0.55) 100%)" }}
       />
+      </>
+      )}
+      {temaCustom && <EfeitosTema tema={tema} confeteAtivo={algumaMetaBatida} />}
 
       <div className="relative grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* ===================== COLUNA PRINCIPAL ===================== */}
@@ -250,6 +284,27 @@ export default function RankingPage() {
             </div>
           </header>
 
+          {/* Campanha do tema (vazio no LB Premium → some) */}
+          <BannerCampanha tema={tema} />
+          <Premiacoes tema={tema} />
+          {barrasAtivas.length > 0 && (
+            <div className="lb-fade-up space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              {barrasAtivas.map((b, i) => {
+                const dinheiro = !b.metrica || b.metrica === "faturamento" || b.metrica === "producao";
+                return (
+                  <BarraProgresso
+                    key={i}
+                    rotulo={b.rotulo ?? "Meta da campanha"}
+                    atual={valorMetrica(b.metrica)}
+                    alvo={b.alvo ?? 0}
+                    cor="var(--tema-primaria)"
+                    fmt={dinheiro ? brl : (n) => String(Math.round(n))}
+                  />
+                );
+              })}
+            </div>
+          )}
+
           {/* ===================== PÓDIO ===================== */}
           {top3.length === 0 ? (
             <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
@@ -274,7 +329,7 @@ export default function RankingPage() {
               <div className="flex items-end justify-center gap-2 sm:gap-4 lg:gap-5">
               {PODIUM_ORDER.map((idx) => {
                 const d = top3[idx];
-                const tone = TONES[idx];
+                const tone = tonesAtivo[idx];
                 const champion = idx === 0;
                 const drumH = champion ? 160 : idx === 1 ? 108 : 88;
                 const avatar = champion ? 124 : 80;
@@ -580,6 +635,6 @@ export default function RankingPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </TemaProvider>
   );
 }

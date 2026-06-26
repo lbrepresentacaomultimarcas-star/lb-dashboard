@@ -19,6 +19,8 @@ import {
   performanceConfigToDb,
   performanceSnapFromDb,
   performanceSnapToDb,
+  temaFromDb,
+  temaToDb,
   vendaFromDb,
   vendaToDb,
   vendedorFromDb,
@@ -31,6 +33,7 @@ import {
   type DbMeta,
   type DbPerformanceConfig,
   type DbPerformanceHistorico,
+  type DbTema,
   type DbVenda,
   type DbVendedor,
 } from "./repo/mappers";
@@ -47,6 +50,14 @@ import type {
 } from "./types";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import { CONFIG_PERFORMANCE_PADRAO, type ConfigPerformance } from "./performance";
+import {
+  TEMA_LB_PREMIUM,
+  TEMAS_PADRAO,
+  temaAtivoDe,
+  slugUnico,
+  type StatusTema,
+  type Tema,
+} from "./temas";
 import { uid } from "./utils";
 
 // ============================================================
@@ -62,6 +73,7 @@ const K_FERIADOS = "lb:feriados";
 const K_CONFIG_PROD = "lb:config_producao";
 const K_PERF_CONFIG = "lb:performance_config";
 const K_PERF_HIST = "lb:performance_historico";
+const K_TEMAS = "lb:temas";
 const K_SESSION = "lb:session";
 
 // ============================================================
@@ -77,6 +89,8 @@ type State = {
   configProducao: ConfigProducao;
   performanceConfig: ConfigPerformance;
   performanceHistorico: PerformanceSnapshot[];
+  temas: Tema[];
+  temaAtivo: Tema;
   audit: AuditLog[];
   session: SessionUser | null;
   ready: boolean;
@@ -92,6 +106,8 @@ const state: State = {
   configProducao: CONFIG_PRODUCAO_PADRAO,
   performanceConfig: CONFIG_PERFORMANCE_PADRAO,
   performanceHistorico: [],
+  temas: [],
+  temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
   session: null,
   ready: false,
@@ -351,6 +367,7 @@ export function initStore(): Promise<void> {
           reloadConfigProducao(),
           reloadPerformanceConfig(),
           reloadPerformanceHistorico(),
+          reloadTemas(),
           reloadAudit(),
         ]);
         attachRealtime();
@@ -369,6 +386,8 @@ export function initStore(): Promise<void> {
       state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
       state.performanceConfig = lsRead<ConfigPerformance>(K_PERF_CONFIG, CONFIG_PERFORMANCE_PADRAO);
       state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
+      state.temas = lsRead<Tema[]>(K_TEMAS, []);
+      state.temaAtivo = temaAtivoDe(state.temas);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
       state.session = lsRead<SessionUser | null>(K_SESSION, null);
     }
@@ -470,6 +489,15 @@ async function reloadPerformanceHistorico() {
     notify();
   }
 }
+async function reloadTemas() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb.from("temas").select("*").order("criado_em", { ascending: true });
+  if (!error && data) {
+    state.temas = (data as DbTema[]).map(temaFromDb);
+    state.temaAtivo = temaAtivoDe(state.temas); // ativo ou LB Premium (visual atual)
+    notify();
+  }
+}
 
 /**
  * Re-busca todos os datasets do store em paralelo. Usado pelo botão
@@ -488,6 +516,7 @@ export async function reloadAllData(): Promise<void> {
     reloadConfigProducao(),
     reloadPerformanceConfig(),
     reloadPerformanceHistorico(),
+    reloadTemas(),
     reloadAudit(),
   ]);
 }
@@ -509,6 +538,7 @@ function attachRealtime() {
   sub("config_producao", reloadConfigProducao);
   sub("performance_config", reloadPerformanceConfig);
   sub("performance_historico", reloadPerformanceHistorico);
+  sub("temas", reloadTemas);
   sub("audit_log", reloadAudit);
 }
 
@@ -544,6 +574,12 @@ export function usePerformanceConfig(): ConfigPerformance {
 }
 export function usePerformanceHistorico(): PerformanceSnapshot[] {
   return useSyncExternalStore(subscribe, () => state.performanceHistorico, () => state.performanceHistorico);
+}
+export function useTemas(): Tema[] {
+  return useSyncExternalStore(subscribe, () => state.temas, () => state.temas);
+}
+export function useTemaAtivo(): Tema {
+  return useSyncExternalStore(subscribe, () => state.temaAtivo, () => state.temaAtivo);
 }
 export function useSession(): SessionUser | null {
   return useSyncExternalStore(subscribe, () => state.session, () => state.session);
@@ -929,6 +965,99 @@ export const performanceHistoricoApi = {
 };
 
 // ============================================================
+// API — temas (Temporadas / camada VISUAL). Não toca em nenhum cálculo.
+// ============================================================
+function recomputeTemaAtivo() {
+  state.temaAtivo = temaAtivoDe(state.temas);
+}
+
+export const temasApi = {
+  async add(input: Omit<Tema, "id" | "criadoEm">) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb.from("temas").insert(temaToDb(input)).select().single();
+      if (error) throw error;
+      state.temas = [...state.temas, temaFromDb(data as DbTema)];
+    } else {
+      const novo: Tema = { ...input, id: uid(), criadoEm: new Date().toISOString() };
+      state.temas = [...state.temas, novo];
+      lsWrite(K_TEMAS, state.temas);
+    }
+    recomputeTemaAtivo();
+    notify();
+    void logAudit({ acao: "criar", entidade: "tema", detalhes: input.nome });
+  },
+  async update(id: string, patch: Partial<Tema>) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("temas")
+        .update({ ...temaToDb(patch), atualizado_em: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    }
+    state.temas = state.temas.map((t) => (t.id === id ? { ...t, ...patch } : t));
+    if (!supabaseEnabled) lsWrite(K_TEMAS, state.temas);
+    recomputeTemaAtivo();
+    notify();
+    void logAudit({ acao: "editar", entidade: "tema", entidadeId: id, detalhes: patch.nome });
+  },
+  async remove(id: string) {
+    const nome = state.temas.find((t) => t.id === id)?.nome;
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("temas").delete().eq("id", id);
+      if (error) throw error;
+    }
+    state.temas = state.temas.filter((t) => t.id !== id);
+    if (!supabaseEnabled) lsWrite(K_TEMAS, state.temas);
+    recomputeTemaAtivo();
+    notify();
+    void logAudit({ acao: "remover", entidade: "tema", entidadeId: id, detalhes: nome });
+  },
+  async duplicar(id: string) {
+    const orig = state.temas.find((t) => t.id === id);
+    if (!orig) return;
+    const slug = slugUnico(`${orig.slug}-copia`, state.temas.map((t) => t.slug));
+    await temasApi.add({
+      nome: `${orig.nome} (cópia)`,
+      slug,
+      status: "rascunho",
+      estilo: orig.estilo,
+      dataInicio: orig.dataInicio,
+      dataFim: orig.dataFim,
+    });
+  },
+  async ativar(id: string) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      // desativa o ativo atual (índice único garante 1) e ativa o novo
+      await sb.from("temas").update({ status: "inativo" }).eq("status", "ativo");
+      const { error } = await sb.from("temas").update({ status: "ativo" }).eq("id", id);
+      if (error) throw error;
+    }
+    state.temas = state.temas.map((t) => ({
+      ...t,
+      status: t.id === id ? "ativo" : t.status === "ativo" ? "inativo" : t.status,
+    }));
+    if (!supabaseEnabled) lsWrite(K_TEMAS, state.temas);
+    recomputeTemaAtivo();
+    notify();
+    void logAudit({ acao: "ativar", entidade: "tema", entidadeId: id });
+  },
+  async setStatus(id: string, status: StatusTema) {
+    await temasApi.update(id, { status });
+  },
+  /** Semeia os 5 temas padrão (só se ainda não houver tema). */
+  async seedPadrao() {
+    if (state.temas.length > 0) return;
+    for (const seed of TEMAS_PADRAO) {
+      await temasApi.add({ nome: seed.nome, slug: seed.slug, status: seed.status, estilo: seed.estilo });
+    }
+  },
+};
+
+// ============================================================
 // API — sessão
 // ============================================================
 export const sessionApi = {
@@ -950,6 +1079,7 @@ export const sessionApi = {
         reloadConfigProducao(),
         reloadPerformanceConfig(),
         reloadPerformanceHistorico(),
+        reloadTemas(),
         reloadAudit(),
       ]);
       attachRealtime();
@@ -971,6 +1101,8 @@ export const sessionApi = {
       state.configProducao = lsRead<ConfigProducao>(K_CONFIG_PROD, CONFIG_PRODUCAO_PADRAO);
       state.performanceConfig = lsRead<ConfigPerformance>(K_PERF_CONFIG, CONFIG_PERFORMANCE_PADRAO);
       state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
+      state.temas = lsRead<Tema[]>(K_TEMAS, []);
+      state.temaAtivo = temaAtivoDe(state.temas);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
     }
     notify();
@@ -1005,6 +1137,8 @@ export const sessionApi = {
     state.configProducao = CONFIG_PRODUCAO_PADRAO;
     state.performanceConfig = CONFIG_PERFORMANCE_PADRAO;
     state.performanceHistorico = [];
+    state.temas = [];
+    state.temaAtivo = TEMA_LB_PREMIUM;
     notify();
     void logAudit({ acao: "logout", entidade: "sessao", detalhes: email });
   },

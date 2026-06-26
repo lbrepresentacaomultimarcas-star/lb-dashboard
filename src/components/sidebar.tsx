@@ -9,6 +9,7 @@ import {
   ChevronDown,
   History,
   LayoutDashboard,
+  Palette,
   Settings,
   Shield,
   ShoppingCart,
@@ -49,6 +50,7 @@ const NAV: (NavItem | NavGroup)[] = [
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
       { href: "/performance", label: "Performance", icon: Sparkles },
+      { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
       { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
     ],
   },

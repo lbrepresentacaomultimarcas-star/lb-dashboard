@@ -1,6 +1,7 @@
 import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
 import type { ConfigPerformance } from "../performance";
+import type { EstiloTema, StatusTema, Tema } from "../temas";
 
 const num = (v: number | string) => (typeof v === "string" ? Number(v) : v);
 
@@ -444,5 +445,41 @@ export const performanceSnapToDb = (
   if (s.subPropostas !== undefined) out.sub_propostas = s.subPropostas;
   if (s.subAtualizacao !== undefined) out.sub_atualizacao = s.subAtualizacao;
   if (s.classificacao !== undefined) out.classificacao = s.classificacao;
+  return out;
+};
+
+// ============================================================
+// Tema (Temporadas / Campanhas — camada visual). estilo = jsonb (pacote).
+// ============================================================
+export type DbTema = {
+  id: string;
+  nome: string;
+  slug: string;
+  status: StatusTema;
+  estilo: EstiloTema;
+  data_inicio: string | null;
+  data_fim: string | null;
+  criado_em: string;
+};
+
+export const temaFromDb = (r: DbTema): Tema => ({
+  id: r.id,
+  nome: r.nome,
+  slug: r.slug,
+  status: r.status,
+  estilo: r.estilo ?? {},
+  dataInicio: r.data_inicio ?? undefined,
+  dataFim: r.data_fim ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export const temaToDb = (t: Partial<Tema>): Partial<DbTema> => {
+  const out: Partial<DbTema> = {};
+  if (t.nome !== undefined) out.nome = t.nome;
+  if (t.slug !== undefined) out.slug = t.slug;
+  if (t.status !== undefined) out.status = t.status;
+  if (t.estilo !== undefined) out.estilo = t.estilo;
+  if (t.dataInicio !== undefined) out.data_inicio = t.dataInicio || null;
+  if (t.dataFim !== undefined) out.data_fim = t.dataFim || null;
   return out;
 };

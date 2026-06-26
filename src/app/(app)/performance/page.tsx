@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Trophy, Sparkles, Users } from "lucide-react";
-import { useSession, usePerformanceConfig, usePerformanceHistorico } from "@/lib/store";
+import { useSession, useTemaAtivo, usePerformanceConfig, usePerformanceHistorico } from "@/lib/store";
 import { usePerformanceEquipe } from "@/lib/use-performance";
 import { detalharIndicadores, FAIXA_INFO, versusMeta, type FaixaPerf } from "@/lib/performance";
 import { temPermissao } from "@/lib/permissions";
@@ -10,6 +10,8 @@ import { monthLabel } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
 import { EvolucaoTag, FaixaBadge, MetaBadge } from "@/components/perf-badge";
+import { TemaProvider } from "@/components/tema-provider";
+import { BannerCampanha, Premiacoes } from "@/components/tema-gamificacao";
 
 function fmtVal(v: number, unidade: "%" | "qtd") {
   return unidade === "%" ? `${Math.round(v)}%` : `${Math.round(v)}`;
@@ -61,6 +63,7 @@ export default function PerformancePage() {
     };
   }, [perfil, historico, chave]);
 
+  const tema = useTemaAtivo();
   const detalhes = perfil ? detalharIndicadores(perfil.brutos, perfConfig) : [];
   const corFaixa = perfil ? FAIXA_INFO[perfil.resultado.faixa as FaixaPerf].cor : "#888";
 
@@ -92,6 +95,14 @@ export default function PerformancePage() {
           </select>
         )}
       </header>
+
+      {/* Campanha do tema ativo (vazio no LB Premium → some) */}
+      {(tema.estilo.campanha?.nome || tema.estilo.banner || (tema.estilo.premiacoes?.length ?? 0) > 0) && (
+        <TemaProvider tema={tema} className="space-y-3">
+          <BannerCampanha tema={tema} />
+          <Premiacoes tema={tema} />
+        </TemaProvider>
+      )}
 
       {!perfil ? (
         <div className="lb-card-premium lb-fade-up rounded-2xl p-12 text-center text-white/50">
