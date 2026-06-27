@@ -37,26 +37,40 @@ export function EfeitosTema({ tema, confeteAtivo = false }: { tema: Tema; confet
             }}
           />
         ))}
-      {confete && (
-        <>
-          <style dangerouslySetInnerHTML={{ __html: "@keyframes lb-confete{0%{transform:translateY(-10%) rotate(0);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:.25}}" }} />
-          {Array.from({ length: 28 }).map((_, i) => (
-            <span
-              key={`c${i}`}
-              className="absolute"
-              style={{
-                left: `${(i * 3.5 + 2) % 100}%`,
-                top: "-5%",
-                width: 7,
-                height: 11,
-                borderRadius: 1,
-                background: cores[i % cores.length],
-                animation: `lb-confete ${4 + (i % 4)}s linear ${(i % 6) * 0.5}s infinite`,
-              }}
-            />
-          ))}
-        </>
-      )}
+      {/* faíscas que cintilam (faíscas/brilho) */}
+      {e.brilho &&
+        Array.from({ length: 10 }).map((_, i) => (
+          <span
+            key={`s${i}`}
+            className="lb-sparkle absolute rounded-full"
+            style={{
+              left: `${(i * 9.7 + 5) % 100}%`,
+              top: `${(i * 13 + 7) % 80}%`,
+              width: 3,
+              height: 3,
+              background: "#fff",
+              boxShadow: `0 0 6px ${cores[i % cores.length]}`,
+              animationDelay: `${(i % 5) * 0.5}s`,
+            }}
+          />
+        ))}
+      {/* confetes (keyframe lb-confete global) — tamanhos variados, leves */}
+      {confete &&
+        Array.from({ length: 30 }).map((_, i) => (
+          <span
+            key={`c${i}`}
+            className="absolute"
+            style={{
+              left: `${(i * 3.3 + 2) % 100}%`,
+              top: "-5%",
+              width: i % 4 === 0 ? 9 : 6,
+              height: i % 4 === 0 ? 6 : 11,
+              borderRadius: 1,
+              background: cores[i % cores.length],
+              animation: `lb-confete ${4 + (i % 4)}s linear ${(i % 6) * 0.5}s infinite`,
+            }}
+          />
+        ))}
     </div>
   );
 }
@@ -74,15 +88,30 @@ export function BannerCampanha({ tema }: { tema: Tema }) {
   if (!c?.nome && !c?.metaPrincipal && !banner && !logo) return null;
   return (
     <div
-      className="lb-fade-up relative overflow-hidden rounded-2xl border border-white/10 p-4"
-      style={{ background: banner ? `center/cover no-repeat url(${banner})` : "linear-gradient(120deg, color-mix(in srgb, var(--tema-primaria) 18%, transparent), color-mix(in srgb, var(--tema-secundaria) 18%, transparent))" }}
+      className="lb-fade-up lb-shine lb-edge-glow relative overflow-hidden rounded-2xl border border-white/10 p-5"
+      style={{
+        background: banner
+          ? `center/cover no-repeat url(${banner})`
+          : "linear-gradient(120deg, color-mix(in srgb, var(--tema-primaria) 22%, transparent), color-mix(in srgb, var(--tema-secundaria) 22%, transparent))",
+        boxShadow: "0 24px 60px -22px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1)",
+      }}
     >
-      <div className="relative flex items-center gap-3">
-        {logo ? <Imagem src={logo} className="h-12 w-12 shrink-0 rounded-lg object-contain" /> : null}
+      {/* contraste + profundidade sobre a arte */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "linear-gradient(90deg, rgba(0,0,0,0.72), rgba(0,0,0,0.32) 55%, transparent), radial-gradient(ellipse at 82% -20%, color-mix(in srgb, var(--tema-primaria) 30%, transparent), transparent 60%)" }}
+      />
+      {/* facho de luz no topo */}
+      <div
+        className="pointer-events-none absolute -top-10 left-1/4 h-24 w-1/2 blur-2xl"
+        style={{ background: "color-mix(in srgb, var(--tema-primaria) 22%, transparent)" }}
+      />
+      <div className="relative flex items-center gap-4">
+        {logo ? <Imagem src={logo} className="h-14 w-14 shrink-0 rounded-xl object-contain" /> : null}
         <div className="min-w-0">
-          {c?.nome ? <p className="text-lg font-extrabold text-white">{c.nome}</p> : null}
-          {c?.metaPrincipal ? <p className="text-sm font-semibold" style={{ color: "var(--tema-primaria)" }}>{c.metaPrincipal}</p> : null}
-          {c?.textoMotivacional ? <p className="mt-0.5 text-xs text-white/70">{c.textoMotivacional}</p> : null}
+          {c?.nome ? <p className="text-xl font-extrabold uppercase tracking-tight text-white sm:text-2xl" style={{ textShadow: "0 2px 14px rgba(0,0,0,0.6)" }}>{c.nome}</p> : null}
+          {c?.metaPrincipal ? <p className="text-sm font-bold" style={{ color: "var(--tema-primaria)", textShadow: "0 1px 8px rgba(0,0,0,0.55)" }}>{c.metaPrincipal}</p> : null}
+          {c?.textoMotivacional ? <p className="mt-0.5 text-xs text-white/75">{c.textoMotivacional}</p> : null}
         </div>
       </div>
     </div>
@@ -164,10 +193,19 @@ export function BarraProgresso({
           {f(atual)} / {f(alvo)} {atingiu ? "🎉" : ""}
         </span>
       </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
-        <div
-          className="h-full rounded-full transition-[width] duration-1000"
-          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c}, var(--tema-secundaria))`, boxShadow: atingiu ? `0 0 12px ${c}` : undefined }}
+      <div className="relative">
+        <div className="h-3 w-full overflow-hidden rounded-full bg-white/10" style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5)" }}>
+          <div
+            className="relative h-full rounded-full transition-[width] duration-1000"
+            style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c}, var(--tema-secundaria))`, boxShadow: `0 0 12px ${c}` }}
+          >
+            <span className="lb-bar-shine absolute inset-0 rounded-full" />
+          </div>
+        </div>
+        {/* marcador luminoso (bola) na ponta do progresso */}
+        <span
+          className="lb-marker absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/80"
+          style={{ left: `${pct}%`, background: c }}
         />
       </div>
     </div>

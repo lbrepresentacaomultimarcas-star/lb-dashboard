@@ -264,7 +264,7 @@ export default function RankingPage() {
             <div className="flex items-center gap-3">
               <Trophy className="h-8 w-8 text-yellow-400" style={{ filter: "drop-shadow(0 0 10px rgba(250,204,21,.6))" }} />
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Ranking de vendas</h1>
+                <h1 className="text-2xl font-extrabold md:text-3xl lb-aaa-title">Ranking de vendas</h1>
                 <p className="text-sm text-white/55">{formatPeriodLabel(period)}</p>
               </div>
             </div>
@@ -314,7 +314,7 @@ export default function RankingPage() {
               <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 flex justify-center">
                 <div
                   className="h-40 w-[90%] rounded-[50%] blur-2xl"
-                  style={{ background: "radial-gradient(ellipse at center, rgba(250,204,21,0.22), rgba(99,102,241,0.12) 45%, transparent 72%)" }}
+                  style={{ background: "radial-gradient(ellipse at center, color-mix(in oklab, var(--tema-primaria) 26%, transparent), color-mix(in oklab, var(--tema-secundaria) 14%, transparent) 45%, transparent 72%)" }}
                 />
               </div>
               <div
@@ -331,8 +331,8 @@ export default function RankingPage() {
                 const d = top3[idx];
                 const tone = tonesAtivo[idx];
                 const champion = idx === 0;
-                const drumH = champion ? 160 : idx === 1 ? 108 : 88;
-                const avatar = champion ? 124 : 80;
+                const drumH = champion ? 178 : idx === 1 ? 112 : 88;
+                const avatar = champion ? 136 : 82;
                 const colW = champion ? "w-[44%] max-w-[330px]" : "w-[29%] max-w-[210px]";
                 if (!d) {
                   return <div key={`e-${idx}`} className={colW} />;
@@ -343,8 +343,8 @@ export default function RankingPage() {
                     {/* holofote campeão */}
                     {champion && (
                       <div
-                        className="lb-spotlight pointer-events-none absolute -top-24 left-1/2 -z-10 h-[36rem] w-72 -translate-x-1/2"
-                        style={{ background: "linear-gradient(to bottom, rgba(252,211,77,0.5), transparent 80%)", clipPath: "polygon(42% 0,58% 0,100% 100%,0 100%)", filter: "blur(12px)" }}
+                        className="lb-spotlight pointer-events-none absolute -top-28 left-1/2 -z-10 h-[40rem] w-80 -translate-x-1/2"
+                        style={{ background: "linear-gradient(to bottom, color-mix(in oklab, var(--tema-primaria) 55%, transparent), transparent 80%)", clipPath: "polygon(40% 0,60% 0,100% 100%,0 100%)", filter: "blur(14px)" }}
                       />
                     )}
 
@@ -386,6 +386,15 @@ export default function RankingPage() {
                       {/* badge flutuante */}
                       <span className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${b.cls}`}>
                         <b.icon className="h-2.5 w-2.5" /> {b.label}
+                      </span>
+
+                      {/* medalha realista (metal escovado, cor do tema) */}
+                      <span
+                        className={`lb-medal absolute left-2 top-2 grid place-items-center font-black text-black/70 ${champion ? "h-10 w-10 text-sm" : "h-8 w-8 text-[11px]"}`}
+                        style={{ ["--metal" as string]: tone.ring }}
+                        aria-hidden
+                      >
+                        {idx + 1}
                       </span>
 
                       <p className={`mt-1 truncate font-bold text-white ${champion ? "text-base sm:text-lg" : "text-sm"}`}>{d.nome}</p>
@@ -444,7 +453,7 @@ export default function RankingPage() {
           )}
 
           {/* ===================== TOP 10 (4 a 10) ===================== */}
-          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+          <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl p-4">
             <div className="mb-3 flex items-center gap-2">
               <Trophy className="h-4 w-4 text-yellow-300" />
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">Top 10 vendedores</h2>
@@ -516,7 +525,7 @@ export default function RankingPage() {
 
         {/* ===================== PAINEL DIREITO ===================== */}
         <aside className="space-y-4">
-          <div className="lb-glass lb-fade-up flex items-center justify-center gap-3 rounded-2xl p-4">
+          <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up flex items-center justify-center gap-3 rounded-2xl p-4">
             <Logo size={40} />
             <div className="border-l border-white/20 pl-3">
               <p className="text-[10px] uppercase tracking-widest text-white/60">LB</p>
@@ -526,7 +535,7 @@ export default function RankingPage() {
 
           {/* Índice de Performance (aditivo — separado do ranking de vendas) */}
           {perfLinhas.length > 0 && (
-            <div className="lb-glass lb-fade-up rounded-2xl p-4">
+            <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl p-4">
               <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
                 <Sparkles className="h-4 w-4 text-amber-300" /> Índice de Performance
               </p>
@@ -548,7 +557,7 @@ export default function RankingPage() {
           )}
 
           {/* Desempenho geral */}
-          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+          <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
                 <Activity className="h-4 w-4 text-indigo-300" /> Desempenho geral
@@ -584,7 +593,7 @@ export default function RankingPage() {
 
           {/* Destaque do mês */}
           {champ && (
-            <div className="lb-glass lb-fade-up rounded-2xl p-4">
+            <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl p-4">
               <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
                 <Crown className="h-4 w-4 text-yellow-300" /> Destaque do mês
               </p>
@@ -602,7 +611,7 @@ export default function RankingPage() {
           )}
 
           {/* Últimas conquistas */}
-          <div className="lb-glass lb-fade-up rounded-2xl p-4">
+          <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl p-4">
             <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80">
               <Award className="h-4 w-4 text-yellow-300" /> Últimas conquistas
             </p>
@@ -626,7 +635,7 @@ export default function RankingPage() {
           </div>
 
           {/* Motivação */}
-          <div className="lb-glass lb-fade-up rounded-2xl border-indigo-400/20 p-4">
+          <div className="lb-glass lb-edge-glow lb-hover-rise lb-fade-up rounded-2xl border-indigo-400/20 p-4">
             <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-200">
               <Sparkles className="h-4 w-4" /> Motivação do dia
             </p>
