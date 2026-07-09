@@ -18,15 +18,28 @@ export type Oportunidade = {
   trecho?: string;
 };
 
-/** Dias parado aceitáveis por etapa — acima disso vira oportunidade. */
+/** Dias parado aceitáveis por etapa — acima disso vira oportunidade.
+ *  `null` = etapa fora da análise de "tempo parado" (fechamento sai da Central;
+ *  perdido é tratado à parte, como recuperação). */
 const LIMITE_DIAS: Record<LeadStatus, number | null> = {
   oportunidade: 5,
   primeiro_contato: 3,
   reuniao_agendada: 3,
   reuniao: 4, // "Fazer e passar proposta"
   acompanhamento: 7,
-  fechamento: 2,
-  perdido: null, // não analisa
+  fechamento: null, // cliente FECHADO não aparece na Central
+  perdido: null, // tratado como recuperação (ver abaixo)
+};
+
+/** Ordem de prioridade comercial da LB (1 = topo da lista). */
+const ETAPA_PRIORIDADE: Record<LeadStatus, number> = {
+  reuniao: 1, // Fazer proposta
+  acompanhamento: 2, // Acompanhamento para fechar
+  reuniao_agendada: 3, // Reunião agendada
+  primeiro_contato: 4, // Primeiro contato
+  oportunidade: 5, // Oportunidade
+  perdido: 6, // Perdidos (recuperação)
+  fechamento: 99, // não entra na Central
 };
 
 const norm = (s: string) =>
@@ -108,10 +121,25 @@ export function analisarOportunidades(leads: Lead[], agora: Date = new Date()): 
   const out: Oportunidade[] = [];
 
   for (const lead of leads) {
-    const limite = LIMITE_DIAS[lead.status];
-    if (limite === null) continue; // perdido — fora da análise
+    // Cliente fechado sai da Central de Oportunidades.
+    if (lead.status === "fechamento") continue;
 
     const diasParado = diasDesde(lead.atualizadoEm ?? lead.criadoEm, agora);
+
+    // Perdidos entram apenas para RECUPERAÇÃO de oportunidade.
+    if (lead.status === "perdido") {
+      out.push({
+        lead,
+        motivo: "🟢 Recuperação de oportunidade",
+        sugestao: "Reabrir a conversa com uma nova condição ou proposta atualizada.",
+        prioridade: 1,
+        diasParado,
+      });
+      continue;
+    }
+
+    const limite = LIMITE_DIAS[lead.status];
+    if (limite === null) continue; // segurança (não deveria ocorrer aqui)
     const obs = norm(lead.observacao ?? "");
 
     // 1) Gatilhos por palavra-chave (o mais forte vence)
@@ -151,9 +179,10 @@ export function analisarOportunidades(leads: Lead[], agora: Date = new Date()): 
     if (escolhida) out.push(escolhida);
   }
 
-  // Mais urgente primeiro; empate → mais dias parado; depois maior valor
+  // Ordem: prioridade da ETAPA (regra LB) → urgência → dias parado → valor.
   return out.sort(
     (a, b) =>
+      ETAPA_PRIORIDADE[a.lead.status] - ETAPA_PRIORIDADE[b.lead.status] ||
       b.prioridade - a.prioridade ||
       b.diasParado - a.diasParado ||
       b.lead.valorEstimado - a.lead.valorEstimado,

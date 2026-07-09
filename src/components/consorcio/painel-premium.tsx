@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Banknote, CheckCircle2, Layers, PiggyBank, Sparkles, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, CheckCircle2, Layers, PiggyBank, Sparkles, Star, Wallet } from "lucide-react";
 import { Gauge } from "./gauge";
 import { useCountUp } from "@/lib/use-count-up";
 import {
@@ -21,8 +21,6 @@ export function PainelResultado({ resultado, grande = false }: { resultado: Simu
   const info = NIVEL_INFO[resultado.nivel];
   const cor = info.cor;
   const prob = useCountUp(resultado.probabilidade);
-  const forte = resultado.nivel === "alta" || resultado.nivel === "excelente";
-  const titulo = `${forte ? "OPORTUNIDADE" : "CHANCE"} ${info.label.toUpperCase()}`;
 
   return (
     <div
@@ -33,6 +31,14 @@ export function PainelResultado({ resultado, grande = false }: { resultado: Simu
         Probabilidade estimada
       </p>
 
+      {/* Classificação em DESTAQUE — vem antes da porcentagem */}
+      <div
+        className={`mx-auto mt-2 inline-flex items-center gap-2 rounded-full border font-extrabold tracking-wide ${grande ? "px-6 py-2.5 text-xl" : "px-4 py-1.5 text-sm"} lb-glow`}
+        style={{ color: cor, borderColor: soft(cor, 55), background: soft(cor, 12) }}
+      >
+        <span>{info.emoji}</span> {info.titulo}
+      </div>
+
       <div className="mt-2 flex justify-center">
         <Gauge valor={resultado.probabilidade} size={grande ? 360 : 260}>
           <span
@@ -41,24 +47,35 @@ export function PainelResultado({ resultado, grande = false }: { resultado: Simu
           >
             {Math.round(prob)}%
           </span>
-          <span className={`mt-1 text-[var(--color-text-dim)] ${grande ? "text-sm" : "text-xs"}`}>de contemplação</span>
+          <span className={`mt-1 text-[var(--color-text-dim)] ${grande ? "text-sm" : "text-xs"}`}>estimado</span>
         </Gauge>
       </div>
 
-      <div
-        className={`mx-auto mt-3 inline-flex items-center gap-2 rounded-full border font-bold ${grande ? "px-5 py-2 text-lg" : "px-4 py-1.5 text-sm"} lb-glow`}
-        style={{ color: cor, borderColor: soft(cor, 50), background: soft(cor, 12) }}
-      >
-        <span>{info.emoji}</span> {titulo}
+      {/* Índice de confiança (estrelas) — credibilidade na apresentação */}
+      <div className="mt-3 flex flex-col items-center gap-1">
+        <div className="flex gap-1" aria-label={`Índice de confiança ${info.estrelas} de 5`}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Star
+              key={i}
+              size={grande ? 26 : 18}
+              className="transition-colors"
+              style={{ color: i <= info.estrelas ? cor : "var(--color-border)" }}
+              fill={i <= info.estrelas ? cor : "none"}
+            />
+          ))}
+        </div>
+        <span className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">Índice de confiança</span>
       </div>
 
-      {/* barra de progresso com as 5 zonas */}
-      <div className="mx-auto mt-5 max-w-md">
+      {/* Barra: zonas proporcionais às faixas + preenchimento na cor do nível */}
+      <div className="mx-auto mt-4 max-w-md">
         <div className="relative h-3 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
           <div className="absolute inset-0 flex opacity-25">
-            {NIVEIS_ORDENADOS.map((n) => (
-              <div key={n} className="h-full flex-1" style={{ background: NIVEL_INFO[n].cor }} />
-            ))}
+            {NIVEIS_ORDENADOS.map((n, i) => {
+              const prox = NIVEIS_ORDENADOS[i + 1];
+              const largura = (prox ? NIVEL_INFO[prox].min : 100) - NIVEL_INFO[n].min;
+              return <div key={n} className="h-full" style={{ width: `${largura}%`, background: NIVEL_INFO[n].cor }} />;
+            })}
           </div>
           <div
             className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
@@ -92,11 +109,8 @@ export function AnaliseInteligente({ resultado, grande = false }: { resultado: S
 
 /* -------------------------------- Comparativo -------------------------------- */
 
-export function Comparativo({ resultado, faixaRecomendada }: { resultado: SimulacaoResultado; faixaRecomendada: number }) {
-  const cor = NIVEL_INFO[resultado.nivel].cor;
-  const escala = Math.max(resultado.pctLance, faixaRecomendada, 1) * 1.15;
-  const acima = resultado.pctLance >= faixaRecomendada;
-  const Barra = ({ label, pct, cor: c }: { label: string; pct: number; cor: string }) => (
+function BarraComparativa({ label, pct, cor, escala }: { label: string; pct: number; cor: string; escala: number }) {
+  return (
     <div>
       <div className="mb-1 flex justify-between text-xs text-[var(--color-text-dim)]">
         <span>{label}</span>
@@ -105,11 +119,17 @@ export function Comparativo({ resultado, faixaRecomendada }: { resultado: Simula
       <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
         <div
           className="h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
-          style={{ width: `${Math.min(100, (pct / escala) * 100)}%`, background: c }}
+          style={{ width: `${Math.min(100, (pct / escala) * 100)}%`, background: cor }}
         />
       </div>
     </div>
   );
+}
+
+export function Comparativo({ resultado, faixaRecomendada }: { resultado: SimulacaoResultado; faixaRecomendada: number }) {
+  const cor = NIVEL_INFO[resultado.nivel].cor;
+  const escala = Math.max(resultado.pctLance, faixaRecomendada, 1) * 1.15;
+  const acima = resultado.pctLance >= faixaRecomendada;
   return (
     <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -122,8 +142,8 @@ export function Comparativo({ resultado, faixaRecomendada }: { resultado: Simula
         </span>
       </div>
       <div className="space-y-3">
-        <Barra label="Seu lance" pct={resultado.pctLance} cor={cor} />
-        <Barra label="Faixa recomendada" pct={faixaRecomendada} cor="var(--color-text-dim)" />
+        <BarraComparativa label="Seu lance" pct={resultado.pctLance} cor={cor} escala={escala} />
+        <BarraComparativa label="Faixa recomendada" pct={faixaRecomendada} cor="var(--color-text-dim)" escala={escala} />
       </div>
     </div>
   );

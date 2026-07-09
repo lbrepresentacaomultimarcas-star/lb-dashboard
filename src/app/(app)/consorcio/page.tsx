@@ -96,23 +96,23 @@ export default function ConsorcioPage() {
     setConfig(cfg);
   }
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     void carregar();
     // Preparação p/ integração com o Pipeline: /consorcio?cliente=..&carta=..&lance=..&grupo=..
     try {
       const q = new URLSearchParams(window.location.search);
       const gc = (k: string) => q.get(k) ?? "";
       const raw = localStorage.getItem(HIST_KEY);
-      /* eslint-disable react-hooks/set-state-in-effect */
       if (gc("cliente")) setCliente(gc("cliente"));
       if (gc("grupo")) setGrupoSel(gc("grupo"));
       if (gc("carta")) setCarta(gc("carta").replace(".", ","));
       if (gc("lance")) setLance(gc("lance").replace(".", ","));
       if (gc("embutido") === "1") setUsarEmbutido(true);
       if (raw) setHistorico(JSON.parse(raw) as HistSim[]);
-      /* eslint-enable react-hooks/set-state-in-effect */
     } catch {
       /* sem window/localStorage (SSR) — ignora */
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   async function sincronizar() {

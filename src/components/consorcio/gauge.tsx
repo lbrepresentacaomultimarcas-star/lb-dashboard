@@ -38,18 +38,23 @@ export function Gauge({
   return (
     <div className="relative" style={{ width: size, height: size * 0.62 }}>
       <svg viewBox="0 0 200 116" className="h-full w-full overflow-visible">
-        {/* zonas (status, baixa opacidade) */}
-        {NIVEIS_ORDENADOS.map((n, i) => (
-          <path
-            key={n}
-            d={arco(i / 5, (i + 1) / 5)}
-            fill="none"
-            stroke={NIVEL_INFO[n].cor}
-            strokeWidth={11}
-            strokeLinecap="butt"
-            opacity={0.22}
-          />
-        ))}
+        {/* zonas (status): larguras conforme as faixas reais de cada nível */}
+        {NIVEIS_ORDENADOS.map((n, i) => {
+          const prox = NIVEIS_ORDENADOS[i + 1];
+          const f0 = NIVEL_INFO[n].min / 100;
+          const f1 = (prox ? NIVEL_INFO[prox].min : 100) / 100;
+          return (
+            <path
+              key={n}
+              d={arco(f0, f1)}
+              fill="none"
+              stroke={NIVEL_INFO[n].cor}
+              strokeWidth={11}
+              strokeLinecap="butt"
+              opacity={0.22}
+            />
+          );
+        })}
         {/* arco de valor (anima o preenchimento via dashoffset) */}
         <path
           d={arco(0, 1)}

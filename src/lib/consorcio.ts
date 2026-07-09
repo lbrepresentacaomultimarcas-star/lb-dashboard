@@ -85,29 +85,31 @@ export const CLASSIFICACAO_INFO: Record<
 
 /* ----------------------- Classificação inteligente (5 níveis) ---------------- */
 
-export type Nivel = "muito_baixa" | "baixa" | "moderada" | "alta" | "excelente";
+export type Nivel = "baixa" | "moderada" | "boa" | "otima" | "excelente";
 
-/** Cada nível controla cor, ícone, glow, badge, barra e texto na UI.
- *  É uma escala de STATUS: sempre acompanhada de emoji + rótulo (nunca cor só). */
+/** Cada nível controla cor, ícone, glow, badge, barra, estrelas e texto na UI.
+ *  Regra comercial da LB: sem laranja nas classificações positivas (verde/verde/
+ *  amarelo); laranja só em "Moderada"; vermelho em "Baixa". Escala de STATUS —
+ *  sempre acompanhada de emoji + título (nunca cor sozinha). */
 export const NIVEL_INFO: Record<
   Nivel,
-  { label: string; emoji: string; cor: string; min: number }
+  { label: string; titulo: string; emoji: string; cor: string; min: number; estrelas: number }
 > = {
-  muito_baixa: { label: "Muito Baixa", emoji: "🔴", cor: "#ef4444", min: 0 },
-  baixa: { label: "Baixa", emoji: "🟠", cor: "#f97316", min: 20 },
-  moderada: { label: "Moderada", emoji: "🟡", cor: "#eab308", min: 40 },
-  alta: { label: "Alta", emoji: "🟢", cor: "#22c55e", min: 60 },
-  excelente: { label: "Excelente", emoji: "🏆", cor: "#f5b301", min: 80 },
+  baixa: { label: "Chance baixa", titulo: "CHANCE BAIXA", emoji: "❗", cor: "#ef4444", min: 0, estrelas: 1 },
+  moderada: { label: "Chance moderada", titulo: "CHANCE MODERADA", emoji: "⚠️", cor: "#f97316", min: 50, estrelas: 2 },
+  boa: { label: "Boa chance", titulo: "BOA CHANCE", emoji: "👍", cor: "#eab308", min: 65, estrelas: 3 },
+  otima: { label: "Ótima chance", titulo: "ÓTIMA CHANCE DE CONTEMPLAÇÃO", emoji: "✅", cor: "#22c55e", min: 80, estrelas: 4 },
+  excelente: { label: "Chance excelente", titulo: "CHANCE EXCELENTE", emoji: "🏆", cor: "#16a34a", min: 90, estrelas: 5 },
 };
 
-export const NIVEIS_ORDENADOS: Nivel[] = ["muito_baixa", "baixa", "moderada", "alta", "excelente"];
+export const NIVEIS_ORDENADOS: Nivel[] = ["baixa", "moderada", "boa", "otima", "excelente"];
 
 export function nivelDaProbabilidade(p: number): Nivel {
-  if (p >= 80) return "excelente";
-  if (p >= 60) return "alta";
-  if (p >= 40) return "moderada";
-  if (p >= 20) return "baixa";
-  return "muito_baixa";
+  if (p >= 90) return "excelente";
+  if (p >= 80) return "otima";
+  if (p >= 65) return "boa";
+  if (p >= 50) return "moderada";
+  return "baixa";
 }
 
 function interp(x: number, x0: number, y0: number, x1: number, y1: number): number {
@@ -259,21 +261,22 @@ export function formatBRL(v: number): string {
 /* ------------------ IA comercial: texto e observações por nível --------------- */
 
 const DISCLAIMER =
-  "Esta análise serve como apoio à negociação comercial e não representa garantia de contemplação.";
+  "Esta estimativa serve como apoio à tomada de decisão e não representa garantia de contemplação.";
 
-/** Parágrafo de análise que muda conforme o nível. Sempre termina com o aviso. */
+/** Parágrafo em linguagem COMERCIAL (fácil de entender), muda conforme o nível.
+ *  Sempre termina com o aviso de que é estimativa. */
 export function textoInteligente(nivel: Nivel): string {
   const corpo: Record<Nivel, string> = {
     excelente:
-      "Com base nos parâmetros cadastrados e nas configurações atuais do grupo, este lance apresenta excelente competitividade. Caso o comportamento da assembleia permaneça semelhante ao padrão utilizado nesta estimativa, existe uma elevada probabilidade de contemplação.",
-    alta:
-      "Considerando os parâmetros informados e as configurações do grupo, este lance apresenta boa competitividade. Se a assembleia mantiver um comportamento próximo ao padrão desta estimativa, as chances de contemplação são favoráveis.",
+      "O lance informado apresenta excelente competitividade para este grupo. Caso o comportamento da assembleia permaneça semelhante ao histórico registrado, existe uma ótima possibilidade de contemplação.",
+    otima:
+      "O lance informado está muito bem posicionado para este grupo. Mantido o padrão das últimas assembleias, as chances de contemplação são bastante favoráveis.",
+    boa:
+      "O lance informado apresenta uma boa competitividade para este grupo. Seguindo o padrão do histórico, há uma boa possibilidade de contemplação — e um pequeno reforço no lance pode deixá-la ainda mais forte.",
     moderada:
-      "Com os parâmetros atuais, este lance fica em uma faixa intermediária de competitividade. Um pequeno aumento no valor do lance pode elevar de forma relevante a probabilidade estimada de contemplação.",
+      "O lance informado está em uma faixa intermediária para este grupo. Um aumento no valor do lance pode elevar de forma relevante as chances de contemplação.",
     baixa:
-      "Nos parâmetros informados, este lance está abaixo da faixa mais competitiva para o grupo. Recomenda-se avaliar um reforço no valor do lance para melhorar o posicionamento na assembleia.",
-    muito_baixa:
-      "Com os valores atuais, este lance apresenta baixa competitividade frente à referência do grupo. Vale rever o valor ofertado antes de apresentar a proposta ao cliente.",
+      "O lance informado está abaixo da faixa mais competitiva para este grupo. Vale avaliar um reforço no valor antes de apresentar a proposta ao cliente.",
   };
   return `${corpo[nivel]} ${DISCLAIMER}`;
 }
@@ -285,12 +288,15 @@ export type ObsComercial = { tipo: "ok" | "atencao"; texto: string };
 export function analiseComercial(r: SimulacaoResultado, carta: number): ObsComercial[] {
   const obs: ObsComercial[] = [];
 
-  if (r.nivel === "excelente" || r.nivel === "alta") {
+  if (r.nivel === "excelente" || r.nivel === "otima") {
     obs.push({ tipo: "ok", texto: "Lance muito competitivo." });
     obs.push({ tipo: "ok", texto: "Boa oportunidade para ofertar agora." });
+  } else if (r.nivel === "boa") {
+    obs.push({ tipo: "ok", texto: "Lance competitivo para este grupo." });
+    obs.push({ tipo: "ok", texto: "Boa janela para ofertar — um pequeno reforço deixa ainda mais forte." });
   } else if (r.nivel === "moderada") {
     obs.push({ tipo: "atencao", texto: "Lance próximo da faixa mínima recomendada." });
-    obs.push({ tipo: "atencao", texto: "Vale considerar pequeno aumento para melhorar a competitividade." });
+    obs.push({ tipo: "atencao", texto: "Vale considerar um aumento para melhorar a competitividade." });
   } else {
     obs.push({ tipo: "atencao", texto: "Lance abaixo da faixa recomendada — considere reforçar o valor." });
   }

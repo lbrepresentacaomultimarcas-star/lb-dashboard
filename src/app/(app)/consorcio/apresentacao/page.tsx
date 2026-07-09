@@ -98,12 +98,20 @@ function Apresentacao() {
       <div className="mx-auto max-w-4xl px-4 py-8 md:py-12">
         {resultado ? (
           <div className="space-y-6">
-            {cliente ? (
-              <p className="text-center text-lg font-medium text-[var(--color-text-dim)]">
-                Simulação para <span className="font-bold text-[var(--color-text)]">{cliente}</span>
-                {grupo ? ` · Grupo ${grupo}` : ""}
+            <div className="text-center">
+              <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--color-muted)]">
+                Simulação de Contemplação
               </p>
-            ) : null}
+              <h1 className="mt-1 text-xl font-bold text-[var(--color-text)] md:text-2xl">
+                Consultoria em Consórcio · LB Representações
+              </h1>
+              {cliente ? (
+                <p className="mt-2 text-base font-medium text-[var(--color-text-dim)] md:text-lg">
+                  Apresentado para <span className="font-bold text-[var(--color-text)]">{cliente}</span>
+                  {grupo ? ` · Grupo ${grupo}` : ""}
+                </p>
+              ) : null}
+            </div>
 
             {/* Carta e Lance — grandes */}
             <div className="mx-auto grid max-w-2xl grid-cols-2 gap-4">
@@ -132,8 +140,8 @@ function Apresentacao() {
               style={{ borderColor: `color-mix(in oklab, ${cor} 45%, transparent)`, background: `color-mix(in oklab, ${cor} 10%, transparent)` }}
             >
               <p className="text-sm uppercase tracking-widest text-[var(--color-text-dim)]">Resultado final</p>
-              <p className="mt-1 text-2xl font-extrabold" style={{ color: cor }}>
-                {NIVEL_INFO[resultado.nivel].emoji} {NIVEL_INFO[resultado.nivel].label} · {resultado.probabilidade}% estimado
+              <p className="mt-1 text-2xl font-extrabold md:text-3xl" style={{ color: cor }}>
+                {NIVEL_INFO[resultado.nivel].emoji} {NIVEL_INFO[resultado.nivel].titulo} · {resultado.probabilidade}% estimado
               </p>
             </div>
 
