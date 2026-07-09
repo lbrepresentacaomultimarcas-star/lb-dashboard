@@ -8,7 +8,9 @@ import {
   CalendarClock,
   ChevronDown,
   History,
+  Landmark,
   LayoutDashboard,
+  Lightbulb,
   Palette,
   Settings,
   Shield,
@@ -60,6 +62,8 @@ const NAV: (NavItem | NavGroup)[] = [
     items: [
       { href: "/vendas", label: "Vendas", icon: ShoppingCart },
       { href: "/leads", label: "Pipeline / Leads", icon: Sparkles },
+      { href: "/oportunidades", label: "Oportunidades", icon: Lightbulb },
+      { href: "/consorcio", label: "Consórcio", icon: Landmark },
       { href: "/clientes", label: "Clientes", icon: UserCircle },
     ],
   },
