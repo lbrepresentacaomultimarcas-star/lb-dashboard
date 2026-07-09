@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Landmark } from "lucide-react";
-import { PremiumStage } from "@/components/premium-stage";
+import { Maximize2, Minimize2, X } from "lucide-react";
+import { Logo } from "@/components/logo";
+import { PainelResultado, AnaliseInteligente, ResumoFinanceiro } from "@/components/consorcio/painel-premium";
 import {
-  CLASSIFICACAO_INFO,
   CONFIG_PADRAO,
+  NIVEL_INFO,
   consorcioApi,
   formatBRL,
   simularContemplacao,
@@ -15,18 +16,20 @@ import {
   type ConsorcioConfig,
 } from "@/lib/consorcio";
 
-/** Tela comercial: visual limpo e grande para o consultor apresentar a
- *  simulação ao cliente durante a negociação. Sem dados administrativos. */
+/** Modo Apresentação (tela cheia, premium) para mostrar ao cliente na mesa.
+ *  Overlay fixo z-[100] cobre a sidebar → tela limpa, sem menus. */
 function Apresentacao() {
   const sp = useSearchParams();
   const carta = Number(sp.get("carta")) || 0;
   const lance = Number(sp.get("lance")) || 0;
   const grupo = sp.get("grupo") ?? "";
+  const cliente = sp.get("cliente") ?? "";
   const usarEmbutido = sp.get("embutido") === "1";
 
   const [config, setConfig] = useState<ConsorcioConfig>(CONFIG_PADRAO);
   const [historico, setHistorico] = useState<ConsorcioAssembleia[]>([]);
   const [pctEmbutidoGrupo, setPctEmbutidoGrupo] = useState(30);
+  const [cheia, setCheia] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -49,100 +52,100 @@ function Apresentacao() {
         : null,
     [carta, lance, usarEmbutido, pctEmbutidoGrupo, config, historico],
   );
+  const cor = resultado ? NIVEL_INFO[resultado.nivel].cor : "var(--color-brand)";
 
-  const cls = resultado ? CLASSIFICACAO_INFO[resultado.classificacao] : null;
+  async function toggleTelaCheia() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setCheia(true);
+      } else {
+        await document.exitFullscreen();
+        setCheia(false);
+      }
+    } catch {
+      /* alguns navegadores bloqueiam — ignora */
+    }
+  }
 
   return (
-    <PremiumStage>
-      <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center py-8">
-        <Link
-          href="/consorcio"
-          className="mb-6 inline-flex w-fit items-center gap-1 text-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] print:hidden"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar ao simulador
-        </Link>
-
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center shadow-xl">
-          <p className="flex items-center justify-center gap-2 text-sm font-semibold uppercase tracking-widest text-[var(--color-text-dim)]">
-            <Landmark className="h-4 w-4 text-[var(--color-brand)]" />
-            Simulação de contemplação{grupo ? ` · Grupo ${grupo}` : ""}
-          </p>
-
-          {resultado && cls ? (
-            <>
-              <div className="mt-6 grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-[var(--color-surface-2)] p-4">
-                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Crédito</p>
-                  <p className="mt-1 text-2xl font-extrabold text-[var(--color-text)]">{formatBRL(carta)}</p>
-                </div>
-                <div className="rounded-xl bg-[var(--color-surface-2)] p-4">
-                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Lance ofertado</p>
-                  <p className="mt-1 text-2xl font-extrabold text-[var(--color-text)]">{formatBRL(lance)}</p>
-                </div>
-              </div>
-
-              <p className="mt-8 text-7xl font-extrabold tracking-tight text-[var(--color-text)]">
-                {resultado.pctLance.toFixed(1)}%
-              </p>
-              <p className="text-sm text-[var(--color-text-dim)]">do valor do crédito</p>
-
-              <p className="mt-4 text-3xl font-bold">
-                {cls.emoji}{" "}
-                <span
-                  style={{
-                    color:
-                      cls.tone === "success"
-                        ? "var(--color-success)"
-                        : cls.tone === "warn"
-                          ? "var(--color-warn)"
-                          : "var(--color-danger)",
-                  }}
-                >
-                  {cls.label}
-                </span>
-              </p>
-
-              {usarEmbutido && resultado.valorEmbutido > 0 ? (
-                <div className="mt-6 grid grid-cols-3 gap-3">
-                  <div className="rounded-xl bg-[var(--color-surface-2)] p-3">
-                    <p className="text-[10px] uppercase text-[var(--color-muted)]">Lance embutido</p>
-                    <p className="mt-1 font-bold text-[var(--color-text)]">{formatBRL(resultado.valorEmbutido)}</p>
-                  </div>
-                  <div className="rounded-xl bg-[var(--color-surface-2)] p-3">
-                    <p className="text-[10px] uppercase text-[var(--color-muted)]">Recurso próprio</p>
-                    <p className="mt-1 font-bold text-[var(--color-text)]">{formatBRL(resultado.recursoProprio)}</p>
-                  </div>
-                  <div className="rounded-xl bg-[var(--color-surface-2)] p-3">
-                    <p className="text-[10px] uppercase text-[var(--color-muted)]">Crédito líquido</p>
-                    <p className="mt-1 font-bold text-[var(--color-text)]">{formatBRL(resultado.creditoLiquido)}</p>
-                  </div>
-                </div>
-              ) : null}
-
-              {resultado.medianaHistorico !== null ? (
-                <p className="mx-auto mt-6 max-w-xl text-sm leading-relaxed text-[var(--color-text-dim)]">
-                  Nas {resultado.totalAssembleiasHistorico} assembleias registradas deste grupo, o menor lance livre
-                  contemplado ficou em torno de <strong>{resultado.medianaHistorico.toFixed(1)}%</strong> (mediana).
-                </p>
-              ) : null}
-
-              <p className="mx-auto mt-6 max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-xs leading-relaxed text-[var(--color-text-dim)]">
-                ⚠️ Esta é uma <strong>estimativa</strong> para apoiar a sua decisão. A contemplação depende do resultado
-                da assembleia e <strong>não é garantida</strong> em nenhuma hipótese.
-              </p>
-            </>
-          ) : (
-            <p className="py-16 text-sm text-[var(--color-text-dim)]">
-              Preencha carta e lance no simulador e clique em “Modo apresentação”.
-            </p>
-          )}
+    <div
+      className="fixed inset-0 z-[100] overflow-y-auto"
+      style={{
+        background: `radial-gradient(120% 80% at 50% -10%, color-mix(in oklab, ${cor} 16%, var(--color-bg, #0a0a0f)), var(--color-bg, #0a0a0f))`,
+      }}
+    >
+      {/* topo */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-4 py-3 backdrop-blur-md md:px-8">
+        <Logo />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTelaCheia}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
+          >
+            {cheia ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {cheia ? "Sair da tela cheia" : "Tela cheia"}
+          </button>
+          <Link
+            href="/consorcio"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
+          >
+            <X className="h-4 w-4" /> Sair
+          </Link>
         </div>
-
-        <p className="mt-4 text-center text-xs text-[var(--color-muted)]">
-          LB Representações · Multimarcas Consórcios
-        </p>
       </div>
-    </PremiumStage>
+
+      <div className="mx-auto max-w-4xl px-4 py-8 md:py-12">
+        {resultado ? (
+          <div className="space-y-6">
+            {cliente ? (
+              <p className="text-center text-lg font-medium text-[var(--color-text-dim)]">
+                Simulação para <span className="font-bold text-[var(--color-text)]">{cliente}</span>
+                {grupo ? ` · Grupo ${grupo}` : ""}
+              </p>
+            ) : null}
+
+            {/* Carta e Lance — grandes */}
+            <div className="mx-auto grid max-w-2xl grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-center">
+                <p className="text-xs uppercase tracking-widest text-[var(--color-muted)]">Valor da carta</p>
+                <p className="mt-1 text-3xl font-extrabold text-[var(--color-text)] md:text-4xl">{formatBRL(carta)}</p>
+              </div>
+              <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-center">
+                <p className="text-xs uppercase tracking-widest text-[var(--color-muted)]">Valor do lance</p>
+                <p className="mt-1 text-3xl font-extrabold text-[var(--color-text)] md:text-4xl">{formatBRL(lance)}</p>
+              </div>
+            </div>
+
+            {/* Velocímetro + % gigante + classificação */}
+            <PainelResultado resultado={resultado} grande />
+
+            {/* Resumo financeiro */}
+            <ResumoFinanceiro resultado={resultado} grande />
+
+            {/* Explicação inteligente */}
+            <AnaliseInteligente resultado={resultado} grande />
+
+            {/* Resultado final */}
+            <div
+              className="rounded-2xl border p-5 text-center"
+              style={{ borderColor: `color-mix(in oklab, ${cor} 45%, transparent)`, background: `color-mix(in oklab, ${cor} 10%, transparent)` }}
+            >
+              <p className="text-sm uppercase tracking-widest text-[var(--color-text-dim)]">Resultado final</p>
+              <p className="mt-1 text-2xl font-extrabold" style={{ color: cor }}>
+                {NIVEL_INFO[resultado.nivel].emoji} {NIVEL_INFO[resultado.nivel].label} · {resultado.probabilidade}% estimado
+              </p>
+            </div>
+
+            <p className="text-center text-xs text-[var(--color-muted)]">LB Representações · Multimarcas Consórcios</p>
+          </div>
+        ) : (
+          <p className="py-24 text-center text-[var(--color-text-dim)]">
+            Preencha carta e lance no simulador e clique em “Modo apresentação”.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

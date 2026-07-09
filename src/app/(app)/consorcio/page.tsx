@@ -5,22 +5,32 @@ import Link from "next/link";
 import {
   Calculator,
   ExternalLink,
+  FileText,
+  History,
   Landmark,
   Plus,
   Presentation,
   RefreshCw,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { PremiumStage } from "@/components/premium-stage";
+import {
+  AnaliseComercial,
+  AnaliseInteligente,
+  Comparativo,
+  PainelResultado,
+  ResumoFinanceiro,
+} from "@/components/consorcio/painel-premium";
 import { notify } from "@/lib/notify";
 import { useSession } from "@/lib/store";
 import {
-  CLASSIFICACAO_INFO,
   CONFIG_PADRAO,
+  NIVEL_INFO,
   SEGMENTO_INFO,
   consorcioApi,
   formatBRL,
@@ -31,6 +41,9 @@ import {
   type ConsorcioGrupo,
   type ConsorcioSegmento,
 } from "@/lib/consorcio";
+
+type HistSim = { id: string; cliente: string; carta: number; lance: number; prob: number; nivel: string; data: string };
+const HIST_KEY = "lb-consorcio-hist";
 
 type Aba = "simulador" | "creditos" | "grupos" | "assembleias";
 
@@ -55,10 +68,12 @@ export default function ConsorcioPage() {
   const [sincronizando, setSincronizando] = useState(false);
 
   // Simulador
+  const [cliente, setCliente] = useState("");
   const [grupoSel, setGrupoSel] = useState("");
   const [carta, setCarta] = useState("");
   const [lance, setLance] = useState("");
   const [usarEmbutido, setUsarEmbutido] = useState(false);
+  const [historico, setHistorico] = useState<HistSim[]>([]);
 
   // Filtros de créditos
   const [buscaCred, setBuscaCred] = useState("");
@@ -81,8 +96,23 @@ export default function ConsorcioPage() {
     setConfig(cfg);
   }
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void carregar();
+    // Preparação p/ integração com o Pipeline: /consorcio?cliente=..&carta=..&lance=..&grupo=..
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const gc = (k: string) => q.get(k) ?? "";
+      const raw = localStorage.getItem(HIST_KEY);
+      /* eslint-disable react-hooks/set-state-in-effect */
+      if (gc("cliente")) setCliente(gc("cliente"));
+      if (gc("grupo")) setGrupoSel(gc("grupo"));
+      if (gc("carta")) setCarta(gc("carta").replace(".", ","));
+      if (gc("lance")) setLance(gc("lance").replace(".", ","));
+      if (gc("embutido") === "1") setUsarEmbutido(true);
+      if (raw) setHistorico(JSON.parse(raw) as HistSim[]);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {
+      /* sem window/localStorage (SSR) — ignora */
+    }
   }, []);
 
   async function sincronizar() {
@@ -161,7 +191,56 @@ export default function ConsorcioPage() {
     void carregar();
   }
 
-  const cls = resultado ? CLASSIFICACAO_INFO[resultado.classificacao] : null;
+  const faixaRecomendada = resultado?.medianaHistorico ?? config.faixaAlta;
+
+  function persistirHistorico(item: HistSim) {
+    setHistorico((prev) => {
+      const next = [item, ...prev].slice(0, 12);
+      try {
+        localStorage.setItem(HIST_KEY, JSON.stringify(next));
+      } catch {
+        /* ignora */
+      }
+      return next;
+    });
+  }
+  // #7 — estrutura pronta (PDF vem depois); já registra no histórico local.
+  function gerarProposta() {
+    if (!resultado) return notify.error("Preencha carta e lance primeiro.");
+    persistirHistorico({
+      id: crypto.randomUUID(),
+      cliente: cliente.trim() || "—",
+      carta: vCarta,
+      lance: vLance,
+      prob: resultado.probabilidade,
+      nivel: resultado.nivel,
+      data: new Date().toISOString(),
+    });
+    notify.success("Proposta preparada e salva no histórico. Geração de PDF em breve.");
+  }
+  // #8 — estrutura pronta (WhatsApp/PDF/imagem depois): copia o resumo.
+  function compartilhar() {
+    if (!resultado) return notify.error("Preencha carta e lance primeiro.");
+    const txt =
+      `Simulação de Consórcio — LB Representações\n` +
+      `Cliente: ${cliente.trim() || "—"}\n` +
+      `Carta: ${formatBRL(vCarta)}\n` +
+      `Lance: ${formatBRL(vLance)} (${resultado.pctLance.toFixed(1)}% do crédito)\n` +
+      `Probabilidade estimada: ${resultado.probabilidade}% — ${NIVEL_INFO[resultado.nivel].label}\n` +
+      `(Estimativa de apoio à negociação; não é garantia de contemplação.)`;
+    navigator.clipboard?.writeText(txt).then(
+      () => notify.success("Resumo copiado. Envio por WhatsApp/PDF/imagem em breve."),
+      () => notify.error("Não foi possível copiar."),
+    );
+  }
+  function limparHistorico() {
+    setHistorico([]);
+    try {
+      localStorage.removeItem(HIST_KEY);
+    } catch {
+      /* ignora */
+    }
+  }
 
   return (
     <PremiumStage>
@@ -183,7 +262,7 @@ export default function ConsorcioPage() {
             </Button>
           ) : null}
           <Link
-            href={`/consorcio/apresentacao?carta=${vCarta || ""}&lance=${vLance || ""}&grupo=${grupoSel}&embutido=${usarEmbutido ? 1 : 0}`}
+            href={`/consorcio/apresentacao?carta=${vCarta || ""}&lance=${vLance || ""}&grupo=${grupoSel}&embutido=${usarEmbutido ? 1 : 0}&cliente=${encodeURIComponent(cliente)}`}
           >
             <Button>
               <Presentation className="h-4 w-4" /> Modo apresentação
@@ -216,6 +295,10 @@ export default function ConsorcioPage() {
               <Calculator className="h-4 w-4 text-[var(--color-brand)]" /> Simulador de contemplação
             </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Label>Cliente (opcional)</Label>
+                <Input value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nome do cliente" />
+              </div>
               <div>
                 <Label>Grupo (opcional)</Label>
                 <select
@@ -286,70 +369,85 @@ export default function ConsorcioPage() {
                 </div>
               </div>
             ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
+              <Button onClick={gerarProposta} disabled={!resultado}>
+                <FileText className="h-4 w-4" /> Gerar proposta
+              </Button>
+              <Button variant="secondary" onClick={compartilhar} disabled={!resultado}>
+                <Share2 className="h-4 w-4" /> Compartilhar simulação
+              </Button>
+            </div>
           </div>
 
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-            {resultado && cls ? (
-              <div>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-[var(--color-text-dim)]">Resultado da estimativa</p>
-                  <Badge tone={cls.tone}>
-                    {cls.emoji} {cls.label}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-5xl font-extrabold tracking-tight text-[var(--color-text)]">
-                  {resultado.pctLance.toFixed(1)}%
-                </p>
-                <p className="text-sm text-[var(--color-text-dim)]">do valor do crédito</p>
+          {resultado ? (
+            <PainelResultado resultado={resultado} />
+          ) : (
+            <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-center">
+              <Calculator className="h-9 w-9 text-[var(--color-muted)]" />
+              <p className="mt-2 text-sm text-[var(--color-text-dim)]">
+                Informe o valor da carta e do lance para ver a estimativa premium.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : null}
 
-                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(100, resultado.pctLance)}%`,
-                      background:
-                        cls.tone === "success"
-                          ? "var(--color-success)"
-                          : cls.tone === "warn"
-                            ? "var(--color-warn)"
-                            : "var(--color-danger)",
-                    }}
-                  />
-                </div>
+      {/* Seções premium (aparecem com o resultado) */}
+      {aba === "simulador" && resultado ? (
+        <div className="mt-4 space-y-4">
+          <ResumoFinanceiro resultado={resultado} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Comparativo resultado={resultado} faixaRecomendada={faixaRecomendada} />
+            <AnaliseComercial resultado={resultado} carta={vCarta} />
+          </div>
+          <AnaliseInteligente resultado={resultado} />
+        </div>
+      ) : null}
 
-                {usarEmbutido && resultado.valorEmbutido > 0 ? (
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-[var(--color-surface-2)] p-2">
-                      <p className="text-[10px] uppercase text-[var(--color-muted)]">Embutido</p>
-                      <p className="text-sm font-bold text-[var(--color-text)]">{formatBRL(resultado.valorEmbutido)}</p>
-                    </div>
-                    <div className="rounded-lg bg-[var(--color-surface-2)] p-2">
-                      <p className="text-[10px] uppercase text-[var(--color-muted)]">Recurso próprio</p>
-                      <p className="text-sm font-bold text-[var(--color-text)]">{formatBRL(resultado.recursoProprio)}</p>
-                    </div>
-                    <div className="rounded-lg bg-[var(--color-surface-2)] p-2">
-                      <p className="text-[10px] uppercase text-[var(--color-muted)]">Crédito líquido</p>
-                      <p className="text-sm font-bold text-[var(--color-text)]">{formatBRL(resultado.creditoLiquido)}</p>
-                    </div>
-                  </div>
-                ) : null}
-
-                <ul className="mt-4 space-y-2">
-                  {resultado.explicacao.map((e, i) => (
-                    <li key={i} className="text-sm leading-relaxed text-[var(--color-text-dim)]">
-                      • {e}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <div className="flex h-full min-h-48 flex-col items-center justify-center text-center">
-                <Calculator className="h-8 w-8 text-[var(--color-muted)]" />
-                <p className="mt-2 text-sm text-[var(--color-text-dim)]">
-                  Informe o valor da carta e do lance para ver a estimativa.
-                </p>
-              </div>
-            )}
+      {/* Histórico das últimas simulações (local — sem alterar o banco) */}
+      {aba === "simulador" && historico.length > 0 ? (
+        <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
+              <History className="h-4 w-4 text-[var(--color-brand)]" /> Últimas simulações
+            </p>
+            <Button size="sm" variant="ghost" onClick={limparHistorico}>
+              <Trash2 className="h-3.5 w-3.5" /> Limpar
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-muted)]">
+                  <th className="py-2 pr-3">Cliente</th>
+                  <th className="py-2 px-3 text-right">Carta</th>
+                  <th className="py-2 px-3 text-right">Lance</th>
+                  <th className="py-2 px-3">Resultado</th>
+                  <th className="py-2 pl-3 text-right">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.map((h) => {
+                  const ni = NIVEL_INFO[(h.nivel as keyof typeof NIVEL_INFO) in NIVEL_INFO ? (h.nivel as keyof typeof NIVEL_INFO) : "moderada"];
+                  return (
+                    <tr key={h.id} className="border-b border-[var(--color-border)]/60 last:border-0">
+                      <td className="py-2 pr-3 font-medium text-[var(--color-text)]">{h.cliente}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-[var(--color-text-dim)]">{formatBRL(h.carta)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-[var(--color-text-dim)]">{formatBRL(h.lance)}</td>
+                      <td className="py-2 px-3">
+                        <span className="font-semibold tabular-nums" style={{ color: ni.cor }}>
+                          {ni.emoji} {h.prob}% · {ni.label}
+                        </span>
+                      </td>
+                      <td className="py-2 pl-3 text-right text-xs text-[var(--color-muted)]">
+                        {new Date(h.data).toLocaleString("pt-BR")}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}

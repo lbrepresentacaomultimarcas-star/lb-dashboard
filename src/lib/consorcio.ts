@@ -83,6 +83,62 @@ export const CLASSIFICACAO_INFO: Record<
   baixa: { label: "Chance baixa", emoji: "🔴", tone: "danger" },
 };
 
+/* ----------------------- Classificação inteligente (5 níveis) ---------------- */
+
+export type Nivel = "muito_baixa" | "baixa" | "moderada" | "alta" | "excelente";
+
+/** Cada nível controla cor, ícone, glow, badge, barra e texto na UI.
+ *  É uma escala de STATUS: sempre acompanhada de emoji + rótulo (nunca cor só). */
+export const NIVEL_INFO: Record<
+  Nivel,
+  { label: string; emoji: string; cor: string; min: number }
+> = {
+  muito_baixa: { label: "Muito Baixa", emoji: "🔴", cor: "#ef4444", min: 0 },
+  baixa: { label: "Baixa", emoji: "🟠", cor: "#f97316", min: 20 },
+  moderada: { label: "Moderada", emoji: "🟡", cor: "#eab308", min: 40 },
+  alta: { label: "Alta", emoji: "🟢", cor: "#22c55e", min: 60 },
+  excelente: { label: "Excelente", emoji: "🏆", cor: "#f5b301", min: 80 },
+};
+
+export const NIVEIS_ORDENADOS: Nivel[] = ["muito_baixa", "baixa", "moderada", "alta", "excelente"];
+
+export function nivelDaProbabilidade(p: number): Nivel {
+  if (p >= 80) return "excelente";
+  if (p >= 60) return "alta";
+  if (p >= 40) return "moderada";
+  if (p >= 20) return "baixa";
+  return "muito_baixa";
+}
+
+function interp(x: number, x0: number, y0: number, x1: number, y1: number): number {
+  if (x1 === x0) return y0;
+  return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+}
+
+/** Probabilidade ESTIMADA (0–95%) do lance, ancorada nas faixas configuradas
+ *  e, quando há histórico, na mediana real do menor lance livre contemplado.
+ *  Curva monotônica; teto em 95% de propósito — nunca sugere garantia. */
+export function estimarProbabilidade(
+  pctLance: number,
+  config: ConsorcioConfig,
+  mediana: number | null,
+): number {
+  let a50 = config.faixaMedia; // referência ~50%
+  let a80 = config.faixaAlta; // referência ~80%
+  if (mediana != null && mediana > 0) {
+    a50 = Math.max(1, mediana - 4);
+    a80 = mediana + 6;
+  }
+  if (a80 <= a50) a80 = a50 + 5;
+
+  let p: number;
+  if (pctLance <= 0) p = 4;
+  else if (pctLance < a50) p = interp(pctLance, 0, 8, a50, 50);
+  else if (pctLance < a80) p = interp(pctLance, a50, 50, a80, 80);
+  else p = interp(pctLance, a80, 80, a80 * 1.6, 95);
+  return Math.max(3, Math.min(95, Math.round(p)));
+}
+
 export type SimulacaoInput = {
   valorCarta: number;
   valorLance: number;
@@ -96,6 +152,10 @@ export type SimulacaoInput = {
 
 export type SimulacaoResultado = {
   pctLance: number;
+  /** Probabilidade estimada (0–95%) — headline do painel premium. */
+  probabilidade: number;
+  /** Nível (5 faixas) derivado da probabilidade. */
+  nivel: Nivel;
   classificacao: Classificacao;
   /** Valor embutido usado (0 se não usar). */
   valorEmbutido: number;
@@ -175,8 +235,13 @@ export function simularContemplacao(input: SimulacaoInput): SimulacaoResultado {
     "Estimativa para apoiar a negociação: a contemplação depende do resultado da assembleia e NUNCA é garantida.",
   );
 
+  const probabilidade = estimarProbabilidade(pctLance, input.config, med);
+  const nivel = nivelDaProbabilidade(probabilidade);
+
   return {
     pctLance,
+    probabilidade,
+    nivel,
     classificacao,
     valorEmbutido,
     recursoProprio,
@@ -189,6 +254,57 @@ export function simularContemplacao(input: SimulacaoInput): SimulacaoResultado {
 
 export function formatBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/* ------------------ IA comercial: texto e observações por nível --------------- */
+
+const DISCLAIMER =
+  "Esta análise serve como apoio à negociação comercial e não representa garantia de contemplação.";
+
+/** Parágrafo de análise que muda conforme o nível. Sempre termina com o aviso. */
+export function textoInteligente(nivel: Nivel): string {
+  const corpo: Record<Nivel, string> = {
+    excelente:
+      "Com base nos parâmetros cadastrados e nas configurações atuais do grupo, este lance apresenta excelente competitividade. Caso o comportamento da assembleia permaneça semelhante ao padrão utilizado nesta estimativa, existe uma elevada probabilidade de contemplação.",
+    alta:
+      "Considerando os parâmetros informados e as configurações do grupo, este lance apresenta boa competitividade. Se a assembleia mantiver um comportamento próximo ao padrão desta estimativa, as chances de contemplação são favoráveis.",
+    moderada:
+      "Com os parâmetros atuais, este lance fica em uma faixa intermediária de competitividade. Um pequeno aumento no valor do lance pode elevar de forma relevante a probabilidade estimada de contemplação.",
+    baixa:
+      "Nos parâmetros informados, este lance está abaixo da faixa mais competitiva para o grupo. Recomenda-se avaliar um reforço no valor do lance para melhorar o posicionamento na assembleia.",
+    muito_baixa:
+      "Com os valores atuais, este lance apresenta baixa competitividade frente à referência do grupo. Vale rever o valor ofertado antes de apresentar a proposta ao cliente.",
+  };
+  return `${corpo[nivel]} ${DISCLAIMER}`;
+}
+
+export type ObsComercial = { tipo: "ok" | "atencao"; texto: string };
+
+/** Observações automáticas de apoio ao VENDEDOR (não são promessa ao cliente).
+ *  Cartões coloridos, linguagem profissional. */
+export function analiseComercial(r: SimulacaoResultado, carta: number): ObsComercial[] {
+  const obs: ObsComercial[] = [];
+
+  if (r.nivel === "excelente" || r.nivel === "alta") {
+    obs.push({ tipo: "ok", texto: "Lance muito competitivo." });
+    obs.push({ tipo: "ok", texto: "Boa oportunidade para ofertar agora." });
+  } else if (r.nivel === "moderada") {
+    obs.push({ tipo: "atencao", texto: "Lance próximo da faixa mínima recomendada." });
+    obs.push({ tipo: "atencao", texto: "Vale considerar pequeno aumento para melhorar a competitividade." });
+  } else {
+    obs.push({ tipo: "atencao", texto: "Lance abaixo da faixa recomendada — considere reforçar o valor." });
+  }
+
+  if (r.valorEmbutido > 0) {
+    obs.push({ tipo: "ok", texto: "Excelente uso de lance embutido." });
+  }
+  if (carta > 0 && r.creditoLiquido / carta >= 0.7) {
+    obs.push({ tipo: "ok", texto: "Crédito líquido adequado." });
+  }
+  if (carta > 0 && r.recursoProprio / carta <= 0.2 && r.recursoProprio > 0) {
+    obs.push({ tipo: "ok", texto: "Recurso próprio baixo." });
+  }
+  return obs;
 }
 
 /* ------------------------------ Dados (Supabase) ----------------------------- */
