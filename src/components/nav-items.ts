@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BrainCircuit,
   CalendarClock,
   History,
   Landmark,
@@ -35,6 +36,7 @@ export type NavGroup = {
 
 export const NAV: (NavItem | NavGroup)[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/analise", label: "Análise Comercial", icon: BrainCircuit },
   {
     label: "Gameficação",
     icon: Trophy,

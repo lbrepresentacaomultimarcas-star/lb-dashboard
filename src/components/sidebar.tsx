@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  BrainCircuit,
   CalendarClock,
   ChevronDown,
   History,
@@ -46,6 +47,7 @@ type NavGroup = {
 
 const NAV: (NavItem | NavGroup)[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/analise", label: "Análise Comercial", icon: BrainCircuit },
   {
     label: "Gameficação",
     icon: Trophy,
