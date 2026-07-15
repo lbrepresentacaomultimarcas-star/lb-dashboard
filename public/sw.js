@@ -4,7 +4,7 @@
  * - Assets estáticos (_next/static, ícones): stale-while-revalidate
  * - NUNCA cacheia /api/* nem o Supabase (dados sempre frescos)
  */
-const VERSION = "lb-v2";
+const VERSION = "lb-v3";
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 const OFFLINE_URL = "/offline.html";

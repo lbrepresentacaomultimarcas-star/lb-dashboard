@@ -47,7 +47,7 @@ type NavGroup = {
 
 const NAV: (NavItem | NavGroup)[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/analise", label: "Análise Comercial", icon: BrainCircuit },
+  { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   {
     label: "Gameficação",
     icon: Trophy,

@@ -123,6 +123,19 @@ async function refreshSilently(): Promise<void> {
   }
 }
 
+/**
+ * Refresh silencioso ao VOLTAR pro app (PWA reaberto do background / aba
+ * voltando ao foco). Com throttle: no máximo 1 a cada 30s, pra não martelar
+ * o Supabase em alt-tabs rápidos. Registrado no DataLoader (raiz do app).
+ */
+let lastFocusRefresh = 0;
+export function refreshOnAppFocus(): void {
+  const agora = Date.now();
+  if (agora - lastFocusRefresh < 30_000) return;
+  lastFocusRefresh = agora;
+  void refreshSilently();
+}
+
 // ============================================================
 // Toggle do auto-refresh (persiste em localStorage)
 // ============================================================

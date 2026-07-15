@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { PremiumStage } from "@/components/premium-stage";
+import { RoleGuard } from "@/components/role-guard";
 import { Badge } from "@/components/ui/badge";
 import { useAudit, useLeads, useVendas, useVendedores } from "@/lib/store";
 import {
@@ -106,7 +107,18 @@ function CardStat({ label, valor, sub }: { label: string; valor: string; sub?: s
 
 /* ---------------------------------- Página ----------------------------------- */
 
+/** Dados estratégicos da empresa → somente ADMIN. O consultor continua com
+ *  o próprio pipeline, clientes, metas, ranking, performance, oportunidades
+ *  e consórcio — nada disso muda. */
 export default function AnaliseComercialPage() {
+  return (
+    <RoleGuard minimo="admin">
+      <AnaliseConteudo />
+    </RoleGuard>
+  );
+}
+
+function AnaliseConteudo() {
   const leads = useLeads();
   const audits = useAudit();
   const vendas = useVendas();
