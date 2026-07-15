@@ -15,6 +15,23 @@
 -- Obs.: cada empresa tem seu próprio deploy + banco (LB e WR separados).
 -- ============================================================================
 
+-- 0) Remove versões antigas destas 2 funções (qualquer assinatura) — evita o
+--    erro 42P13 "cannot remove parameter defaults from existing function"
+--    quando já existe uma versão criada com DEFAULT nos parâmetros.
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as assinatura
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('ranking_dados', 'ranking_mensal')
+  loop
+    execute format('drop function if exists %s', r.assinatura);
+  end loop;
+end $$;
+
 -- 1) Pacote de dados do ranking para um intervalo (com folga p/ ciclos).
 create or replace function public.ranking_dados(p_from timestamptz, p_to timestamptz)
 returns jsonb
