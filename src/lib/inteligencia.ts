@@ -433,6 +433,403 @@ export function resumoPeriodo(
   );
 }
 
+/* ------------------------ 1) Índice Comercial LB (0–100) ---------------------- */
+
+export type ComponenteIndice = { nome: string; pontos: number; max: number };
+
+export type IndiceComercial = {
+  nota: number;
+  classificacao: "Excelente" | "Muito Bom" | "Bom" | "Atenção" | "Crítico";
+  cor: string;
+  componentes: ComponenteIndice[];
+};
+
+export type EntradaIndice = {
+  geral: AnaliseFunil;
+  pctMetaCiclo: number;
+  alertasTotais: number;
+  alertasUrgentes: number;
+  leadsAtivos: number;
+  valorEmRisco: number;
+  valorAberto: number;
+};
+
+export function indiceComercialLB(e: EntradaIndice): IndiceComercial {
+  const g = e.geral;
+  const comp: ComponenteIndice[] = [];
+  const add = (nome: string, frac: number, max: number) =>
+    comp.push({ nome, pontos: Math.round(Math.max(0, Math.min(1, frac)) * max), max });
+
+  add("Conversão", g.convGeral / 30, 15);
+  add("Meta atingida", e.pctMetaCiclo / 100, 15);
+  add("Follow-up", e.leadsAtivos > 0 ? 1 - e.alertasTotais / e.leadsAtivos : 1, 10);
+  add("Tempo parado", e.leadsAtivos > 0 ? 1 - e.alertasUrgentes / e.leadsAtivos : 1, 10);
+  add("Velocidade até fechar", g.tempoAteFecharDias !== null ? 30 / Math.max(30, g.tempoAteFecharDias) : 0.5, 8);
+  add("Ticket médio", g.qtdVendas > 0 ? Math.min(1, g.ticketMedio / Math.max(1, g.valorVendido / Math.max(1, g.qtdVendas) * 0.8 + 1)) : 0.5, 7);
+  add("Perdas controladas", g.totalLeads > 0 ? 1 - g.perdidos / g.totalLeads : 1, 10);
+  add("Recuperações", g.taxaRecuperacao !== null ? g.taxaRecuperacao / 40 : 0.4, 5);
+  add("Risco sob controle", e.valorAberto > 0 ? 1 - e.valorEmRisco / e.valorAberto : 1, 10);
+  add("Movimentação do funil", g.totalLeads > 0 ? Math.min(1, (g.fechados + g.etapas[2].alcancaram) / Math.max(1, g.totalLeads * 0.6)) : 0, 5);
+  add("Valor vendido", g.valorVendido > 0 ? Math.min(1, g.qtdVendas / Math.max(1, g.totalLeads * 0.2)) : 0, 5);
+
+  const nota = Math.min(100, comp.reduce((s, c) => s + c.pontos, 0));
+  const classificacao =
+    nota >= 95 ? "Excelente" : nota >= 85 ? "Muito Bom" : nota >= 70 ? "Bom" : nota >= 55 ? "Atenção" : "Crítico";
+  const cor = nota >= 95 ? "#f5b301" : nota >= 85 ? "#22c55e" : nota >= 70 ? "#a3e635" : nota >= 55 ? "#eab308" : "#ef4444";
+  return { nota, classificacao, cor, componentes: comp };
+}
+
+/** Explica automaticamente por que a nota mudou (compara os componentes). */
+export function explicarIndice(atual: IndiceComercial, anterior: IndiceComercial | null): string {
+  if (!anterior) {
+    const fracos = [...atual.componentes].sort((a, b) => a.pontos / a.max - b.pontos / b.max).slice(0, 2);
+    return `A nota reflete principalmente ${fracos.map((f) => f.nome.toLowerCase()).join(" e ")}, os pontos com maior espaço de melhoria no momento.`;
+  }
+  const delta = atual.nota - anterior.nota;
+  const difs = atual.componentes.map((c, i) => ({ nome: c.nome, d: c.pontos - (anterior.componentes[i]?.pontos ?? 0) }));
+  if (delta < 0) {
+    const quedas = difs.filter((x) => x.d < 0).sort((a, b) => a.d - b.d).slice(0, 2);
+    return quedas.length
+      ? `A nota caiu ${Math.abs(delta)} ponto(s), puxada por ${quedas.map((q) => q.nome.toLowerCase()).join(" e ")}.`
+      : `A nota caiu ${Math.abs(delta)} ponto(s) em relação ao período anterior.`;
+  }
+  if (delta > 0) {
+    const altas = difs.filter((x) => x.d > 0).sort((a, b) => b.d - a.d).slice(0, 2);
+    return altas.length
+      ? `A nota subiu ${delta} ponto(s), impulsionada por ${altas.map((q) => q.nome.toLowerCase()).join(" e ")}.`
+      : `A nota subiu ${delta} ponto(s) em relação ao período anterior.`;
+  }
+  return "Nota estável em relação ao período anterior.";
+}
+
+/* --------------------------- 2) Prioridade de hoje ----------------------------- */
+
+export type Prioridade = { titulo: string; texto: string; potencial: number };
+
+export function prioridadeDoDia(riscos: RiscoLead[], agora: Date = new Date()): Prioridade | null {
+  if (riscos.length === 0) return null;
+  const seed = agora.getDate();
+
+  // Grupo mais valioso: negócios de alto valor parados
+  const corte = 50000;
+  const grandes = riscos.filter((r) => r.lead.valorEstimado >= corte && r.diasParado >= 3);
+  if (grandes.length >= 2) {
+    const pot = grandes.reduce((s, r) => s + r.lead.valorEstimado, 0);
+    return {
+      titulo: "🚨 PRIORIDADE DE HOJE",
+      texto: variar(
+        [
+          `Existem ${grandes.length} oportunidades acima de ${BRL(corte)} sem contato há 3+ dias. É o dinheiro mais quente da casa esfriando.`,
+          `${grandes.length} negócios grandes (≥ ${BRL(corte)}) estão parados há 3 dias ou mais — priorize esses contatos antes de qualquer outra tarefa.`,
+        ],
+        seed,
+      ),
+      potencial: pot,
+    };
+  }
+
+  // Senão: o maior risco individual
+  const top = riscos[0];
+  return {
+    titulo: "🚨 PRIORIDADE DE HOJE",
+    texto: `${top.lead.nome} (${LEAD_STATUS_INFO[top.lead.status].label.toLowerCase()}) está com ${top.risco}% de risco: ${top.motivos[0] ?? `parado há ${top.diasParado} dia(s)`} ${top.lead.valorEstimado > 0 ? `Há ${BRL(top.lead.valorEstimado)} em jogo.` : ""}`,
+    potencial: riscos.slice(0, 5).reduce((s, r) => s + r.lead.valorEstimado, 0),
+  };
+}
+
+/* ---------------------------- 3) Radar de tendência ---------------------------- */
+
+export type Tendencial = { rotulo: string; emoji: string; cor: string; motivo: string; janelas: { dias: number; atual: number; anterior: number }[] };
+
+export function radarTendencia(vendas: Venda[], agora: Date = new Date()): Tendencial {
+  const dia = 86400000;
+  const t0 = agora.getTime();
+  const soma = (ini: number, fim: number) =>
+    vendas.reduce((s, v) => {
+      const t = new Date(v.data).getTime();
+      return t >= ini && t < fim ? s + v.valor : s;
+    }, 0);
+
+  const janelas = [7, 15, 30, 90].map((d) => ({
+    dias: d,
+    atual: soma(t0 - d * dia, t0),
+    anterior: soma(t0 - 2 * d * dia, t0 - d * dia),
+  }));
+
+  // Score: média dos deltas relativos (janelas curtas pesam mais)
+  const pesos = [0.4, 0.3, 0.2, 0.1];
+  let score = 0;
+  let base = 0;
+  janelas.forEach((j, i) => {
+    if (j.anterior > 0) {
+      score += ((j.atual - j.anterior) / j.anterior) * pesos[i];
+      base += pesos[i];
+    } else if (j.atual > 0) {
+      score += 0.5 * pesos[i];
+      base += pesos[i];
+    }
+  });
+  const r = base > 0 ? score / base : 0;
+  const j7 = janelas[0];
+  const j30 = janelas[2];
+
+  if (r >= 0.1)
+    return {
+      rotulo: "Crescimento Forte",
+      emoji: "📈",
+      cor: "#22c55e",
+      motivo: `Últimos 7 dias somaram ${BRL(j7.atual)} (antes: ${BRL(j7.anterior)}); em 30 dias, ${BRL(j30.atual)} contra ${BRL(j30.anterior)}.`,
+      janelas,
+    };
+  if (r <= -0.1)
+    return {
+      rotulo: "Atenção",
+      emoji: "📉",
+      cor: "#ef4444",
+      motivo: `O ritmo caiu: últimos 7 dias em ${BRL(j7.atual)} (antes ${BRL(j7.anterior)}); 30 dias em ${BRL(j30.atual)} vs ${BRL(j30.anterior)}.`,
+      janelas,
+    };
+  return {
+    rotulo: "Estável",
+    emoji: "➡️",
+    cor: "#eab308",
+    motivo: `Vendas mantendo o padrão: ${BRL(j7.atual)} nos últimos 7 dias e ${BRL(j30.atual)} em 30 dias, na linha dos períodos anteriores.`,
+    janelas,
+  };
+}
+
+/* ----------------------------- 4) Meta inteligente ----------------------------- */
+
+export function metaInteligente(p: {
+  meta: number;
+  vendido: number;
+  diasDecorridos: number;
+  diasRestantes: number;
+}): string {
+  if (p.meta <= 0) return "Defina as metas do ciclo em Metas mensais para a previsão de atingimento.";
+  const falta = Math.max(0, p.meta - p.vendido);
+  if (falta === 0) return "🏆 Meta batida! Agora é ampliar a margem — cada venda daqui é recorde.";
+  const ritmoDia = p.vendido / Math.max(1, p.diasDecorridos);
+  if (ritmoDia <= 0) return `Faltam ${BRL(falta)} e o ciclo ainda não registrou vendas — hora de acionar o funil com força.`;
+  const diasNecessarios = falta / ritmoDia;
+  if (diasNecessarios <= p.diasRestantes) {
+    return `Mantendo o ritmo atual (${BRL(ritmoDia)}/dia), a meta será atingida em aproximadamente ${Math.ceil(diasNecessarios)} dia(s) — antes do fim do ciclo. ✅`;
+  }
+  const ritmoNecessario = falta / Math.max(1, p.diasRestantes);
+  const aumento = ((ritmoNecessario / ritmoDia) - 1) * 100;
+  return `No ritmo atual a meta não fecha: será necessário acelerar ~${aumento.toFixed(0)}% (de ${BRL(ritmoDia)}/dia para ${BRL(ritmoNecessario)}/dia nos ${p.diasRestantes} dia(s) restantes).`;
+}
+
+/* ---------------------------- 5) Resumo executivo ------------------------------ */
+
+export function resumoExecutivo(p: {
+  nomeGestor: string;
+  nota: number;
+  riscos: RiscoLead[];
+  piorVendedor: { nome: string; nota: number } | null;
+  recuperaveis: number;
+  agora?: Date;
+}): { saudacao: string; recomendacoes: string[] } {
+  const agora = p.agora ?? new Date();
+  const h = agora.getHours();
+  const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  const primeiroNome = p.nomeGestor.split(" ")[0];
+
+  const rec: string[] = [];
+  const grandes = p.riscos.filter((r) => r.lead.valorEstimado >= 50000).slice(0, 5);
+  if (grandes.length > 0)
+    rec.push(`Ligar para ${grandes.length} cliente(s) acima de ${BRL(50000)}: ${grandes.map((r) => r.lead.nome.split(" ")[0]).join(", ")}.`);
+  const propostas = p.riscos.filter((r) => r.lead.status === "reuniao").slice(0, 4);
+  if (propostas.length > 0)
+    rec.push(`Cobrar ${propostas.length} proposta(s) pendente(s): ${propostas.map((r) => r.lead.nome.split(" ")[0]).join(", ")}.`);
+  const acompanhamentos = p.riscos.filter((r) => r.lead.status === "acompanhamento").slice(0, 3);
+  if (acompanhamentos.length > 0)
+    rec.push(`Acompanhar ${acompanhamentos.length} negociação(ões) em fase final: ${acompanhamentos.map((r) => r.lead.nome.split(" ")[0]).join(", ")}.`);
+  if (p.piorVendedor) rec.push(`Apoiar ${p.piorVendedor.nome.split(" ")[0]} (score ${p.piorVendedor.nota}/100) nas negociações abertas.`);
+  if (p.recuperaveis > 0) rec.push(`Recuperar oportunidades antigas: ${BRL(p.recuperaveis)} em clientes perdidos com potencial de retorno.`);
+  if (rec.length === 0) rec.push("Operação em dia — aproveite para prospectar novas oportunidades.");
+
+  return { saudacao: `${saud}, ${primeiroNome}. Sua operação está em ${p.nota}/100.`, recomendacoes: rec };
+}
+
+/* --------------------------- 8) Cenários financeiros --------------------------- */
+
+export type Cenarios = {
+  pior: number;
+  esperado: number;
+  melhor: number;
+  provavel: number;
+  probMeta: number | null;
+};
+
+export function cenariosFinanceiros(p: {
+  previsao: PrevisaoInteligente;
+  runRate: number;
+  pipelineProvavel: number;
+  meta: number;
+}): Cenarios {
+  const esperado = p.runRate;
+  const provavel = Math.min(p.previsao.max, esperado + p.pipelineProvavel * 0.3);
+  let probMeta: number | null = null;
+  if (p.meta > 0) {
+    // Posição da meta dentro da faixa min–max → probabilidade heurística.
+    if (p.meta <= p.previsao.min) probMeta = 95;
+    else if (p.meta >= p.previsao.max) probMeta = 8;
+    else probMeta = Math.round(90 - ((p.meta - p.previsao.min) / Math.max(1, p.previsao.max - p.previsao.min)) * 75);
+  }
+  return { pior: p.previsao.min, esperado, melhor: p.previsao.max, provavel, probMeta };
+}
+
+/* ------------------------- 11) Melhor ação do momento -------------------------- */
+
+export type MelhorAcao = { texto: string; lead: Lead } | null;
+
+export function melhorAcaoAgora(riscos: RiscoLead[], agora: Date = new Date()): MelhorAcao {
+  if (riscos.length === 0) return null;
+  // Maior chance de impacto: valor × urgência (risco), com etapa avançada valendo mais.
+  const pesoEtapa: Partial<Record<LeadStatus, number>> = { acompanhamento: 1.3, reuniao: 1.2, reuniao_agendada: 1.1 };
+  const top = [...riscos].sort(
+    (a, b) =>
+      b.lead.valorEstimado * (b.risco / 100) * (pesoEtapa[b.lead.status] ?? 1) -
+      a.lead.valorEstimado * (a.risco / 100) * (pesoEtapa[a.lead.status] ?? 1),
+  )[0];
+  const nome = top.lead.nome.split(" ")[0];
+  const verbo: Record<string, string[]> = {
+    oportunidade: [`Ligar para ${nome} agora`, `Fazer o primeiro contato com ${nome} hoje`],
+    primeiro_contato: [`Cobrar retorno de ${nome} por WhatsApp`, `Reaquecer a conversa com ${nome}`],
+    reuniao: [`Enviar a proposta para ${nome} hoje`, `Cobrar a proposta de ${nome}`],
+    reuniao_agendada: [`Confirmar a reunião com ${nome}`, `Garantir a presença de ${nome} na reunião`],
+    acompanhamento: [`Fechar com ${nome}: fazer a ligação decisiva`, `Negociar condição final com ${nome}`],
+  };
+  const frase = variar(verbo[top.lead.status] ?? [`Fazer follow-up com ${nome}`], agora.getDate() + nome.length);
+  const detalhe = `${top.lead.valorEstimado > 0 ? `${BRL(top.lead.valorEstimado)} · ` : ""}${LEAD_STATUS_INFO[top.lead.status].label} · parado há ${top.diasParado} dia(s) · risco ${top.risco}%`;
+  return { texto: `${frase} — ${detalhe}`, lead: top.lead };
+}
+
+/* --------------------- 14) Oportunidades de recuperação ------------------------ */
+
+export type Recuperavel = { lead: Lead; motivo: string; diasDesde: number };
+
+export function oportunidadesRecuperacao(leads: Lead[], agora: Date = new Date()): { itens: Recuperavel[]; potencial: number } {
+  const itens: Recuperavel[] = [];
+  for (const l of leads) {
+    if (l.status !== "perdido") continue;
+    const dias = Math.floor((agora.getTime() - new Date(l.atualizadoEm ?? l.criadoEm).getTime()) / 86400000);
+    itens.push({
+      lead: l,
+      motivo:
+        dias >= 30
+          ? `Perdido há ${dias} dia(s) — tempo suficiente pro cenário do cliente ter mudado.`
+          : `Perdido há ${dias} dia(s) — retomada ainda quente.`,
+      diasDesde: dias,
+    });
+  }
+  itens.sort((a, b) => b.lead.valorEstimado - a.lead.valorEstimado);
+  return { itens, potencial: itens.reduce((s, i) => s + i.lead.valorEstimado, 0) };
+}
+
+/* ------------------------ 16) Chat IA (estrutura pronta) ----------------------- */
+
+export type PerguntaChat = { id: string; pergunta: string };
+
+export const PERGUNTAS_CHAT: PerguntaChat[] = [
+  { id: "ligar", pergunta: "Quem devo ligar primeiro hoje?" },
+  { id: "ajuda", pergunta: "Qual vendedor precisa de ajuda?" },
+  { id: "conversao", pergunta: "Por que minha conversão caiu?" },
+  { id: "fechar", pergunta: "Quais clientes têm maior chance de fechar?" },
+  { id: "semana", pergunta: "Quanto posso vender esta semana?" },
+  { id: "etapa", pergunta: "Qual etapa está perdendo mais clientes?" },
+  { id: "evoluiu", pergunta: "Quem mais evoluiu este mês?" },
+  { id: "abaixo", pergunta: "Quem está abaixo da média?" },
+  { id: "faturar", pergunta: "Quanto posso faturar até o fim do mês?" },
+];
+
+export type ContextoChat = {
+  riscos: RiscoLead[];
+  scores: ScoreVendedor[];
+  geral: AnaliseFunil;
+  anterior: AnaliseFunil | null;
+  cenarios: Cenarios;
+  evolucao: Evolucao[];
+  vendas7dias: number;
+};
+
+/** Responde as perguntas do gestor com dados REAIS (estrutura do futuro chat —
+ *  hoje 100% local; um LLM pode assumir depois usando o mesmo contexto). */
+export function responderPergunta(id: string, c: ContextoChat): string {
+  switch (id) {
+    case "ligar": {
+      const top = c.riscos.slice(0, 3);
+      if (top.length === 0) return "Ninguém em situação crítica agora — aproveite pra prospectar ou adiantar follow-ups.";
+      return `Comece por: ${top
+        .map((r) => `${r.lead.nome} (${BRL(r.lead.valorEstimado)}, ${r.diasParado}d parado, risco ${r.risco}%)`)
+        .join("; ")}.`;
+    }
+    case "ajuda": {
+      const pior = c.scores[c.scores.length - 1];
+      if (!pior) return "Sem vendedores ativos com dados suficientes.";
+      const fraco = [...pior.criterios].sort((a, b) => a.pontos / a.max - b.pontos / b.max)[0];
+      return `${pior.nome} (score ${pior.nota}/100). Ponto mais fraco: ${fraco.nome.toLowerCase()} (${fraco.pontos}/${fraco.max}). Um acompanhamento próximo nas negociações abertas dele tende a destravar.`;
+    }
+    case "conversao": {
+      if (!c.anterior || c.anterior.totalLeads === 0) return `Conversão atual em ${c.geral.convGeral.toFixed(1)}% — sem período anterior pra comparar ainda.`;
+      const d = c.geral.convGeral - c.anterior.convGeral;
+      if (d >= 0) return `Sua conversão não caiu: está em ${c.geral.convGeral.toFixed(1)}% (${d.toFixed(1)} p.p. acima do período anterior).`;
+      let pior = "";
+      let piorD = 0;
+      c.geral.etapas.forEach((e, i) => {
+        const ant = c.anterior?.etapas[i];
+        if (e.convAnterior !== null && ant?.convAnterior != null) {
+          const dd = e.convAnterior - ant.convAnterior;
+          if (dd < piorD) {
+            piorD = dd;
+            pior = e.label;
+          }
+        }
+      });
+      return `Caiu ${Math.abs(d).toFixed(1)} p.p. (${c.anterior.convGeral.toFixed(1)}% → ${c.geral.convGeral.toFixed(1)}%).${pior ? ` A maior piora foi na passagem para “${pior}” (${Math.abs(piorD).toFixed(0)} p.p. a menos).` : ""}`;
+    }
+    case "fechar": {
+      const quentes = c.riscos
+        .filter((r) => (r.lead.status === "acompanhamento" || r.lead.status === "reuniao") && r.score >= 40)
+        .sort((a, b) => b.score - a.score || b.lead.valorEstimado - a.lead.valorEstimado)
+        .slice(0, 3);
+      if (quentes.length === 0) return "As negociações em fase final estão todas em risco alto ou não há nenhuma — foque em reaquecer o funil.";
+      return `Maior chance agora: ${quentes.map((r) => `${r.lead.nome} (score ${r.score}/100, ${BRL(r.lead.valorEstimado)})`).join("; ")}.`;
+    }
+    case "semana":
+      return `Pelo ritmo dos últimos 7 dias (${BRL(c.vendas7dias)}), a projeção pra próxima semana fica em torno de ${BRL(c.vendas7dias)} — e pode passar disso se as negociações em acompanhamento fecharem.`;
+    case "etapa": {
+      let pior = "";
+      let conv = 101;
+      c.geral.etapas.forEach((e, i) => {
+        if (e.convAnterior !== null && c.geral.etapas[i - 1].alcancaram >= 3 && e.convAnterior < conv) {
+          conv = e.convAnterior;
+          pior = `${c.geral.etapas[i - 1].label} → ${e.label}`;
+        }
+      });
+      return pior ? `A maior perda está em “${pior}”: só ${conv.toFixed(0)}% avançam.` : "Ainda não há volume suficiente pra apontar a pior etapa.";
+    }
+    case "evoluiu": {
+      const top = c.evolucao[0];
+      return top
+        ? `${top.nome}: ${top.dPct >= 0 ? "+" : ""}${top.dPct.toFixed(0)}% de faturamento, conversão ${top.dConversao >= 0 ? "+" : ""}${top.dConversao.toFixed(0)} p.p. vs o período anterior.`
+        : "Sem base de comparação suficiente ainda.";
+    }
+    case "abaixo": {
+      const media = c.scores.reduce((s, x) => s + x.nota, 0) / Math.max(1, c.scores.length);
+      const abaixo = c.scores.filter((s) => s.nota < media - 5);
+      return abaixo.length
+        ? `Abaixo da média (${media.toFixed(0)}): ${abaixo.map((s) => `${s.nome} (${s.nota})`).join(", ")}.`
+        : "Ninguém relevante abaixo da média — equipe equilibrada.";
+    }
+    case "faturar":
+      return `Cenários até o fim do ciclo: pior ${BRL(c.cenarios.pior)} · esperado ${BRL(c.cenarios.esperado)} · melhor ${BRL(c.cenarios.melhor)}. Receita provável: ${BRL(c.cenarios.provavel)}${c.cenarios.probMeta !== null ? ` · probabilidade de bater a meta: ${c.cenarios.probMeta}%` : ""}.`;
+    default:
+      return "Pergunta não reconhecida.";
+  }
+}
+
 /* ---------------------- Linha do tempo do lead (timeline) ---------------------- */
 
 export type EventoTimeline = {

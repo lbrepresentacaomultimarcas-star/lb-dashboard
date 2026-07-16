@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Bot, MonitorPlay, Phone, TrendingDown, TrendingUp } from "lucide-react";
+import { Bot, MessageCircleQuestion, MonitorPlay, Phone, TrendingDown, TrendingUp } from "lucide-react";
 import { PremiumStage } from "@/components/premium-stage";
 import { RoleGuard } from "@/components/role-guard";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { BRL, GaugeConversao } from "@/components/analise/widgets";
-import { useAudit, useLeads, useMetas, useVendas, useVendedores } from "@/lib/store";
+import { useAudit, useLeads, useMetas, useSession, useVendas, useVendedores } from "@/lib/store";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { periodFromPreset } from "@/lib/period";
@@ -17,22 +17,32 @@ import { analisarFunil, inteligenciaComercial, receitaPrevista, type AnaliseFuni
 import { analisarOportunidades, whatsappDoLead } from "@/lib/oportunidades";
 import {
   NIVEL_SCORE_INFO,
+  PERGUNTAS_CHAT,
+  cenariosFinanceiros,
   comparacoesPeriodos,
   dinheiroParado,
+  explicarIndice,
+  indiceComercialLB,
+  melhorAcaoAgora,
+  metaInteligente,
+  oportunidadesRecuperacao,
   previsaoInteligente,
+  prioridadeDoDia,
+  radarTendencia,
   rankingEvolucao,
+  responderPergunta,
+  resumoExecutivo,
   resumoPeriodo,
   riscosDePerda,
-  saudeComercial,
   scoresVendedores,
 } from "@/lib/inteligencia";
 
-const classificarSaude = (v: number) => ({
-  cor: v >= 85 ? "#f5b301" : v >= 70 ? "#22c55e" : v >= 50 ? "#a3e635" : v >= 30 ? "#eab308" : "#ef4444",
-  label: v >= 85 ? "Elite" : v >= 70 ? "Excelente" : v >= 50 ? "Bom" : v >= 30 ? "Regular" : "Crítico",
+const classificarIndice = (v: number) => ({
+  cor: v >= 95 ? "#f5b301" : v >= 85 ? "#22c55e" : v >= 70 ? "#a3e635" : v >= 55 ? "#eab308" : "#ef4444",
+  label: v >= 95 ? "Excelente" : v >= 85 ? "Muito Bom" : v >= 70 ? "Bom" : v >= 55 ? "Atenção" : "Crítico",
 });
 
-/** Dados estratégicos → somente ADMIN (mesma regra da Análise Comercial). */
+/** Dados estratégicos → somente ADMIN. */
 export default function CentralIaPage() {
   return (
     <RoleGuard minimo="admin">
@@ -47,8 +57,10 @@ function CentralIa() {
   const vendas = useVendas();
   const vendedores = useVendedores();
   const metas = useMetas();
+  const session = useSession();
   const { config, feriados } = useCicloProducao();
   const [agoraMs] = useState(() => Date.now());
+  const [perguntaAtiva, setPerguntaAtiva] = useState<string | null>(null);
 
   /* --------------------------- bases (90 dias + ciclo) ----------------------- */
   const range = useMemo(() => {
@@ -93,6 +105,8 @@ function CentralIa() {
     return Math.max(0.02, Math.min(1, (agoraMs - ini) / Math.max(1, fim - ini)));
   }, [periodoCiclo, agoraMs]);
   const previsaoRunRate = vendidoCiclo / fracaoCiclo;
+  const diasDecorridos = Math.max(1, Math.round((agoraMs - periodoCiclo.from.getTime()) / 86400000));
+  const diasRestantes = Math.max(0, Math.round((periodoCiclo.to.getTime() - agoraMs) / 86400000));
 
   /* ------------------------------- inteligências ----------------------------- */
   const alertas = useMemo(() => analisarOportunidades(leads), [leads]);
@@ -109,18 +123,34 @@ function CentralIa() {
       }),
     [vendidoCiclo, previsaoRunRate, geral, vendidoCicloAnt, fracaoCiclo, vendasCiclo.length],
   );
-  const leadsAtivos = useMemo(() => leads.filter((l) => l.status !== "fechamento" && l.status !== "perdido").length, [leads]);
-  const saude = useMemo(
-    () =>
-      saudeComercial({
-        geral,
-        pctMetaCiclo: metaCiclo > 0 ? (vendidoCiclo / metaCiclo) * 100 : 0,
-        alertasUrgentes: alertas.filter((a) => a.prioridade === 3).length,
-        alertasTotais: alertas.length,
-        leadsAtivos,
-      }),
-    [geral, metaCiclo, vendidoCiclo, alertas, leadsAtivos],
+  const cenarios = useMemo(
+    () => cenariosFinanceiros({ previsao, runRate: previsaoRunRate, pipelineProvavel: receitaPrevista(geral), meta: metaCiclo }),
+    [previsao, previsaoRunRate, geral, metaCiclo],
   );
+  const leadsAtivos = useMemo(() => leads.filter((l) => l.status !== "fechamento" && l.status !== "perdido").length, [leads]);
+  const dinheiro = useMemo(() => dinheiroParado(geral, riscos), [geral, riscos]);
+
+  const entradaIndice = useMemo(
+    () => ({
+      geral,
+      pctMetaCiclo: metaCiclo > 0 ? (vendidoCiclo / metaCiclo) * 100 : 0,
+      alertasTotais: alertas.length,
+      alertasUrgentes: alertas.filter((a) => a.prioridade === 3).length,
+      leadsAtivos,
+      valorEmRisco: dinheiro.emRisco,
+      valorAberto: dinheiro.totalAberto,
+    }),
+    [geral, metaCiclo, vendidoCiclo, alertas, leadsAtivos, dinheiro],
+  );
+  const indice = useMemo(() => indiceComercialLB(entradaIndice), [entradaIndice]);
+  const indiceAnterior = useMemo(
+    () =>
+      anterior.totalLeads > 0
+        ? indiceComercialLB({ ...entradaIndice, geral: anterior, pctMetaCiclo: entradaIndice.pctMetaCiclo })
+        : null,
+    [anterior, entradaIndice],
+  );
+  const explicacaoIndice = useMemo(() => explicarIndice(indice, indiceAnterior), [indice, indiceAnterior]);
 
   const ranking = useRankingPeriodo(periodoCiclo, vendedores, vendas, metas, config, feriados);
   const pctMetaPorVendedor = useMemo(() => new Map(ranking.map((r) => [r.id, r.pctMeta])), [ranking]);
@@ -138,13 +168,41 @@ function CentralIa() {
   );
   const evolucao = useMemo(() => rankingEvolucao(porVendedor, anteriorPorVendedor), [porVendedor, anteriorPorVendedor]);
   const comparacoes = useMemo(() => comparacoesPeriodos(vendas, new Date(agoraMs)), [vendas, agoraMs]);
-  const dinheiro = useMemo(() => dinheiroParado(geral, riscos), [geral, riscos]);
   const insights = useMemo(
     () => inteligenciaComercial({ geral, anterior, porVendedor, metaCiclo, vendidoCiclo, previsaoCiclo: previsaoRunRate }),
     [geral, anterior, porVendedor, metaCiclo, vendidoCiclo, previsaoRunRate],
   );
   const resumoSemana = useMemo(() => resumoPeriodo("semana", comparacoes[1], geral, new Date(agoraMs)), [comparacoes, geral, agoraMs]);
   const resumoMes = useMemo(() => resumoPeriodo("mês", comparacoes[2], geral, new Date(agoraMs)), [comparacoes, geral, agoraMs]);
+
+  const prioridade = useMemo(() => prioridadeDoDia(riscos, new Date(agoraMs)), [riscos, agoraMs]);
+  const melhorAcao = useMemo(() => melhorAcaoAgora(riscos, new Date(agoraMs)), [riscos, agoraMs]);
+  const tendencia = useMemo(() => radarTendencia(vendas, new Date(agoraMs)), [vendas, agoraMs]);
+  const textoMeta = useMemo(
+    () => metaInteligente({ meta: metaCiclo, vendido: vendidoCiclo, diasDecorridos, diasRestantes }),
+    [metaCiclo, vendidoCiclo, diasDecorridos, diasRestantes],
+  );
+  const recuperacao = useMemo(() => oportunidadesRecuperacao(leads, new Date(agoraMs)), [leads, agoraMs]);
+  const resumo = useMemo(
+    () =>
+      resumoExecutivo({
+        nomeGestor: session?.nome ?? "gestor",
+        nota: indice.nota,
+        riscos,
+        piorVendedor: scores.length > 0 ? { nome: scores[scores.length - 1].nome, nota: scores[scores.length - 1].nota } : null,
+        recuperaveis: recuperacao.potencial,
+        agora: new Date(agoraMs),
+      }),
+    [session, indice.nota, riscos, scores, recuperacao.potencial, agoraMs],
+  );
+  const vendas7dias = useMemo(() => {
+    const ini = agoraMs - 7 * 86400000;
+    return vendas.reduce((s, v) => (new Date(v.data).getTime() >= ini ? s + v.valor : s), 0);
+  }, [vendas, agoraMs]);
+  const contextoChat = useMemo(
+    () => ({ riscos, scores, geral, anterior, cenarios, evolucao, vendas7dias }),
+    [riscos, scores, geral, anterior, cenarios, evolucao, vendas7dias],
+  );
 
   const segDinheiro = [
     { label: "Alta chance", valor: dinheiro.altaChance, cor: "#22c55e" },
@@ -153,6 +211,7 @@ function CentralIa() {
     { label: "Recuperável", valor: dinheiro.recuperavel, cor: "#06b6d4" },
   ];
   const somaSeg = Math.max(1, segDinheiro.reduce((s, x) => s + x.valor, 0));
+  const esquecidos = riscos.filter((r) => r.motivos.some((m) => m.includes("sem resposta"))).length;
 
   return (
     <PremiumStage>
@@ -162,7 +221,7 @@ function CentralIa() {
             <Bot className="h-6 w-6 text-[var(--color-brand)]" /> Central de Inteligência Artificial
           </h1>
           <p className="text-sm text-[var(--color-text-dim)]">
-            O assistente estratégico do LB CRM: previsão, saúde, riscos e a próxima melhor ação — sempre com seus dados reais (últimos 90 dias + ciclo atual).
+            Seu Diretor Comercial Digital — analisando a operação 24h com os dados reais do CRM.
           </p>
         </div>
         <Link
@@ -173,54 +232,132 @@ function CentralIa() {
         </Link>
       </div>
 
-      {/* ---------------- Saúde + Previsão + Dinheiro Parado (herói) ---------------- */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      {/* --------------------------- Resumo executivo ---------------------------- */}
+      <div
+        className="rounded-2xl border border-[var(--color-brand)]/40 p-5"
+        style={{ background: "linear-gradient(160deg, color-mix(in oklab, var(--color-brand) 10%, var(--color-surface)), var(--color-surface) 75%)" }}
+      >
+        <p className="text-lg font-extrabold text-[var(--color-text)]">👔 {resumo.saudacao}</p>
+        <p className="mb-2 text-xs text-[var(--color-text-dim)]">Hoje o seu Diretor Comercial Digital recomenda:</p>
+        <div className="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
+          {resumo.recomendacoes.map((r, i) => (
+            <p key={i} className="lb-fade-up rounded-lg bg-[var(--color-surface-2)]/60 px-3 py-2 text-sm text-[var(--color-text)]" style={{ animationDelay: `${i * 50}ms` }}>
+              • {r}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      {/* ------------- Índice LB + Prioridade/Melhor ação + Tendência ------------ */}
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-center">
-          <h2 className="mb-1 text-sm font-bold text-[var(--color-text)]">❤️ Saúde Comercial</h2>
-          <GaugeConversao valor={saude.nota} rotulo="saúde da operação" sufixo="" classificar={classificarSaude} />
-          {saude.fatores.length > 0 ? (
-            <div className="mt-3 space-y-1 text-left">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-muted)]">O que está derrubando a nota</p>
-              {saude.fatores.slice(0, 3).map((f) => (
-                <p key={f.nome} className="text-xs leading-relaxed text-[var(--color-text-dim)]">
-                  • {f.texto}
-                </p>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-[var(--color-text-dim)]">Nenhum fator crítico derrubando a nota. 👏</p>
-          )}
+          <h2 className="mb-1 text-sm font-bold text-[var(--color-text)]">🏛️ ÍNDICE COMERCIAL LB</h2>
+          <GaugeConversao valor={indice.nota} rotulo="índice comercial" sufixo="" classificar={classificarIndice} />
+          <p className="mt-3 text-left text-xs leading-relaxed text-[var(--color-text-dim)]">🤖 {explicacaoIndice}</p>
+          {indice.componentes.filter((c) => c.pontos / c.max < 0.6).slice(0, 3).map((c) => (
+            <p key={c.nome} className="mt-1 text-left text-[11px] text-[var(--color-muted)]">
+              • {c.nome}: {c.pontos}/{c.max} pts
+            </p>
+          ))}
         </div>
 
-        <div
-          className="rounded-2xl border p-5"
-          style={{ borderColor: "color-mix(in oklab, #f5b301 40%, transparent)", background: "linear-gradient(160deg, color-mix(in oklab, #f5b301 9%, var(--color-surface)), var(--color-surface) 70%)" }}
-        >
-          <h2 className="mb-2 text-sm font-bold text-[var(--color-text)]">📈 Previsão Inteligente do Mês</h2>
-          <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">
-            {BRL(previsao.min)} <span className="text-[var(--color-muted)]">até</span> {BRL(previsao.max)}
-          </p>
-          <div className="mt-3 space-y-2">
-            <div>
-              <div className="mb-1 flex justify-between text-xs">
-                <span className="text-[var(--color-text-dim)]">Confiança da previsão</span>
-                <span className="font-bold tabular-nums text-[var(--color-text)]">{previsao.confianca}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
-                <div className="h-full rounded-full bg-[#f5b301] transition-[width] duration-700" style={{ width: `${previsao.confianca}%` }} />
+        <div className="space-y-4">
+          {prioridade ? (
+            <div className="rounded-2xl border p-5" style={{ borderColor: "color-mix(in oklab, #ef4444 45%, transparent)", background: "linear-gradient(160deg, color-mix(in oklab, #ef4444 9%, var(--color-surface)), var(--color-surface) 70%)" }}>
+              <h2 className="text-sm font-extrabold text-[var(--color-danger)]">{prioridade.titulo}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--color-text)]">{prioridade.texto}</p>
+              <p className="mt-2 text-xs uppercase tracking-wide text-[var(--color-muted)]">Potencial estimado</p>
+              <p className="text-2xl font-extrabold tabular-nums" style={{ color: "#f5b301" }}>{BRL(prioridade.potencial)}</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+              <h2 className="text-sm font-extrabold text-[var(--color-text)]">🚨 PRIORIDADE DE HOJE</h2>
+              <p className="mt-1 text-sm text-[var(--color-text-dim)]">Nenhuma urgência crítica — funil em dia. 👏</p>
+            </div>
+          )}
+          {melhorAcao ? (
+            <div className="rounded-2xl border border-[var(--color-success)]/40 bg-[var(--color-surface)] p-5">
+              <h2 className="text-sm font-extrabold text-[var(--color-success)]">⚡ MELHOR AÇÃO AGORA</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--color-text)]">{melhorAcao.texto}</p>
+              <div className="mt-2 flex items-center gap-2">
+                {whatsappDoLead(melhorAcao.lead) ? (
+                  <a href={whatsappDoLead(melhorAcao.lead)!} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-success)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--color-success)] hover:bg-[var(--color-success)]/25">
+                    <Phone className="h-3.5 w-3.5" /> WhatsApp
+                  </a>
+                ) : null}
+                <Link href="/leads" className="rounded-lg bg-[var(--color-brand)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--color-brand)] hover:bg-[var(--color-brand)]/25">
+                  Abrir no funil
+                </Link>
               </div>
             </div>
-            <p className="text-sm font-semibold text-[var(--color-text)]">
-              Tendência: <span style={{ color: previsao.tendencia === "alta" ? "var(--color-success)" : previsao.tendencia === "baixa" ? "var(--color-danger)" : "var(--color-text-dim)" }}>{previsao.tendenciaTexto}</span>
+          ) : null}
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+            <h2 className="mb-1 text-sm font-bold text-[var(--color-text)]">📡 Radar de Tendência</h2>
+            <p className="text-2xl font-extrabold" style={{ color: tendencia.cor }}>
+              {tendencia.emoji} {tendencia.rotulo}
             </p>
-            <p className="text-xs text-[var(--color-muted)]">
-              Base: ritmo do ciclo ({BRL(vendidoCiclo)} até agora), pipeline provável, ticket médio e ciclo anterior ({BRL(vendidoCicloAnt)}).
-            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-dim)]">{tendencia.motivo}</p>
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {tendencia.janelas.map((j) => (
+                <div key={j.dias} className="rounded-lg bg-[var(--color-surface-2)]/60 px-1.5 py-1 text-center">
+                  <p className="text-[10px] text-[var(--color-muted)]">{j.dias}d</p>
+                  <p className="text-[11px] font-bold tabular-nums" style={{ color: j.atual >= j.anterior ? "var(--color-success)" : "var(--color-danger)" }}>
+                    {j.anterior > 0 ? `${j.atual >= j.anterior ? "+" : ""}${(((j.atual - j.anterior) / j.anterior) * 100).toFixed(0)}%` : j.atual > 0 ? "novo" : "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+            <h2 className="mb-1 text-sm font-bold text-[var(--color-text)]">🎯 Meta Inteligente</h2>
+            <p className="text-lg font-extrabold tabular-nums text-[var(--color-text)]">
+              {BRL(vendidoCiclo)} <span className="text-sm font-normal text-[var(--color-muted)]">de {BRL(metaCiclo)}</span>
+            </p>
+            <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+              <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${metaCiclo > 0 ? Math.min(100, (vendidoCiclo / metaCiclo) * 100) : 0}%`, background: "linear-gradient(90deg, var(--color-brand), #22c55e 70%, #f5b301)" }} />
+            </div>
+            <p className="mt-1 text-[11px] tabular-nums text-[var(--color-muted)]">
+              faltam {BRL(Math.max(0, metaCiclo - vendidoCiclo))} · {metaCiclo > 0 ? ((vendidoCiclo / metaCiclo) * 100).toFixed(0) : 0}% · {diasRestantes} dia(s) restantes
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--color-text)]">🤖 {textoMeta}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ------------------- Cenários financeiros + Dinheiro parado --------------- */}
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border p-5" style={{ borderColor: "color-mix(in oklab, #f5b301 40%, transparent)", background: "linear-gradient(160deg, color-mix(in oklab, #f5b301 9%, var(--color-surface)), var(--color-surface) 70%)" }}>
+          <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">📈 Previsão Financeira do Ciclo</h2>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: "Pior cenário", valor: cenarios.pior, cor: "var(--color-danger)" },
+              { label: "Esperado", valor: cenarios.esperado, cor: "var(--color-text)" },
+              { label: "Melhor cenário", valor: cenarios.melhor, cor: "var(--color-success)" },
+            ].map((c) => (
+              <div key={c.label} className="rounded-xl bg-[var(--color-surface-2)]/60 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{c.label}</p>
+                <p className="mt-0.5 text-base font-extrabold tabular-nums" style={{ color: c.cor }}>{BRL(c.valor)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-[var(--color-text-dim)]">
+              Receita provável: <span className="font-extrabold tabular-nums text-[var(--color-text)]">{BRL(cenarios.provavel)}</span>
+            </span>
+            {cenarios.probMeta !== null ? (
+              <span className="font-bold tabular-nums" style={{ color: cenarios.probMeta >= 60 ? "var(--color-success)" : cenarios.probMeta >= 30 ? "#eab308" : "var(--color-danger)" }}>
+                {cenarios.probMeta}% de chance de bater a meta
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-[11px] text-[var(--color-muted)]">Confiança da previsão: {previsao.confianca}% · Tendência: {previsao.tendenciaTexto}</p>
         </div>
 
         <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-          <h2 className="mb-2 text-sm font-bold text-[var(--color-text)]">💰 Dinheiro Parado</h2>
+          <h2 className="mb-2 text-sm font-bold text-[var(--color-text)]">💰 Dinheiro Parado & Radar de Risco</h2>
           <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">{BRL(dinheiro.totalAberto)}</p>
           <p className="mb-3 text-xs text-[var(--color-muted)]">em oportunidades abertas no funil</p>
           <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
@@ -238,6 +375,9 @@ function CentralIa() {
               </div>
             ))}
           </div>
+          <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+            🛰️ Radar: {riscos.length} negócio(s) em risco · {esquecidos} cliente(s) sem resposta · {BRL(dinheiro.emRisco)} podem ser perdidos
+          </p>
         </div>
       </div>
 
@@ -274,40 +414,92 @@ function CentralIa() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-          <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🎯 Próxima Melhor Ação</h2>
-          {riscos.length === 0 && alertas.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--color-text-dim)]">Tudo em dia — sem ações urgentes agora.</p>
-          ) : (
-            <div className="space-y-2">
-              {riscos.slice(0, 6).map((r) => {
-                const wa = whatsappDoLead(r.lead);
-                return (
-                  <div key={r.lead.id} className="flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-2)]/60 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--color-text)]">{r.lead.nome}</p>
-                      <p className="truncate text-xs text-[var(--color-brand)]">👉 {r.acao}</p>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+            <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🎯 Próxima Melhor Ação (fila)</h2>
+            {riscos.length === 0 ? (
+              <p className="py-4 text-center text-sm text-[var(--color-text-dim)]">Tudo em dia — sem ações urgentes agora.</p>
+            ) : (
+              <div className="space-y-2">
+                {riscos.slice(0, 4).map((r) => {
+                  const wa = whatsappDoLead(r.lead);
+                  return (
+                    <div key={r.lead.id} className="flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-2)]/60 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--color-text)]">{r.lead.nome}</p>
+                        <p className="truncate text-xs text-[var(--color-brand)]">👉 {r.acao}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {wa ? (
+                          <a href={wa} target="_blank" rel="noopener" className="rounded-lg bg-[var(--color-success)]/15 p-2 text-[var(--color-success)] hover:bg-[var(--color-success)]/25" title="WhatsApp">
+                            <Phone className="h-4 w-4" />
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {wa ? (
-                        <a href={wa} target="_blank" rel="noopener" className="rounded-lg bg-[var(--color-success)]/15 p-2 text-[var(--color-success)] transition-colors hover:bg-[var(--color-success)]/25" title="WhatsApp">
-                          <Phone className="h-4 w-4" />
-                        </a>
-                      ) : null}
-                      <Link href="/leads" className="rounded-lg bg-[var(--color-brand)]/15 px-2.5 py-1.5 text-xs font-semibold text-[var(--color-brand)] transition-colors hover:bg-[var(--color-brand)]/25">
-                        Abrir funil
-                      </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-[#06b6d4]/40 bg-[var(--color-surface)] p-5">
+            <h2 className="mb-2 text-sm font-bold text-[var(--color-text)]">♻️ Oportunidades de Recuperação</h2>
+            {recuperacao.itens.length === 0 ? (
+              <p className="py-3 text-center text-sm text-[var(--color-text-dim)]">Nenhum cliente perdido pra recuperar.</p>
+            ) : (
+              <>
+                <p className="mb-2 text-xs text-[var(--color-text-dim)]">
+                  Potencial total: <span className="font-extrabold tabular-nums" style={{ color: "#06b6d4" }}>{BRL(recuperacao.potencial)}</span>
+                </p>
+                <div className="space-y-1.5">
+                  {recuperacao.itens.slice(0, 4).map((r) => (
+                    <div key={r.lead.id} className="rounded-lg bg-[var(--color-surface-2)]/60 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-[var(--color-text)]">{r.lead.nome}</p>
+                        <span className="shrink-0 text-xs font-bold tabular-nums text-[var(--color-text)]">{BRL(r.lead.valorEstimado)}</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-muted)]">{r.motivo}</p>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* --------------------------- Insights + resumos ----------------------------- */}
+      {/* ------------------------ Chat IA (estrutura pronta) ------------------------ */}
       <div className="mt-4 rounded-2xl border border-[var(--color-brand)]/40 bg-[var(--color-surface)] p-5" style={{ background: "linear-gradient(160deg, color-mix(in oklab, var(--color-brand) 8%, var(--color-surface)), var(--color-surface) 70%)" }}>
+        <h2 className="mb-1 flex items-center gap-2 text-base font-extrabold text-[var(--color-text)]">
+          <MessageCircleQuestion className="h-5 w-5 text-[var(--color-brand)]" /> Pergunte ao Diretor
+          <Badge tone="brand">responde com seus dados reais</Badge>
+        </h2>
+        <p className="mb-3 text-xs text-[var(--color-text-dim)]">Toque numa pergunta — a resposta sai na hora, calculada do CRM.</p>
+        <div className="flex flex-wrap gap-2">
+          {PERGUNTAS_CHAT.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setPerguntaAtiva(p.id === perguntaAtiva ? null : p.id)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                perguntaAtiva === p.id
+                  ? "border-[var(--color-brand)] bg-[var(--color-brand)]/20 text-[var(--color-text)]"
+                  : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              {p.pergunta}
+            </button>
+          ))}
+        </div>
+        {perguntaAtiva ? (
+          <div className="lb-fade-up mt-3 rounded-xl border border-[var(--color-brand)]/35 bg-[color-mix(in_oklab,var(--color-brand)_7%,transparent)] p-4">
+            <p className="text-sm leading-relaxed text-[var(--color-text)]">🤖 {responderPergunta(perguntaAtiva, contextoChat)}</p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* --------------------------- Insights + resumos ----------------------------- */}
+      <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
         <h2 className="mb-3 flex items-center gap-2 text-base font-extrabold text-[var(--color-text)]">
           🤖 Diagnóstico da empresa <Badge tone="brand">automático</Badge>
         </h2>
@@ -419,7 +611,7 @@ function CentralIa() {
       </div>
 
       <p className="mt-6 text-center text-xs text-[var(--color-muted)]">
-        Central de IA · análises geradas automaticamente dos dados existentes (leads, movimentações, vendas e metas) — nada é alterado.
+        Diretor Comercial Digital · análises geradas automaticamente dos dados reais do CRM — nada é alterado.
       </p>
     </PremiumStage>
   );
