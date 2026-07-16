@@ -33,11 +33,25 @@ const ZONAS: { ate: number; cor: string }[] = [
   { ate: 100, cor: "#f5b301" },
 ];
 
-/** Velocímetro da conversão geral (0–100%), com zonas e animação de abertura. */
-export function GaugeConversao({ valor, size = 230, rotulo = "conversão geral" }: { valor: number; size?: number; rotulo?: string }) {
+/** Velocímetro 0–100 com zonas e animação de abertura. Por padrão classifica
+ *  como conversão; `classificar` customiza (ex.: Saúde Comercial) e `sufixo`
+ *  troca o "%" (ex.: pontos). */
+export function GaugeConversao({
+  valor,
+  size = 230,
+  rotulo = "conversão geral",
+  sufixo = "%",
+  classificar,
+}: {
+  valor: number;
+  size?: number;
+  rotulo?: string;
+  sufixo?: string;
+  classificar?: (v: number) => { cor: string; label: string };
+}) {
   const v = Math.max(0, Math.min(100, valor));
   const anim = useCountUp(v);
-  const { cor, label } = faixaGauge(v);
+  const { cor, label } = (classificar ?? faixaGauge)(v);
   const cx = 100;
   const cy = 100;
   const r = 80;
@@ -87,7 +101,8 @@ export function GaugeConversao({ valor, size = 230, rotulo = "conversão geral" 
       </svg>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center">
         <span className="text-4xl font-extrabold leading-none tabular-nums" style={{ color: cor, textShadow: `0 0 20px ${soft(cor, 55)}` }}>
-          {anim.toFixed(0)}%
+          {anim.toFixed(0)}
+          {sufixo}
         </span>
         <span className="mt-0.5 text-sm font-bold" style={{ color: cor }}>
           {label}

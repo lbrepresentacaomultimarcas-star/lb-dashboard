@@ -20,8 +20,9 @@ export type Oportunidade = {
 
 /** Dias parado aceitáveis por etapa — acima disso vira oportunidade.
  *  `null` = etapa fora da análise de "tempo parado" (fechamento sai da Central;
- *  perdido é tratado à parte, como recuperação). */
-const LIMITE_DIAS: Record<LeadStatus, number | null> = {
+ *  perdido é tratado à parte, como recuperação). Exportado: a IA de risco usa
+ *  exatamente a mesma régua. */
+export const LIMITE_DIAS: Record<LeadStatus, number | null> = {
   oportunidade: 5,
   primeiro_contato: 3,
   reuniao_agendada: 3,

@@ -57,6 +57,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { TimelineLead } from "@/components/leads/timeline-lead";
 
 const STATUS_ORDER: LeadStatus[] = [
   "oportunidade",
@@ -281,6 +282,7 @@ export default function LeadsPage() {
   const [form, setForm] = useState<FormState>(empty);
   const [salvando, setSalvando] = useState(false);
   const [compartilhar, setCompartilhar] = useState<Lead | null>(null);
+  const [timelineDe, setTimelineDe] = useState<Lead | null>(null);
   const [novoVendedorId, setNovoVendedorId] = useState("");
   // drag & drop entre etapas
   const [dragId, setDragId] = useState<string | null>(null);
@@ -1038,6 +1040,15 @@ export default function LeadsPage() {
                                           >
                                             Compartilhar
                                           </DropdownItem>
+                                          <DropdownItem
+                                            icon={<History className="h-4 w-4" />}
+                                            onClick={() => {
+                                              setTimelineDe(l);
+                                              close();
+                                            }}
+                                          >
+                                            Linha do tempo
+                                          </DropdownItem>
                                           <DropdownSeparator />
                                           <DropdownItem
                                             icon={<XCircle className="h-4 w-4" />}
@@ -1411,6 +1422,8 @@ export default function LeadsPage() {
           </div>
         </div>
       </Modal>
+
+      <TimelineLead lead={timelineDe} onClose={() => setTimelineDe(null)} />
     </div>
   );
 }

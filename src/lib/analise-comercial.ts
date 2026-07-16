@@ -264,7 +264,7 @@ export type Insight = {
 
 /** Escolhe uma formulação variando por dia e pelos próprios dados — a análise
  *  nunca sai com as mesmas frases duas vezes seguidas. */
-function variar(opcoes: string[], seed: number): string {
+export function variar(opcoes: string[], seed: number): string {
   return opcoes[Math.abs(seed) % opcoes.length];
 }
 
