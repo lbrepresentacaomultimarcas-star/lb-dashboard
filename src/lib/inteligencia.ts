@@ -633,7 +633,8 @@ export function resumoExecutivo(p: {
   const agora = p.agora ?? new Date();
   const h = agora.getHours();
   const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
-  const primeiroNome = p.nomeGestor.split(" ")[0];
+  // Saudação sempre com o NOME COMPLETO do usuário autenticado (nunca a empresa).
+  const nomeCompleto = p.nomeGestor.trim() || "gestor";
 
   const rec: string[] = [];
   const grandes = p.riscos.filter((r) => r.lead.valorEstimado >= 50000).slice(0, 5);
@@ -649,7 +650,7 @@ export function resumoExecutivo(p: {
   if (p.recuperaveis > 0) rec.push(`Recuperar oportunidades antigas: ${BRL(p.recuperaveis)} em clientes perdidos com potencial de retorno.`);
   if (rec.length === 0) rec.push("Operação em dia — aproveite para prospectar novas oportunidades.");
 
-  return { saudacao: `${saud}, ${primeiroNome}. Sua operação está em ${p.nota}/100.`, recomendacoes: rec };
+  return { saudacao: `${saud}, ${nomeCompleto}. Sua operação está em ${p.nota}/100.`, recomendacoes: rec };
 }
 
 /* --------------------------- 8) Cenários financeiros --------------------------- */

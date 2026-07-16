@@ -15,6 +15,7 @@ import { periodFromPreset } from "@/lib/period";
 import { metaTotalDoPeriodo, totalFaturado, vendasNoPeriodo } from "@/lib/selectors";
 import { analisarFunil, inteligenciaComercial, receitaPrevista, type AnaliseFunil } from "@/lib/analise-comercial";
 import { analisarOportunidades, whatsappDoLead } from "@/lib/oportunidades";
+import { LEAD_STATUS_INFO, type Lead as LeadT } from "@/lib/types";
 import {
   NIVEL_SCORE_INFO,
   PERGUNTAS_CHAT,
@@ -41,6 +42,50 @@ const classificarIndice = (v: number) => ({
   cor: v >= 95 ? "#f5b301" : v >= 85 ? "#22c55e" : v >= 70 ? "#a3e635" : v >= 55 ? "#eab308" : "#ef4444",
   label: v >= 95 ? "Excelente" : v >= 85 ? "Muito Bom" : v >= 70 ? "Bom" : v >= 55 ? "Atenção" : "Crítico",
 });
+
+/** Ficha padrão das listas da Central: o gestor identifica na hora o
+ *  responsável e decide se cobra o consultor ou assume o contato. */
+function FichaLead({
+  lead,
+  consultor,
+  ultimaMov,
+  scoreTexto,
+  scoreCor,
+  acao,
+  motivos,
+}: {
+  lead: LeadT;
+  consultor: string;
+  ultimaMov: string;
+  scoreTexto?: string;
+  scoreCor?: string;
+  acao?: string;
+  motivos?: string[];
+}) {
+  const etapa = LEAD_STATUS_INFO[lead.status]?.label ?? lead.status;
+  return (
+    <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 text-xs leading-relaxed sm:grid-cols-2">
+      <p className="truncate text-sm font-bold text-[var(--color-text)]">👤 {lead.nome}</p>
+      <p className="truncate text-[var(--color-text)]">👨‍💼 {consultor}</p>
+      <p className="text-[var(--color-text-dim)]">📂 {etapa}</p>
+      <p className="tabular-nums text-[var(--color-text-dim)]">💰 {lead.valorEstimado > 0 ? BRL(lead.valorEstimado) : "sem valor informado"}</p>
+      <p className="tabular-nums text-[var(--color-text-dim)]">📅 {ultimaMov}</p>
+      {scoreTexto ? (
+        <p className="font-semibold tabular-nums" style={{ color: scoreCor ?? "var(--color-text)" }}>
+          ⚠️ {scoreTexto}
+        </p>
+      ) : null}
+      {acao ? <p className="sm:col-span-2 font-semibold text-[var(--color-brand)]">👉 {acao}</p> : null}
+      {motivos && motivos.length > 0 ? (
+        <ul className="sm:col-span-2 mt-0.5 space-y-0.5">
+          {motivos.slice(0, 3).map((m, i) => (
+            <li key={i} className="text-[11px] text-[var(--color-text-dim)]">• {m}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 /** Dados estratégicos → somente ADMIN. */
 export default function CentralIaPage() {
@@ -213,6 +258,14 @@ function CentralIa() {
   const somaSeg = Math.max(1, segDinheiro.reduce((s, x) => s + x.valor, 0));
   const esquecidos = riscos.filter((r) => r.motivos.some((m) => m.includes("sem resposta"))).length;
 
+  const nomeConsultor = (l: LeadT) =>
+    vendedores.find((v) => v.id === l.vendedorId)?.nome ?? "Sem consultor atribuído";
+  const ultimaMov = (l: LeadT) => {
+    const ref = l.atualizadoEm ?? l.criadoEm;
+    const dias = Math.max(0, Math.floor((agoraMs - new Date(ref).getTime()) / 86400000));
+    return `${new Date(ref).toLocaleDateString("pt-BR")} (há ${dias} dia${dias === 1 ? "" : "s"})`;
+  };
+
   return (
     <PremiumStage>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -279,6 +332,9 @@ function CentralIa() {
             <div className="rounded-2xl border border-[var(--color-success)]/40 bg-[var(--color-surface)] p-5">
               <h2 className="text-sm font-extrabold text-[var(--color-success)]">⚡ MELHOR AÇÃO AGORA</h2>
               <p className="mt-1 text-sm leading-relaxed text-[var(--color-text)]">{melhorAcao.texto}</p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                👨‍💼 {nomeConsultor(melhorAcao.lead)} · 📅 última movimentação: {ultimaMov(melhorAcao.lead)}
+              </p>
               <div className="mt-2 flex items-center gap-2">
                 {whatsappDoLead(melhorAcao.lead) ? (
                   <a href={whatsappDoLead(melhorAcao.lead)!} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-success)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--color-success)] hover:bg-[var(--color-success)]/25">
@@ -393,20 +449,15 @@ function CentralIa() {
                 const ni = NIVEL_SCORE_INFO[r.nivel];
                 return (
                   <div key={r.lead.id} className="rounded-xl border p-3" style={{ borderColor: `color-mix(in oklab, ${ni.cor} 40%, transparent)`, background: `color-mix(in oklab, ${ni.cor} 6%, transparent)` }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-bold text-[var(--color-text)]">{r.lead.nome}</p>
-                      <span className="shrink-0 text-sm font-extrabold tabular-nums" style={{ color: ni.cor }}>
-                        {ni.emoji} {r.risco}% de risco
-                      </span>
-                    </div>
-                    <p className="text-[11px] tabular-nums text-[var(--color-muted)]">
-                      {r.lead.valorEstimado > 0 ? `${BRL(r.lead.valorEstimado)} · ` : ""}Score da oportunidade: {r.score}/100
-                    </p>
-                    <ul className="mt-1 space-y-0.5">
-                      {r.motivos.slice(0, 3).map((m, i) => (
-                        <li key={i} className="text-xs leading-relaxed text-[var(--color-text-dim)]">• {m}</li>
-                      ))}
-                    </ul>
+                    <FichaLead
+                      lead={r.lead}
+                      consultor={nomeConsultor(r.lead)}
+                      ultimaMov={ultimaMov(r.lead)}
+                      scoreTexto={`${ni.emoji} ${r.risco}% de risco · score ${r.score}/100`}
+                      scoreCor={ni.cor}
+                      acao={r.acao}
+                      motivos={r.motivos}
+                    />
                   </div>
                 );
               })}
@@ -423,11 +474,18 @@ function CentralIa() {
               <div className="space-y-2">
                 {riscos.slice(0, 4).map((r) => {
                   const wa = whatsappDoLead(r.lead);
+                  const ni = NIVEL_SCORE_INFO[r.nivel];
                   return (
-                    <div key={r.lead.id} className="flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-2)]/60 px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[var(--color-text)]">{r.lead.nome}</p>
-                        <p className="truncate text-xs text-[var(--color-brand)]">👉 {r.acao}</p>
+                    <div key={r.lead.id} className="flex items-start justify-between gap-3 rounded-xl bg-[var(--color-surface-2)]/60 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <FichaLead
+                          lead={r.lead}
+                          consultor={nomeConsultor(r.lead)}
+                          ultimaMov={ultimaMov(r.lead)}
+                          scoreTexto={`${ni.emoji} risco ${r.risco}%`}
+                          scoreCor={ni.cor}
+                          acao={r.acao}
+                        />
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {wa ? (
@@ -455,11 +513,13 @@ function CentralIa() {
                 <div className="space-y-1.5">
                   {recuperacao.itens.slice(0, 4).map((r) => (
                     <div key={r.lead.id} className="rounded-lg bg-[var(--color-surface-2)]/60 px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-[var(--color-text)]">{r.lead.nome}</p>
-                        <span className="shrink-0 text-xs font-bold tabular-nums text-[var(--color-text)]">{BRL(r.lead.valorEstimado)}</span>
-                      </div>
-                      <p className="text-[11px] text-[var(--color-muted)]">{r.motivo}</p>
+                      <FichaLead
+                        lead={r.lead}
+                        consultor={nomeConsultor(r.lead)}
+                        ultimaMov={ultimaMov(r.lead)}
+                        acao="Reabrir a conversa com uma condição atualizada"
+                        motivos={[r.motivo]}
+                      />
                     </div>
                   ))}
                 </div>
