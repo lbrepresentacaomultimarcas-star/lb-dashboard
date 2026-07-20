@@ -8,7 +8,6 @@ import {
   FileUp,
   ImageIcon,
   Loader2,
-  MapPin,
   MonitorPlay,
   Printer,
   Search,
@@ -24,6 +23,7 @@ import { notify } from "@/lib/notify";
 import { useSession, useVendas } from "@/lib/store";
 import {
   BRLc,
+  dataLabel,
   filtrarPeriodo,
   gerarArte,
   gerarPdfInstitucional,
@@ -33,7 +33,7 @@ import {
   resultadosApi,
   type Contemplacao,
   type FiltroMeses,
-  type LinhaImportada,
+  type ResultadoParse,
 } from "@/lib/resultados";
 
 const PERIODOS: { v: FiltroMeses; label: string }[] = [
@@ -43,6 +43,45 @@ const PERIODOS: { v: FiltroMeses; label: string }[] = [
   { v: 12, label: "12 meses" },
   { v: 0, label: "Todo o histórico" },
 ];
+
+const EMOJI_TIPO: Record<string, string> = { Sorteio: "🎯", "Lance Fixo": "📌", "Lance Livre": "🚀" };
+
+function TabelaContemplacoes({ itens }: { itens: Contemplacao[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-left text-xs">
+        <thead>
+          <tr className="border-b border-[var(--color-border)] text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+            <th className="py-2 pr-3">Data</th>
+            <th className="py-2 pr-3">Grupo</th>
+            <th className="py-2 pr-3">Cota</th>
+            <th className="py-2 pr-3">Tipo</th>
+            <th className="py-2 pr-3">Bem</th>
+            <th className="py-2 pr-3">Lance</th>
+            <th className="py-2 pr-3">Valor do lance</th>
+            <th className="py-2">Crédito estimado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((i) => (
+            <tr key={i.id} className="border-b border-[var(--color-border)]/50 text-[var(--color-text)]">
+              <td className="py-2 pr-3 tabular-nums">{dataLabel(i.dataContemplacao)}</td>
+              <td className="py-2 pr-3 font-bold tabular-nums">{i.grupo}</td>
+              <td className="py-2 pr-3 tabular-nums">{i.cota}</td>
+              <td className="py-2 pr-3">{EMOJI_TIPO[i.tipoContemplacao] ?? ""} {i.tipoContemplacao}</td>
+              <td className="py-2 pr-3">{i.tipoBem ?? "—"}</td>
+              <td className="py-2 pr-3 tabular-nums">{i.pctLance != null ? `${i.pctLance.toLocaleString("pt-BR")}%` : "—"}</td>
+              <td className="py-2 pr-3 tabular-nums">{i.valorLance != null ? BRLc(i.valorLance) : "—"}</td>
+              <td className="py-2 font-semibold tabular-nums" style={{ color: "#d4a72c" }}>
+                {i.creditoEstimado != null ? BRLc(i.creditoEstimado) : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function ResultadosPage() {
   const session = useSession();
@@ -61,7 +100,7 @@ export default function ResultadosPage() {
   const [impTexto, setImpTexto] = useState("");
   const [impMes, setImpMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [extraindo, setExtraindo] = useState(false);
-  const [previa, setPrevia] = useState<LinhaImportada[] | null>(null);
+  const [previa, setPrevia] = useState<ResultadoParse | null>(null);
   const [fonte, setFonte] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -77,16 +116,24 @@ export default function ResultadosPage() {
 
   const doPeriodo = useMemo(() => filtrarPeriodo(itens, periodo), [itens, periodo]);
   const resumo = useMemo(() => resumir(doPeriodo), [doPeriodo]);
-  const daCidade = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+  const daBusca = useMemo(() => {
+    const q = busca.trim();
     if (!q) return null;
-    const filtrados = doPeriodo.filter((i) => i.cidade.toLowerCase().includes(q));
+    const filtrados = doPeriodo.filter((i) => i.grupo.includes(q) || i.cota === q || `${i.grupo}/${i.cota}` === q);
     return { itens: filtrados, resumo: resumir(filtrados) };
   }, [busca, doPeriodo]);
 
+  const recentes = useMemo(
+    () =>
+      [...doPeriodo]
+        .sort((a, b) => (b.dataContemplacao ?? b.mesRef).localeCompare(a.dataContemplacao ?? a.mesRef))
+        .slice(0, 12),
+    [doPeriodo],
+  );
+
   const maxMes = Math.max(1, ...resumo.porMes.map((m) => m.qtd));
   const periodoLabel = PERIODOS.find((p) => p.v === periodo)?.label ?? "";
-  const preparadoPor = session?.papel === "vendedor" || session?.papel === "supervisor" || session?.papel === "coordenador" ? session?.nome : session?.nome;
+  const preparadoPor = session?.nome;
 
   // Dados internos LB (separados dos oficiais): vendas da própria empresa.
   const internoLB = useMemo(() => {
@@ -97,6 +144,17 @@ export default function ResultadosPage() {
 
   /* ------------------------------- importação ------------------------------- */
 
+  function processar(texto: string, origem: string) {
+    const r = parsearResultados(texto, impMes, origem);
+    setFonte(origem);
+    setPrevia(r);
+    if (r.totalBrasil === 0)
+      notify.error("Não reconheci contemplações nesse conteúdo — confira se é o PDF oficial de resultados.");
+    else if (r.totalSE === 0)
+      notify.info(`Arquivo lido: ${r.totalBrasil} contemplações no Brasil, mas nenhuma de Sergipe neste resultado.`);
+    else notify.success(`${r.totalSE} contemplação(ões) de Sergipe reconhecidas — confira a prévia.`);
+  }
+
   async function extrair(modo: "url" | "arquivo", arquivo?: File) {
     setExtraindo(true);
     setPrevia(null);
@@ -104,7 +162,7 @@ export default function ResultadosPage() {
       let res: Response;
       if (modo === "url") {
         if (!impUrl.trim()) {
-          notify.error("Informe o link oficial.");
+          notify.error("Informe o link do resultado ou da pasta do mês.");
           return;
         }
         res = await fetch("/api/resultados/extrair", {
@@ -118,17 +176,12 @@ export default function ResultadosPage() {
         fd.set("file", arquivo);
         res = await fetch("/api/resultados/extrair", { method: "POST", body: fd });
       }
-      const j = (await res.json()) as { texto?: string; fonte?: string; error?: string };
+      const j = (await res.json()) as { texto?: string; fonte?: string; arquivos?: number; error?: string };
       if (!res.ok || !j.texto) {
         notify.error(j.error ?? "Falha ao extrair o conteúdo.");
         return;
       }
-      const linhas = parsearResultados(j.texto, impMes, j.fonte ?? "importação");
-      setFonte(j.fonte ?? "importação");
-      setPrevia(linhas);
-      if (linhas.length === 0)
-        notify.error("Nenhum registro de Sergipe reconhecido — confira o arquivo ou cole o texto manualmente abaixo.");
-      else notify.success(`${linhas.length} registro(s) de Sergipe reconhecidos — confira a prévia.`);
+      processar(j.texto, j.fonte ?? "importação");
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Erro na extração.");
     } finally {
@@ -138,16 +191,13 @@ export default function ResultadosPage() {
 
   function extrairDoTexto() {
     if (!impTexto.trim()) return notify.error("Cole o texto do resultado.");
-    const linhas = parsearResultados(impTexto, impMes, "texto colado");
-    setFonte("texto colado");
-    setPrevia(linhas);
-    if (linhas.length === 0) notify.error("Nenhum registro de Sergipe reconhecido no texto.");
+    processar(impTexto, "texto colado");
   }
 
   async function confirmarImportacao() {
-    if (!previa || previa.length === 0) return;
+    if (!previa || previa.totalSE === 0) return;
     setSalvando(true);
-    const r = await resultadosApi.salvar(previa);
+    const r = await resultadosApi.salvar(previa.itens);
     setSalvando(false);
     if (!r.ok) return notify.error(r.erro ?? "Falha ao salvar.");
     notify.success(`Importação concluída: ${r.inseridos} registro(s) novos (duplicados são ignorados).`);
@@ -180,7 +230,7 @@ export default function ResultadosPage() {
           <Button variant="secondary" onClick={() => setModalMaterial(true)}>
             <ImageIcon className="h-4 w-4" /> Gerar Material
           </Button>
-          <Link href={`/resultados/apresentacao?meses=${periodo}${busca ? `&cidade=${encodeURIComponent(busca)}` : ""}`}>
+          <Link href={`/resultados/apresentacao?meses=${periodo}`}>
             <Button>
               <MonitorPlay className="h-4 w-4" /> Apresentar ao Cliente
             </Button>
@@ -188,7 +238,7 @@ export default function ResultadosPage() {
         </div>
       </div>
 
-      {/* filtros de período + pesquisa por cidade */}
+      {/* filtros de período + pesquisa por grupo/cota */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {PERIODOS.map((p) => (
           <button
@@ -205,7 +255,7 @@ export default function ResultadosPage() {
         ))}
         <div className="relative min-w-56 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
-          <Input className="pl-9" placeholder="Pesquisar cidade de Sergipe… (ex.: Aracaju, Lagarto, Itabaiana)" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <Input className="pl-9" placeholder="Pesquisar grupo ou cota… (ex.: 2063 ou 1781)" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
       </div>
 
@@ -215,53 +265,49 @@ export default function ResultadosPage() {
           <p className="mt-2 font-bold text-[var(--color-text)]">Nenhum resultado importado ainda</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-text-dim)]">
             {isAdmin
-              ? "Clique em “Importar resultado” e informe o link oficial da administradora ou envie o PDF — o sistema reconhece e filtra automaticamente os registros de Sergipe."
+              ? "Clique em “Importar resultado” e cole o link da pasta do mês no Drive (ou envie o PDF) — o sistema lê os resultados oficiais e filtra automaticamente as cotas de Sergipe."
               : "Peça ao administrador para importar o resultado oficial do mês."}
           </p>
         </div>
       ) : (
         <>
           {/* Dados OFICIAIS */}
-          <div className="mb-2 flex items-center gap-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge tone="brand">📜 Dados oficiais da administradora</Badge>
             <span className="text-xs text-[var(--color-muted)]">{periodoLabel}</span>
+            <span className="text-[11px] text-[var(--color-muted)]">
+              · o resultado oficial identifica cada cota pelo estado (UF) — aqui entram só as de Sergipe
+            </span>
           </div>
 
-          {daCidade ? (
-            /* ------------------------- visão da cidade ------------------------- */
+          {daBusca ? (
+            /* ----------------------- resultado da pesquisa ---------------------- */
             <div className="rounded-2xl border p-5" style={{ borderColor: "color-mix(in oklab, #d4a72c 45%, transparent)", background: "linear-gradient(160deg, color-mix(in oklab, #d4a72c 8%, var(--color-surface)), var(--color-surface) 70%)" }}>
               <h2 className="flex items-center gap-2 text-lg font-extrabold text-[var(--color-text)]">
-                <MapPin className="h-5 w-5" style={{ color: "#d4a72c" }} /> {busca.trim()}
+                <Search className="h-5 w-5" style={{ color: "#d4a72c" }} /> Pesquisa: “{busca.trim()}”
               </h2>
-              {daCidade.resumo.total === 0 ? (
+              {daBusca.resumo.total === 0 ? (
                 <p className="mt-2 text-sm text-[var(--color-text-dim)]">
-                  Nenhuma contemplação registrada nessa cidade no período — amplie o período ou confira a grafia.
+                  Nenhuma contemplação de Sergipe com esse grupo/cota no período — amplie o período ou confira o número.
                 </p>
               ) : (
                 <>
-                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <div className="rounded-xl bg-[var(--color-surface-2)]/60 p-3 text-center">
-                      <p className="text-3xl font-extrabold tabular-nums" style={{ color: "#d4a72c" }}>{daCidade.resumo.total}</p>
+                      <p className="text-3xl font-extrabold tabular-nums" style={{ color: "#d4a72c" }}>{daBusca.resumo.total}</p>
                       <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">contemplações</p>
                     </div>
                     <div className="rounded-xl bg-[var(--color-surface-2)]/60 p-3 text-center">
-                      <p className="text-xl font-extrabold tabular-nums text-[var(--color-text)]">{BRLc(daCidade.resumo.valorTotal)}</p>
-                      <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">valor liberado</p>
+                      <p className="text-xl font-extrabold tabular-nums text-[var(--color-text)]">{daBusca.resumo.sorteios} · {daBusca.resumo.lances}</p>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">sorteios · lances</p>
                     </div>
-                    <div className="col-span-2 rounded-xl bg-[var(--color-surface-2)]/60 p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">modalidades</p>
-                      <p className="text-sm font-semibold text-[var(--color-text)]">
-                        {daCidade.resumo.porModalidade.map((m) => `${m.nome} (${m.qtd})`).join(" · ") || "—"}
-                      </p>
+                    <div className="col-span-2 rounded-xl bg-[var(--color-surface-2)]/60 p-3 text-center sm:col-span-1">
+                      <p className="text-xl font-extrabold tabular-nums text-[var(--color-text)]">{daBusca.resumo.creditoEstimado ? BRLc(daBusca.resumo.creditoEstimado) : "—"}</p>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">crédito estimado (lances)</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex items-end gap-1.5">
-                    {daCidade.resumo.porMes.map((m) => (
-                      <div key={m.mes} className="flex flex-col items-center gap-1">
-                        <div className="w-8 rounded-t bg-[#d4a72c] transition-[height] duration-500" style={{ height: `${Math.max(8, (m.qtd / Math.max(1, ...daCidade.resumo.porMes.map((x) => x.qtd))) * 70)}px` }} />
-                        <span className="text-[9px] text-[var(--color-muted)]">{mesLabel(m.mes)}</span>
-                      </div>
-                    ))}
+                  <div className="mt-4">
+                    <TabelaContemplacoes itens={daBusca.itens.slice(0, 30)} />
                   </div>
                 </>
               )}
@@ -275,18 +321,16 @@ export default function ResultadosPage() {
                   <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">contemplações em Sergipe</p>
                 </div>
                 <div className="lb-fade-up rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center" style={{ animationDelay: "50ms" }}>
-                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-success)]">{BRLc(resumo.valorTotal)}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">valor total liberado</p>
+                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-success)]">{resumo.creditoEstimado ? BRLc(resumo.creditoEstimado) : "—"}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">crédito estimado (lances)</p>
                 </div>
                 <div className="lb-fade-up rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center" style={{ animationDelay: "100ms" }}>
-                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">{resumo.porCidade.length}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">cidades contempladas</p>
+                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">🎯 {resumo.sorteios}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">por sorteio</p>
                 </div>
                 <div className="lb-fade-up rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center" style={{ animationDelay: "150ms" }}>
-                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">
-                    {resumo.total > 0 ? BRLc(resumo.valorTotal / resumo.total) : "—"}
-                  </p>
-                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">crédito médio</p>
+                  <p className="text-2xl font-extrabold tabular-nums text-[var(--color-text)]">🚀 {resumo.lances}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">por lance</p>
                 </div>
               </div>
 
@@ -304,7 +348,7 @@ export default function ResultadosPage() {
                           <div
                             className="w-9 rounded-t-lg transition-[height] duration-700"
                             style={{ height: `${Math.max(10, (m.qtd / maxMes) * 120)}px`, background: "linear-gradient(180deg, #d4a72c, color-mix(in oklab, #d4a72c 55%, var(--color-surface-2)))" }}
-                            title={`${mesLabel(m.mes)}: ${m.qtd} · ${BRLc(m.valor)}`}
+                            title={`${mesLabel(m.mes)}: ${m.qtd}${m.credito ? ` · ${BRLc(m.credito)} em crédito estimado` : ""}`}
                           />
                           <span className="text-[9px] text-[var(--color-muted)]">{mesLabel(m.mes)}</span>
                         </div>
@@ -313,43 +357,63 @@ export default function ResultadosPage() {
                   )}
                 </div>
 
-                {/* modalidades */}
+                {/* por bem + por modalidade */}
                 <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-                  <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🏷️ Por modalidade</h2>
+                  <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🏷️ Por tipo de bem</h2>
                   <div className="space-y-2">
-                    {resumo.porModalidade.slice(0, 6).map((m) => (
+                    {resumo.porBem.slice(0, 5).map((m) => (
                       <div key={m.nome}>
                         <div className="mb-0.5 flex justify-between text-xs">
                           <span className="font-semibold text-[var(--color-text)]">{m.nome}</span>
-                          <span className="tabular-nums text-[var(--color-text-dim)]">{m.qtd} · {BRLc(m.valor)}</span>
+                          <span className="tabular-nums text-[var(--color-text-dim)]">{m.qtd}{m.credito ? ` · ${BRLc(m.credito)}` : ""}</span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
-                          <div className="h-full rounded-full bg-[var(--color-brand)] transition-[width] duration-700" style={{ width: `${(m.qtd / Math.max(1, resumo.porModalidade[0]?.qtd ?? 1)) * 100}%` }} />
+                          <div className="h-full rounded-full bg-[var(--color-brand)] transition-[width] duration-700" style={{ width: `${(m.qtd / Math.max(1, resumo.porBem[0]?.qtd ?? 1)) * 100}%` }} />
                         </div>
                       </div>
+                    ))}
+                  </div>
+                  <h2 className="mb-2 mt-5 text-sm font-bold text-[var(--color-text)]">🎯 Por modalidade</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {resumo.porTipo.map((t) => (
+                      <span key={t.nome} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 px-3 py-1 text-xs font-semibold text-[var(--color-text)]">
+                        {EMOJI_TIPO[t.nome] ?? ""} {t.nome}: <span style={{ color: "#d4a72c" }}>{t.qtd}</span>
+                      </span>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* cidades */}
+              {/* últimas contemplações */}
               <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-                <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🗺️ Contemplações por cidade</h2>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-                  {resumo.porCidade.slice(0, 15).map((c, i) => (
-                    <button
-                      key={c.cidade}
-                      onClick={() => setBusca(c.cidade)}
-                      className="lb-fade-up rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 p-3 text-left transition-transform duration-200 hover:-translate-y-0.5"
-                      style={{ animationDelay: `${i * 30}ms` }}
-                    >
-                      <p className="truncate text-sm font-bold text-[var(--color-text)]">{c.cidade}</p>
-                      <p className="text-lg font-extrabold tabular-nums" style={{ color: "#d4a72c" }}>{c.qtd}</p>
-                      <p className="text-[10px] tabular-nums text-[var(--color-muted)]">{BRLc(c.valor)}</p>
-                    </button>
-                  ))}
-                </div>
+                <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">🏆 Últimas contemplações de Sergipe</h2>
+                {recentes.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-[var(--color-text-dim)]">Sem registros no período.</p>
+                ) : (
+                  <TabelaContemplacoes itens={recentes} />
+                )}
               </div>
+
+              {/* grupos */}
+              {resumo.porGrupo.length > 0 ? (
+                <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <h2 className="mb-3 text-sm font-bold text-[var(--color-text)]">📂 Grupos com contemplação em Sergipe</h2>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                    {resumo.porGrupo.slice(0, 12).map((g, i) => (
+                      <button
+                        key={g.grupo}
+                        onClick={() => setBusca(g.grupo)}
+                        className="lb-fade-up rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 p-3 text-left transition-transform duration-200 hover:-translate-y-0.5"
+                        style={{ animationDelay: `${i * 30}ms` }}
+                      >
+                        <p className="truncate text-sm font-bold text-[var(--color-text)]">Grupo {g.grupo}</p>
+                        <p className="text-lg font-extrabold tabular-nums" style={{ color: "#d4a72c" }}>{g.qtd}</p>
+                        <p className="text-[10px] text-[var(--color-muted)]">{g.bem ?? "—"}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
 
@@ -373,7 +437,7 @@ export default function ResultadosPage() {
       )}
 
       <p className="mt-6 text-center text-xs text-[var(--color-muted)]">
-        Resultados LB · dados oficiais importados da administradora (filtro automático de Sergipe) · histórico permanente.
+        Resultados LB · dados oficiais das assembleias (filtro automático de Sergipe) · crédito estimado a partir do % dos lances · histórico permanente.
       </p>
 
       {/* ------------------------------ modal material ---------------------------- */}
@@ -381,7 +445,14 @@ export default function ResultadosPage() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Button
             variant="secondary"
-            onClick={() => void gerarPdfInstitucional({ periodo: periodoLabel, resumo: daCidade?.resumo ?? resumo, preparadoPor })}
+            onClick={() =>
+              void gerarPdfInstitucional({
+                periodo: periodoLabel,
+                resumo: daBusca?.resumo ?? resumo,
+                itens: daBusca?.itens ?? doPeriodo,
+                preparadoPor,
+              })
+            }
           >
             <Download className="h-4 w-4" /> PDF institucional
           </Button>
@@ -389,9 +460,9 @@ export default function ResultadosPage() {
             variant="secondary"
             onClick={() =>
               gerarArte("feed", {
-                titulo: daCidade ? `Contemplações em ${busca.trim()}` : "Consórcio contempla — e a prova está aqui",
-                destaqueQtd: String((daCidade?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daCidade?.resumo ?? resumo).valorTotal),
+                titulo: "Consórcio contempla — e a prova está aqui",
+                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
+                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
                 periodo: periodoLabel,
                 preparadoPor,
               })
@@ -403,9 +474,9 @@ export default function ResultadosPage() {
             variant="secondary"
             onClick={() =>
               gerarArte("story", {
-                titulo: daCidade ? `Contemplações em ${busca.trim()}` : "Tem contemplação em Sergipe? TEM!",
-                destaqueQtd: String((daCidade?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daCidade?.resumo ?? resumo).valorTotal),
+                titulo: "Tem contemplação em Sergipe? TEM!",
+                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
+                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
                 periodo: periodoLabel,
                 preparadoPor,
               })
@@ -418,8 +489,8 @@ export default function ResultadosPage() {
             onClick={() =>
               gerarArte("status", {
                 titulo: "Resultados oficiais do consórcio em Sergipe",
-                destaqueQtd: String((daCidade?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daCidade?.resumo ?? resumo).valorTotal),
+                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
+                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
                 periodo: periodoLabel,
                 preparadoPor,
               })
@@ -439,20 +510,19 @@ export default function ResultadosPage() {
       </Modal>
 
       {/* ------------------------------ modal importar ----------------------------- */}
-      <Modal open={modalImport} onClose={() => (extraindo || salvando ? null : setModalImport(false))} title="Importar resultado oficial" subtitle="Link OU PDF — o sistema lê, filtra Sergipe e mostra a prévia antes de salvar.">
+      <Modal open={modalImport} onClose={() => (extraindo || salvando ? null : setModalImport(false))} title="Importar resultado oficial" subtitle="Link do PDF, link da PASTA do mês no Drive ou o próprio PDF — o sistema lê, filtra Sergipe e mostra a prévia antes de salvar.">
         <div className="space-y-4">
           <div>
-            <Label>Mês de referência do resultado</Label>
-            <Input type="month" value={impMes} onChange={(e) => setImpMes(e.target.value)} className="max-w-44" />
-          </div>
-          <div>
-            <Label>Link oficial da administradora</Label>
+            <Label>Link do resultado (PDF) ou da pasta do mês no Drive</Label>
             <div className="flex gap-2">
-              <Input value={impUrl} onChange={(e) => setImpUrl(e.target.value)} placeholder="https://…/resultado.pdf" />
+              <Input value={impUrl} onChange={(e) => setImpUrl(e.target.value)} placeholder="https://drive.google.com/… (arquivo ou pasta do mês)" />
               <Button variant="secondary" onClick={() => void extrair("url")} disabled={extraindo}>
                 {extraindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Ler
               </Button>
             </div>
+            <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+              Cole o link da pasta do mês (ex.: “JULHO DE 2026”) pra importar todos os resultados de uma vez.
+            </p>
           </div>
           <div>
             <Label>…ou envie o PDF oficial</Label>
@@ -484,24 +554,33 @@ export default function ResultadosPage() {
               Processar texto
             </Button>
           </div>
+          <div>
+            <Label>Mês de referência (usado só se o arquivo não trouxer a data)</Label>
+            <Input type="month" value={impMes} onChange={(e) => setImpMes(e.target.value)} className="max-w-44" />
+          </div>
 
           {previa ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
-              <p className="mb-2 text-sm font-bold text-[var(--color-text)]">
-                Prévia — {previa.length} registro(s) de Sergipe reconhecidos {fonte ? `(${fonte})` : ""}
+              <p className="mb-1 text-sm font-bold text-[var(--color-text)]">
+                Prévia — {previa.totalSE} de Sergipe {fonte ? `(${fonte})` : ""}
+              </p>
+              <p className="mb-2 text-[11px] text-[var(--color-muted)]">
+                Reconhecidas {previa.totalBrasil} contemplações no Brasil em {previa.grupos} grupos · só as de SE entram no histórico.
               </p>
               <div className="max-h-44 space-y-1 overflow-y-auto">
-                {previa.slice(0, 30).map((l, i) => (
+                {previa.itens.slice(0, 30).map((l, i) => (
                   <p key={i} className="truncate text-xs text-[var(--color-text-dim)]">
-                    📍 {l.cidade} · {l.tipoBem ?? "—"} · {l.valorCredito ? BRLc(l.valorCredito) : "valor —"} ·
-                    {l.grupo ? ` G${l.grupo}` : ""}{l.cota ? `/C${l.cota}` : ""} · {l.tipoContemplacao ?? "—"} · {l.mesRef}
+                    {EMOJI_TIPO[l.tipoContemplacao] ?? "🏆"} Grupo {l.grupo} · Cota {l.cota} · {l.tipoContemplacao}
+                    {l.pctLance != null ? ` ${l.pctLance.toLocaleString("pt-BR")}%` : ""} · {l.tipoBem ?? "—"} ·{" "}
+                    {l.valorLance != null ? `lance ${BRLc(l.valorLance)} · crédito est. ${l.creditoEstimado != null ? BRLc(l.creditoEstimado) : "—"} · ` : ""}
+                    {dataLabel(l.dataContemplacao)}
                   </p>
                 ))}
-                {previa.length > 30 ? <p className="text-[11px] text-[var(--color-muted)]">…e mais {previa.length - 30}.</p> : null}
+                {previa.totalSE > 30 ? <p className="text-[11px] text-[var(--color-muted)]">…e mais {previa.totalSE - 30}.</p> : null}
               </div>
-              <Button className="mt-3 w-full" onClick={() => void confirmarImportacao()} disabled={salvando || previa.length === 0}>
+              <Button className="mt-3 w-full" onClick={() => void confirmarImportacao()} disabled={salvando || previa.totalSE === 0}>
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-                Confirmar importação ({previa.length})
+                Confirmar importação ({previa.totalSE})
               </Button>
             </div>
           ) : null}
