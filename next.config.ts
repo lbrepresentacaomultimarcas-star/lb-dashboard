@@ -56,6 +56,15 @@ const nextConfig: NextConfig = {
   // pdf-parse/pdfjs precisam do require nativo do Node (o bundle de navegador
   // referencia DOMMatrix, que não existe no runtime serverless).
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
+  // O pdfjs carrega o worker (pdf.worker.mjs) por import dinâmico de caminho
+  // calculado — o tracing não enxerga; sem isso a função sobe sem o arquivo.
+  outputFileTracingIncludes: {
+    "/api/resultados/extrair": [
+      "./node_modules/pdfjs-dist/**/*",
+      "./node_modules/pdf-parse/**/*",
+      "./node_modules/@napi-rs/canvas/**/*",
+    ],
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

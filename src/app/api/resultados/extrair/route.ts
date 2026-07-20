@@ -8,10 +8,28 @@ export const maxDuration = 60;
  *  Google Drive com os PDFs do mês, ou página HTML). Só admin importa.
  *  O parse/filtro de Sergipe acontece no cliente (lib/resultados-parser.ts)
  *  com PRÉVIA antes de salvar — nada é gravado automaticamente por esta rota.
- *  Toda resposta (sucesso ou erro) devolve `log` com o passo a passo real. */
+ *  Toda resposta (sucesso ou erro) devolve `log` com o passo a passo real,
+ *  incluindo versão do pdfjs, páginas, itens por página e stack de exceções.
+ *
+ *  Extração em 2 camadas:
+ *   1ª pdf-parse (mesma lib da calibração do parser);
+ *   2ª pdfjs-dist direto (legacy/Node), com getDocument / promise / getPage /
+ *      getTextContent isolados em try/catch pra apontar a etapa exata.
+ */
 
 const MAX_PDF = 15 * 1024 * 1024;
 const MAX_ARQUIVOS_PASTA = 12;
+
+/** Mensagem completa da exceção: nome, mensagem e primeiras linhas da stack. */
+function msgCompleta(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const stack = (e.stack ?? "")
+    .split("\n")
+    .slice(0, 6)
+    .map((l) => l.trim())
+    .join(" ⇐ ");
+  return `${e.name}: ${e.message}${stack ? ` | stack: ${stack}` : ""}`;
+}
 
 /** pdfjs v5 espera DOMMatrix/ImageData/Path2D no global mesmo pra extrair
  *  texto em alguns builds. No servidor eles não existem — usa os do
@@ -26,7 +44,7 @@ async function polyfillDom(log: string[]) {
     if (typeof g.Path2D === "undefined" && c.Path2D) g.Path2D = c.Path2D;
     log.push("🧩 Polyfill DOM aplicado (DOMMatrix/ImageData/Path2D).");
   } catch (e) {
-    log.push(`⚠️ Polyfill indisponível (${e instanceof Error ? e.message : e}) — seguindo sem ele.`);
+    log.push(`⚠️ Polyfill indisponível (${msgCompleta(e)}) — seguindo sem ele.`);
   }
 }
 
@@ -53,10 +71,12 @@ async function baixar(url: string): Promise<{ buf: Buffer; tipo: string }> {
 const ehPdf = (buf: Buffer, tipo: string) =>
   tipo.includes("pdf") || buf.subarray(0, 5).toString("latin1") === "%PDF-";
 
-async function pdfParaTexto(buf: Buffer, log: string[]): Promise<{ texto: string; paginas: number }> {
-  await polyfillDom(log);
+type ResultadoExtracao = { texto: string; paginas: number };
+
+/** Camada 1: pdf-parse — mesma biblioteca usada na calibração do parser. */
+async function extrairComPdfParse(buf: Buffer): Promise<ResultadoExtracao> {
   const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buf });
+  const parser = new PDFParse({ data: new Uint8Array(buf) });
   try {
     const r = await parser.getText();
     const paginas = Number((r as unknown as { total?: number }).total ?? 0);
@@ -64,6 +84,87 @@ async function pdfParaTexto(buf: Buffer, log: string[]): Promise<{ texto: string
   } finally {
     await parser.destroy();
   }
+}
+
+/** Camada 2 (reserva): pdfjs-dist direto (build legacy p/ Node), com CADA
+ *  etapa isolada em try/catch pra registrar exatamente onde falha. */
+async function extrairComPdfjs(buf: Buffer, log: string[]): Promise<ResultadoExtracao> {
+  let pdfjs: typeof import("pdfjs-dist/legacy/build/pdf.mjs");
+  try {
+    pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    log.push(`🔧 Extrator reserva: pdfjs-dist v${pdfjs.version} carregado.`);
+  } catch (e) {
+    log.push(`✖ import(pdfjs-dist) falhou: ${msgCompleta(e)}`);
+    throw e;
+  }
+
+  let task: ReturnType<typeof pdfjs.getDocument>;
+  try {
+    task = pdfjs.getDocument({
+      data: new Uint8Array(buf),
+      disableFontFace: true,
+      isEvalSupported: false,
+      useSystemFonts: false,
+      verbosity: 0,
+    });
+  } catch (e) {
+    log.push(`✖ getDocument() falhou: ${msgCompleta(e)}`);
+    throw e;
+  }
+
+  let doc: Awaited<typeof task.promise>;
+  try {
+    doc = await task.promise;
+    log.push(`📖 Documento aberto: ${doc.numPages} página(s).`);
+  } catch (e) {
+    log.push(`✖ document.promise falhou: ${msgCompleta(e)}`);
+    throw e;
+  }
+
+  try {
+    let texto = "";
+    let itensTotal = 0;
+    for (let n = 1; n <= doc.numPages; n++) {
+      let page: Awaited<ReturnType<typeof doc.getPage>>;
+      try {
+        page = await doc.getPage(n);
+      } catch (e) {
+        log.push(`✖ getPage(${n}) falhou: ${msgCompleta(e)}`);
+        continue;
+      }
+      try {
+        const tc = await page.getTextContent();
+        itensTotal += tc.items.length;
+        for (const it of tc.items) {
+          const t = it as { str?: string; hasEOL?: boolean };
+          if (typeof t.str === "string") texto += t.str + (t.hasEOL ? "\n" : "\t");
+        }
+        texto += "\n";
+        log.push(`✔ Página ${n}: ${tc.items.length} item(ns) de texto.`);
+      } catch (e) {
+        log.push(`✖ getTextContent() na página ${n} falhou: ${msgCompleta(e)}`);
+      }
+    }
+    if (itensTotal === 0)
+      log.push(
+        "🖼️ Este PDF não tem camada de texto (parece escaneado/só imagem). O resultado oficial normalmente tem texto — confira se é o arquivo certo; se for escaneado mesmo, use o campo de colar texto (ou me peça pra ligar OCR).",
+      );
+    return { texto, paginas: doc.numPages };
+  } finally {
+    await doc.destroy();
+  }
+}
+
+async function pdfParaTexto(buf: Buffer, log: string[]): Promise<ResultadoExtracao> {
+  await polyfillDom(log);
+  try {
+    const r = await extrairComPdfParse(buf);
+    if (r.texto.trim()) return r;
+    log.push("⚠️ pdf-parse retornou texto vazio — acionando extrator reserva (pdfjs direto).");
+  } catch (e) {
+    log.push(`⚠️ pdf-parse falhou: ${msgCompleta(e)} — acionando extrator reserva (pdfjs direto).`);
+  }
+  return extrairComPdfjs(buf, log);
 }
 
 /** Lista os arquivos de uma pasta pública do Drive (sem API key). */
@@ -81,7 +182,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
 
-  const log: string[] = [];
+  const log: string[] = [`🧠 Servidor Node ${process.version}.`];
   const falha = (error: string, status: number) => {
     log.push(`✖ ${error}`);
     console.error("[resultados/extrair]", error, "| log:", log);
@@ -129,6 +230,7 @@ export async function POST(req: NextRequest) {
             422,
           );
         const partes: string[] = [];
+        let primeiroErro = "";
         for (const p of pdfs) {
           try {
             const { buf, tipo } = await baixar(`https://drive.google.com/uc?export=download&id=${p.id}`);
@@ -145,11 +247,13 @@ export async function POST(req: NextRequest) {
             partes.push(`===ARQUIVO: ${p.nome}===\n${r.texto}`);
             log.push(`✔ ${p.nome}: ${r.paginas || "?"} página(s), ${r.texto.length.toLocaleString("pt-BR")} caracteres.`);
           } catch (e) {
-            log.push(`✖ ${p.nome}: ${e instanceof Error ? e.message : String(e)}`);
+            const m = msgCompleta(e);
+            if (!primeiroErro) primeiroErro = m;
+            log.push(`✖ ${p.nome}: ${m}`);
           }
         }
         if (partes.length === 0)
-          return falha("Nenhum PDF da pasta pôde ser lido — veja o diagnóstico acima.", 502);
+          return falha(`Nenhum PDF da pasta pôde ser lido. Primeiro erro: ${primeiroErro || "desconhecido"}`, 502);
         arquivos = partes.length;
         fonte = `pasta do Drive (${partes.length} arquivo${partes.length > 1 ? "s" : ""})`;
         texto = partes.join("\n");
@@ -190,6 +294,6 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ texto: texto.slice(0, 800_000), fonte, arquivos, log });
   } catch (e) {
-    return falha(e instanceof Error ? e.message : "Falha ao extrair o conteúdo.", 500);
+    return falha(msgCompleta(e), 500);
   }
 }
