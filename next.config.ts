@@ -53,6 +53,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
+  // pdf-parse/pdfjs precisam do require nativo do Node (o bundle de navegador
+  // referencia DOMMatrix, que não existe no runtime serverless).
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

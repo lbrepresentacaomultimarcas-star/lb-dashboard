@@ -103,6 +103,8 @@ export default function ResultadosPage() {
   const [previa, setPrevia] = useState<ResultadoParse | null>(null);
   const [fonte, setFonte] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [logExtracao, setLogExtracao] = useState<string[]>([]);
+  const [erroExtracao, setErroExtracao] = useState<string | null>(null);
 
   async function carregar() {
     const r = await resultadosApi.listar();
@@ -158,6 +160,8 @@ export default function ResultadosPage() {
   async function extrair(modo: "url" | "arquivo", arquivo?: File) {
     setExtraindo(true);
     setPrevia(null);
+    setErroExtracao(null);
+    setLogExtracao([]);
     try {
       let res: Response;
       if (modo === "url") {
@@ -176,14 +180,29 @@ export default function ResultadosPage() {
         fd.set("file", arquivo);
         res = await fetch("/api/resultados/extrair", { method: "POST", body: fd });
       }
-      const j = (await res.json()) as { texto?: string; fonte?: string; arquivos?: number; error?: string };
+      // Lê como texto primeiro: se o servidor cair antes do JSON, mostramos o erro real.
+      const bruto = await res.text();
+      let j: { texto?: string; fonte?: string; arquivos?: number; error?: string; log?: string[] };
+      try {
+        j = JSON.parse(bruto) as typeof j;
+      } catch {
+        j = { error: `Resposta inesperada do servidor (HTTP ${res.status}): ${bruto.slice(0, 300)}` };
+      }
+      if (j.log?.length) {
+        setLogExtracao(j.log);
+        console.log("[resultados/extrair] diagnóstico:\n" + j.log.join("\n"));
+      }
       if (!res.ok || !j.texto) {
-        notify.error(j.error ?? "Falha ao extrair o conteúdo.");
+        const msg = j.error ?? `Falha ao extrair o conteúdo (HTTP ${res.status}).`;
+        setErroExtracao(msg);
+        notify.error(msg);
         return;
       }
       processar(j.texto, j.fonte ?? "importação");
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : "Erro na extração.");
+      const msg = e instanceof Error ? e.message : "Erro na extração.";
+      setErroExtracao(msg);
+      notify.error(msg);
     } finally {
       setExtraindo(false);
     }
@@ -191,6 +210,8 @@ export default function ResultadosPage() {
 
   function extrairDoTexto() {
     if (!impTexto.trim()) return notify.error("Cole o texto do resultado.");
+    setErroExtracao(null);
+    setLogExtracao([]);
     processar(impTexto, "texto colado");
   }
 
@@ -558,6 +579,24 @@ export default function ResultadosPage() {
             <Label>Mês de referência (usado só se o arquivo não trouxer a data)</Label>
             <Input type="month" value={impMes} onChange={(e) => setImpMes(e.target.value)} className="max-w-44" />
           </div>
+
+          {erroExtracao ? (
+            <div className="rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3">
+              <p className="text-sm font-bold text-[var(--color-danger)]">A leitura falhou</p>
+              <p className="mt-1 break-words text-xs text-[var(--color-text)]">{erroExtracao}</p>
+            </div>
+          ) : null}
+
+          {logExtracao.length > 0 ? (
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Diagnóstico da leitura</p>
+              <div className="max-h-36 space-y-0.5 overflow-y-auto font-mono text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+                {logExtracao.map((l, i) => (
+                  <p key={i} className="break-words">{l}</p>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {previa ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
