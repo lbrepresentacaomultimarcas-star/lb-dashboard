@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  Award,
   BarChart3,
   Bot,
   BrainCircuit,
@@ -68,6 +69,7 @@ const NAV: (NavItem | NavGroup)[] = [
       { href: "/leads", label: "Pipeline / Leads", icon: Sparkles },
       { href: "/oportunidades", label: "Oportunidades", icon: Lightbulb },
       { href: "/consorcio", label: "Consórcio", icon: Landmark },
+      { href: "/resultados", label: "Resultados LB", icon: Award },
       { href: "/clientes", label: "Clientes", icon: UserCircle },
     ],
   },

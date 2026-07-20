@@ -1,0 +1,172 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Maximize2, Minimize2, X } from "lucide-react";
+import { Logo } from "@/components/logo";
+import { useSession } from "@/lib/store";
+import {
+  BRLc,
+  filtrarPeriodo,
+  mesLabel,
+  resumir,
+  resultadosApi,
+  type Contemplacao,
+  type FiltroMeses,
+} from "@/lib/resultados";
+
+/** Apresentar ao Cliente: tela cheia premium (sem menus do CRM) com os
+ *  resultados oficiais de Sergipe — a resposta visual para "consórcio
+ *  contempla?", "tem contemplação na minha cidade?", "quanto foi liberado?". */
+function Apresentacao() {
+  const sp = useSearchParams();
+  const session = useSession();
+  const meses = (Number(sp.get("meses")) || 12) as FiltroMeses;
+  const cidade = (sp.get("cidade") ?? "").trim();
+
+  const [itens, setItens] = useState<Contemplacao[]>([]);
+  const [cheia, setCheia] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void resultadosApi.listar().then(setItens);
+  }, []);
+
+  const doPeriodo = useMemo(() => filtrarPeriodo(itens, meses), [itens, meses]);
+  const filtrados = useMemo(
+    () => (cidade ? doPeriodo.filter((i) => i.cidade.toLowerCase().includes(cidade.toLowerCase())) : doPeriodo),
+    [doPeriodo, cidade],
+  );
+  const resumo = useMemo(() => resumir(filtrados), [filtrados]);
+  const maxMes = Math.max(1, ...resumo.porMes.map((m) => m.qtd));
+  const periodoLabel =
+    meses === 0 ? "todo o histórico" : meses === 1 ? "no último mês" : `nos últimos ${meses} meses`;
+
+  async function toggleTelaCheia() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setCheia(true);
+      } else {
+        await document.exitFullscreen();
+        setCheia(false);
+      }
+    } catch {
+      /* navegador pode bloquear — ignora */
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto" style={{ background: "linear-gradient(160deg, #132743, #0a1626)" }}>
+      {/* topo */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-4 py-3 backdrop-blur-md md:px-8">
+        <Logo />
+        <div className="flex items-center gap-2">
+          <button onClick={toggleTelaCheia} className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10">
+            {cheia ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {cheia ? "Sair da tela cheia" : "Tela cheia"}
+          </button>
+          <Link href="/resultados" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10">
+            <X className="h-4 w-4" /> Sair
+          </Link>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-4xl px-4 py-10 text-center md:py-14">
+        <p className="text-xs uppercase tracking-[0.3em] text-white/60">Resultados oficiais da administradora</p>
+        <h1 className="mt-2 text-3xl font-extrabold text-white md:text-5xl">
+          {cidade ? (
+            <>Consórcio contempla em <span style={{ color: "#d4a72c" }}>{cidade}</span>? Contempla.</>
+          ) : (
+            <>Consórcio contempla em <span style={{ color: "#d4a72c" }}>Sergipe</span>? Contempla.</>
+          )}
+        </h1>
+        <p className="mt-2 text-sm text-white/70 md:text-base">E aqui está a prova, {periodoLabel}:</p>
+
+        {/* número gigante */}
+        <p className="mt-8 text-8xl font-extrabold tabular-nums md:text-9xl" style={{ color: "#d4a72c", textShadow: "0 0 40px rgba(212,167,44,.35)" }}>
+          {resumo.total}
+        </p>
+        <p className="text-lg font-semibold text-white md:text-xl">contemplações {cidade ? `em ${cidade}` : "em Sergipe"}</p>
+
+        <div className="mx-auto mt-8 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/15 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-widest text-white/60">Crédito liberado</p>
+            <p className="mt-1 text-3xl font-extrabold tabular-nums text-white md:text-4xl">{BRLc(resumo.valorTotal)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/15 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-widest text-white/60">{cidade ? "Crédito médio" : "Cidades contempladas"}</p>
+            <p className="mt-1 text-3xl font-extrabold tabular-nums text-white md:text-4xl">
+              {cidade ? (resumo.total ? BRLc(resumo.valorTotal / resumo.total) : "—") : resumo.porCidade.length}
+            </p>
+          </div>
+        </div>
+
+        {/* modalidades */}
+        {resumo.porModalidade.length > 0 ? (
+          <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-2">
+            {resumo.porModalidade.slice(0, 5).map((m) => (
+              <span key={m.nome} className="rounded-full border border-white/20 bg-white/5 px-4 py-1.5 text-sm font-semibold text-white">
+                {m.nome}: <span style={{ color: "#d4a72c" }}>{m.qtd}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {/* evolução */}
+        {resumo.porMes.length > 1 ? (
+          <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-white/15 bg-white/5 p-6">
+            <p className="mb-4 text-sm font-bold uppercase tracking-widest text-white/70">Evolução mês a mês</p>
+            <div className="flex items-end justify-center gap-2 overflow-x-auto md:gap-3">
+              {resumo.porMes.map((m) => (
+                <div key={m.mes} className="flex min-w-10 flex-col items-center gap-1.5">
+                  <span className="text-xs font-bold tabular-nums text-white">{m.qtd}</span>
+                  <div className="w-8 rounded-t-lg transition-[height] duration-700 md:w-10" style={{ height: `${Math.max(12, (m.qtd / maxMes) * 140)}px`, background: "linear-gradient(180deg, #d4a72c, rgba(212,167,44,.35))" }} />
+                  <span className="text-[10px] text-white/60">{mesLabel(m.mes)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* top cidades (visão geral) */}
+        {!cidade && resumo.porCidade.length > 0 ? (
+          <div className="mx-auto mt-6 grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-4">
+            {resumo.porCidade.slice(0, 8).map((c) => (
+              <div key={c.cidade} className="rounded-xl border border-white/15 bg-white/5 p-3">
+                <p className="truncate text-sm font-bold text-white">{c.cidade}</p>
+                <p className="text-xl font-extrabold tabular-nums" style={{ color: "#d4a72c" }}>{c.qtd}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {itens.length === 0 ? (
+          <p className="mt-10 text-white/70">Nenhum resultado importado ainda — importe o resultado oficial no módulo Resultados LB.</p>
+        ) : null}
+
+        <div className="mt-12 border-t border-white/10 pt-6">
+          {session?.nome ? (
+            <>
+              <p className="text-sm text-white/80">Apresentação preparada por</p>
+              <p className="text-lg font-extrabold text-white">{session.nome}</p>
+              <p className="text-sm" style={{ color: "#d4a72c" }}>Consultor LB Representações</p>
+            </>
+          ) : (
+            <p className="text-sm text-white/80">LB Representações</p>
+          )}
+          <p className="mt-3 text-[11px] text-white/50">Fonte: resultados oficiais da administradora · valores e contemplações de Sergipe</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ApresentacaoResultadosPage() {
+  return (
+    <Suspense fallback={null}>
+      <Apresentacao />
+    </Suspense>
+  );
+}
