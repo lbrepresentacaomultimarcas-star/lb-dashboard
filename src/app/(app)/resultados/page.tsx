@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Award,
   Download,
+  FileText,
   FileUp,
   ImageIcon,
   Loader2,
+  MessageCircle,
   MonitorPlay,
   Printer,
+  RefreshCw,
   Search,
   Smartphone,
   UploadCloud,
@@ -25,8 +28,6 @@ import {
   BRLc,
   dataLabel,
   filtrarPeriodo,
-  gerarArte,
-  gerarPdfInstitucional,
   mesLabel,
   parsearResultados,
   resumir,
@@ -35,6 +36,16 @@ import {
   type FiltroMeses,
   type ResultadoParse,
 } from "@/lib/resultados";
+import {
+  baixarImagem,
+  baixarPdf,
+  construirDados,
+  imprimirRelatorio,
+  nomeTemplate,
+  renderEmCanvas,
+  type FormatoMaterial,
+  type TemplateFeed,
+} from "@/lib/materiais";
 
 const PERIODOS: { v: FiltroMeses; label: string }[] = [
   { v: 1, label: "Último mês" },
@@ -45,6 +56,25 @@ const PERIODOS: { v: FiltroMeses; label: string }[] = [
 ];
 
 const EMOJI_TIPO: Record<string, string> = { Sorteio: "🎯", "Lance Fixo": "📌", "Lance Livre": "🚀" };
+
+type OpcaoMaterial = "feed" | "story" | "status" | "pdf" | "print";
+const OPCOES: { id: OpcaoMaterial; titulo: string; desc: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "feed", titulo: "Feed Instagram", desc: "Post quadrado 1080×1080", icon: ImageIcon },
+  { id: "story", titulo: "Story", desc: "Vertical pra Stories", icon: Smartphone },
+  { id: "status", titulo: "Status WhatsApp", desc: "Leitura rápida no zap", icon: MessageCircle },
+  { id: "pdf", titulo: "PDF Institucional", desc: "Apresentação executiva", icon: FileText },
+  { id: "print", titulo: "Relatório impresso", desc: "Layout corporativo A4", icon: Printer },
+];
+
+/** Recorde = algum mês do período atual empata com o máximo histórico (≥3). */
+function calcularRecorde(todos: Contemplacao[], porMesAtual: { mes: string; qtd: number }[]): string | null {
+  if (todos.length === 0) return null;
+  const porMes = new Map<string, number>();
+  for (const i of todos) porMes.set(i.mesRef, (porMes.get(i.mesRef) ?? 0) + 1);
+  const globalMax = Math.max(...porMes.values());
+  if (globalMax < 3) return null;
+  return porMesAtual.some((m) => m.qtd === globalMax) ? `${globalMax} no mês` : null;
+}
 
 function TabelaContemplacoes({ itens }: { itens: Contemplacao[] }) {
   return (
@@ -136,6 +166,47 @@ export default function ResultadosPage() {
   const maxMes = Math.max(1, ...resumo.porMes.map((m) => m.qtd));
   const periodoLabel = PERIODOS.find((p) => p.v === periodo)?.label ?? "";
   const preparadoPor = session?.nome;
+
+  /* ------------------------------ Gerar Material ---------------------------- */
+  const [matSel, setMatSel] = useState<OpcaoMaterial>("feed");
+  const [matTemplate, setMatTemplate] = useState<TemplateFeed | undefined>(undefined);
+  const previewRef = useRef<HTMLCanvasElement | null>(null);
+
+  const matResumo = daBusca?.resumo ?? resumo;
+  const matItens = daBusca?.itens ?? doPeriodo;
+  const recorde = useMemo(() => calcularRecorde(itens, matResumo.porMes), [itens, matResumo]);
+  const dadosMaterial = useMemo(
+    () =>
+      construirDados({
+        resumo: matResumo,
+        itens: matItens,
+        periodoLabel: daBusca ? `Pesquisa: ${busca.trim()}` : periodoLabel,
+        recorde,
+        preparadoPor,
+      }),
+    [matResumo, matItens, daBusca, busca, periodoLabel, recorde, preparadoPor],
+  );
+
+  const previewFormato: FormatoMaterial | null =
+    matSel === "print" ? null : matSel === "pdf" ? "pdf-capa" : matSel;
+
+  useEffect(() => {
+    if (!modalMaterial || !previewFormato || !previewRef.current) return;
+    renderEmCanvas(previewRef.current, previewFormato, dadosMaterial, matSel === "feed" ? matTemplate : undefined);
+  }, [modalMaterial, previewFormato, dadosMaterial, matSel, matTemplate]);
+
+  function baixarMaterial() {
+    if (matSel === "feed" || matSel === "story" || matSel === "status")
+      baixarImagem(matSel, dadosMaterial, matSel === "feed" ? matTemplate : undefined);
+    else if (matSel === "pdf") void baixarPdf(dadosMaterial, matItens);
+    else imprimirRelatorio(dadosMaterial, matItens);
+  }
+
+  function trocarTemplate() {
+    const ordem: TemplateFeed[] = ["Premium", "Executivo", "Comercial"];
+    const atual = matTemplate ?? (nomeTemplate("feed", dadosMaterial) as TemplateFeed);
+    setMatTemplate(ordem[(ordem.indexOf(atual) + 1) % ordem.length]);
+  }
 
   // Dados internos LB (separados dos oficiais): vendas da própria empresa.
   const internoLB = useMemo(() => {
@@ -462,72 +533,96 @@ export default function ResultadosPage() {
       </p>
 
       {/* ------------------------------ modal material ---------------------------- */}
-      <Modal open={modalMaterial} onClose={() => setModalMaterial(false)} title="Gerar Material" subtitle="Com a identidade visual da LB — pronto pra postar ou imprimir.">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void gerarPdfInstitucional({
-                periodo: periodoLabel,
-                resumo: daBusca?.resumo ?? resumo,
-                itens: daBusca?.itens ?? doPeriodo,
-                preparadoPor,
-              })
-            }
-          >
-            <Download className="h-4 w-4" /> PDF institucional
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              gerarArte("feed", {
-                titulo: "Consórcio contempla — e a prova está aqui",
-                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
-                periodo: periodoLabel,
-                preparadoPor,
-              })
-            }
-          >
-            <ImageIcon className="h-4 w-4" /> Arte pro Instagram
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              gerarArte("story", {
-                titulo: "Tem contemplação em Sergipe? TEM!",
-                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
-                periodo: periodoLabel,
-                preparadoPor,
-              })
-            }
-          >
-            <Smartphone className="h-4 w-4" /> Story
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              gerarArte("status", {
-                titulo: "Resultados oficiais do consórcio em Sergipe",
-                destaqueQtd: String((daBusca?.resumo ?? resumo).total),
-                destaqueValor: BRLc((daBusca?.resumo ?? resumo).creditoEstimado),
-                periodo: periodoLabel,
-                preparadoPor,
-              })
-            }
-          >
-            <Smartphone className="h-4 w-4" /> Status do WhatsApp
-          </Button>
-          <Button variant="secondary" className="sm:col-span-2" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" /> Relatório para impressão (imprimir esta tela)
-          </Button>
+      <Modal
+        open={modalMaterial}
+        onClose={() => setModalMaterial(false)}
+        title="Gerar Material"
+        subtitle="Peças premium com a identidade da LB — o sistema escolhe o melhor layout pelos dados."
+        icon={<ImageIcon className="h-5 w-5" />}
+      >
+        <div className="space-y-4">
+          {/* escolha do formato */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {OPCOES.map((o) => {
+              const Icon = o.icon;
+              const ativo = matSel === o.id;
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => setMatSel(o.id)}
+                  className={`group flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 ${
+                    ativo
+                      ? "border-[var(--color-brand)] bg-[var(--color-brand)]/10"
+                      : "border-[var(--color-border)] hover:border-[var(--color-brand)]/50"
+                  }`}
+                  style={ativo ? { boxShadow: "0 0 0 1px var(--color-brand), 0 8px 24px -12px rgba(37,99,255,.6)" } : undefined}
+                >
+                  <span
+                    className={`grid h-9 w-9 place-items-center rounded-lg transition-colors ${
+                      ativo
+                        ? "bg-[var(--color-brand)]/20 text-[var(--color-brand)]"
+                        : "bg-[var(--color-surface-2)] text-[var(--color-text-dim)] group-hover:text-[var(--color-text)]"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-bold text-[var(--color-text)]">{o.titulo}</span>
+                  <span className="text-[11px] leading-tight text-[var(--color-text-dim)]">{o.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* prévia ao vivo */}
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[#0a1220] p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                Prévia do material
+              </span>
+              {matSel === "feed" ? (
+                <button
+                  onClick={trocarTemplate}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
+                >
+                  <RefreshCw className="h-3 w-3" /> Modelo: {matTemplate ?? nomeTemplate("feed", dadosMaterial)}
+                </button>
+              ) : (
+                <span className="text-[11px] font-semibold text-[var(--color-muted)]">
+                  Modelo: {previewFormato ? nomeTemplate(previewFormato, dadosMaterial) : "Relatório A4"}
+                </span>
+              )}
+            </div>
+            {previewFormato ? (
+              <div className="flex justify-center">
+                <canvas
+                  ref={previewRef}
+                  className="rounded-xl border border-white/10 shadow-2xl"
+                  style={{ maxHeight: "46vh", maxWidth: "100%", width: "auto", height: "auto" }}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <Printer className="h-10 w-10 text-[var(--color-muted)]" />
+                <p className="text-sm font-semibold text-[var(--color-text)]">Relatório corporativo A4</p>
+                <p className="max-w-xs text-[11px] text-[var(--color-text-dim)]">
+                  Cabeçalho premium, resumo executivo, indicadores e tabela elegante. Abre a janela de impressão do navegador.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* baixar */}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] text-[var(--color-muted)]">
+              {preparadoPor ? `Assinado por ${preparadoPor}` : "Identidade LB Representações"}
+              {dadosMaterial.recorde ? ` · 🏆 ${dadosMaterial.recorde}` : ""}
+            </p>
+            <Button onClick={baixarMaterial}>
+              {matSel === "print" ? <Printer className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+              {matSel === "pdf" ? "Baixar PDF" : matSel === "print" ? "Imprimir" : "Baixar imagem"}
+            </Button>
+          </div>
         </div>
-        {preparadoPor ? (
-          <p className="mt-3 text-center text-xs text-[var(--color-muted)]">
-            Os materiais saem com “Apresentação preparada por {preparadoPor} · Consultor LB Representações”.
-          </p>
-        ) : null}
       </Modal>
 
       {/* ------------------------------ modal importar ----------------------------- */}
