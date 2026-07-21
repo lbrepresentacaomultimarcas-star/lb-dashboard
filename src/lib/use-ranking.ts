@@ -5,6 +5,7 @@ import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
 import { desempenhoPorPeriodo, desempenhoPorVendedor } from "./selectors";
 import type { Period } from "./period";
 import { useRefreshTick } from "./refresh";
+import { useSyncTick } from "./sync-bus";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import type { Meta, Venda, Vendedor, VendedorComDesempenho } from "./types";
 
@@ -133,6 +134,9 @@ export function useRankingPeriodo(
   );
   const [dados, setDados] = useState<DadosRpc | null>(null);
   const tick = useRefreshTick();
+  // Tick do realtime: venda/meta alterada em QUALQUER aparelho refaz a busca
+  // na hora (o store recarrega e bumpa o sync-bus).
+  const syncTick = useSyncTick();
   const fromMs = period.from.getTime();
   const toMs = period.to.getTime();
 
@@ -164,7 +168,7 @@ export function useRankingPeriodo(
       alive = false;
       document.removeEventListener("visibilitychange", aoVoltar);
     };
-  }, [fromMs, toMs, tick]);
+  }, [fromMs, toMs, tick, syncTick]);
 
   const viaRpc = useMemo(() => {
     if (!dados?.vendedores?.length) return null;

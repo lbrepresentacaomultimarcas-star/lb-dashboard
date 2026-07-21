@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
+import { bumpSync } from "./sync-bus";
 import {
   auditFromDb,
   auditToDb,
@@ -525,9 +526,14 @@ function attachRealtime() {
   if (realtimeAttached) return;
   realtimeAttached = true;
   const sb = supabaseBrowser();
+  // Além de recarregar o dataset no store, bumpa o sync-bus: hooks com fetch
+  // próprio (ranking via RPC) refazem a busca na hora — venda registrada em
+  // outro aparelho aparece sem recarregar a página.
   const sub = (table: string, reload: () => Promise<void>) =>
     sb.channel(`lb-${table}`)
-      .on("postgres_changes", { event: "*", schema: "public", table }, () => reload())
+      .on("postgres_changes", { event: "*", schema: "public", table }, () => {
+        void reload().then(() => bumpSync());
+      })
       .subscribe();
   sub("vendedores", reloadVendedores);
   sub("vendas", reloadVendas);
@@ -718,19 +724,23 @@ export const clientesApi = {
 // API — leads
 // ============================================================
 export const leadsApi = {
-  async add(input: Omit<Lead, "id" | "criadoEm">) {
+  /** Devolve o lead criado (o fechamento direto no cadastro precisa do id). */
+  async add(input: Omit<Lead, "id" | "criadoEm">): Promise<Lead> {
+    let criado: Lead;
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
       const { data, error } = await sb.from("leads").insert(leadToDb(input)).select().single();
       if (error) throw error;
-      state.leads = [leadFromDb(data as DbLead), ...state.leads];
+      criado = leadFromDb(data as DbLead);
+      state.leads = [criado, ...state.leads];
     } else {
-      const novo: Lead = { ...input, id: uid(), criadoEm: new Date().toISOString() };
-      state.leads = [novo, ...state.leads];
+      criado = { ...input, id: uid(), criadoEm: new Date().toISOString() };
+      state.leads = [criado, ...state.leads];
       lsWrite(K_LEADS, state.leads);
     }
     notify();
     void logAudit({ acao: "criar", entidade: "lead", detalhes: input.nome });
+    return criado;
   },
   async update(id: string, patch: Partial<Lead>) {
     if (supabaseEnabled) {

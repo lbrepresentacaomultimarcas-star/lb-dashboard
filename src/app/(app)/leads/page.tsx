@@ -40,7 +40,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeads, useSession, useVendedores, vendasApi } from "@/lib/store";
+import { leadsApi, useLeads, useSession, useVendas, useVendedores, vendasApi } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { Avatar } from "@/components/avatar";
 import {
@@ -273,6 +273,7 @@ type LeadTag = {
 
 export default function LeadsPage() {
   const leads = useLeads();
+  const vendas = useVendas();
   const vendedores = useVendedores();
   const session = useSession();
   const gestor = temPermissao(session, "supervisor");
@@ -439,11 +440,44 @@ export default function LeadsPage() {
         origem: form.origem.trim() || undefined,
         observacao: observacaoFinal || undefined,
       };
+      // Fechar pelo FORMULÁRIO também gera venda (antes só o arrastar gerava —
+      // fechamento pelo modal deixava faturamento/ranking/comissão sem a venda).
+      const virouFechamento =
+        payload.status === "fechamento" &&
+        (!editing || editing.status !== "fechamento") &&
+        (!editing || !vendaDoLeadExiste(editing.id));
+      if (virouFechamento && !podeFechar(payload)) {
+        setSalvando(false);
+        return;
+      }
       if (editing) {
         await leadsApi.update(editing.id, payload);
-        notify.success("Negócio atualizado");
+        if (virouFechamento && payload.vendedorId) {
+          const ok = await registrarVendaDoFechamento({
+            leadId: editing.id,
+            nome: payload.nome,
+            vendedorId: payload.vendedorId,
+            valor: payload.valorEstimado,
+          });
+          if (ok)
+            notify.success(
+              "Negócio fechado! 🎉",
+              "Venda gerada — financeiro, comissão e ranking atualizados.",
+            );
+        } else {
+          notify.success("Negócio atualizado");
+        }
       } else {
-        await leadsApi.add(payload);
+        const criado = await leadsApi.add(payload);
+        if (virouFechamento && payload.vendedorId) {
+          // Negócio criado já direto em Fechamento: registra a venda também.
+          await registrarVendaDoFechamento({
+            leadId: criado.id,
+            nome: payload.nome,
+            vendedorId: payload.vendedorId,
+            valor: payload.valorEstimado,
+          });
+        }
         notify.success("Negócio criado", `${payload.nome} adicionado em ${LEAD_STATUS_INFO[payload.status].label}`);
       }
       setOpen(false);
@@ -487,52 +521,94 @@ export default function LeadsPage() {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
     }
   }
-  async function mudarStatus(l: Lead, status: LeadStatus) {
-    // Pra fechar (gerar venda) o lead PRECISA de vendedor definido
-    if (status === "fechamento" && !l.vendedorId) {
+  /** Venda automática do fechamento já existe? (idempotência client-side;
+   *  o índice único vendas_auto_lead_unq protege no banco também). */
+  function vendaDoLeadExiste(leadId: string) {
+    return vendas.some((v) => v.observacao === `Auto-gerada do lead ${leadId}`);
+  }
+
+  /** Travas do fechamento — TODO caminho que fecha negócio passa aqui ANTES
+   *  de gravar o status. Sem vendedor ou sem valor não fecha (senão a venda
+   *  nasce errada e nenhum indicador mexe). */
+  function podeFechar(dados: { vendedorId?: string; valorEstimado: number }): boolean {
+    if (!dados.vendedorId) {
       notify.error(
         "Defina o vendedor antes de fechar",
-        "Use ⋮ → Compartilhar pra atribuir um vendedor — a comissão vai pra ele.",
+        "Use ⋮ → Compartilhar (ou o campo Vendedor do formulário) — a venda e a comissão vão pra ele.",
       );
-      return;
+      return false;
+    }
+    if (!(dados.valorEstimado > 0)) {
+      notify.error(
+        "Informe o valor do negócio antes de fechar",
+        "É esse valor que vira a venda — com R$ 0 o faturamento, o ranking e a comissão não mudam.",
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /** Fechamento gera venda automática (o ranking/faturamento leem da tabela
+   *  `vendas`, não de `leads`). Retorna true se a venda ficou garantida. */
+  async function registrarVendaDoFechamento(dados: {
+    leadId: string;
+    nome: string;
+    vendedorId: string;
+    valor: number;
+  }): Promise<boolean> {
+    if (vendaDoLeadExiste(dados.leadId)) {
+      notify.info("Venda deste negócio já estava registrada", "Nada foi duplicado.");
+      return true;
     }
     try {
-      await leadsApi.update(l.id, { status });
+      await vendasApi.add({
+        vendedorId: dados.vendedorId,
+        cliente: dados.nome,
+        valor: dados.valor,
+        data: new Date().toISOString(),
+        observacao: `Auto-gerada do lead ${dados.leadId}`,
+      });
+      return true;
+    } catch (err) {
+      // Índice único do banco devolve 23505 quando a venda já existe
+      // (reimportação/concorrência) — isso é sucesso, não erro.
+      const code =
+        typeof err === "object" && err !== null && "code" in err
+          ? String((err as { code: unknown }).code)
+          : "";
+      if (code === "23505") {
+        notify.info("Venda deste negócio já estava registrada", "Nada foi duplicado.");
+        return true;
+      }
+      // Lead já foi fechado (status persistiu), mas a venda falhou.
+      // Avisa o user pra lançar manual via /vendas, não esconde o erro.
+      notify.error(
+        "Negócio fechado, mas a venda não foi registrada",
+        err instanceof Error
+          ? `${err.message}. Lança manual em /vendas.`
+          : "Lança a venda manual em /vendas pra subir no ranking.",
+      );
+      return false;
+    }
+  }
 
-      // Bug B fix — fechamento gera venda automática (sem isso o ranking
-      // nunca atualiza porque ele lê da tabela `vendas`, não de `leads`).
-      // Idempotência protegida em vendas.observacao (auto-gerada do lead X).
+  async function mudarStatus(l: Lead, status: LeadStatus) {
+    // Travas ANTES de gravar: fechamento sem vendedor/valor não acontece.
+    if (status === "fechamento" && !podeFechar(l)) return;
+    try {
+      await leadsApi.update(l.id, { status });
       if (status === "fechamento" && l.vendedorId) {
-        try {
-          await vendasApi.add({
-            vendedorId: l.vendedorId,
-            cliente: l.nome,
-            valor: l.valorEstimado,
-            data: new Date().toISOString(),
-            observacao: `Auto-gerada do lead ${l.id}`,
-          });
-        } catch (err) {
-          // Lead já foi fechado (status persistiu), mas a venda falhou.
-          // Avisa o user pra lançar manual via /vendas, não esconde o erro.
-          notify.error(
-            "Negócio fechado, mas a venda não foi registrada",
-            err instanceof Error
-              ? `${err.message}. Lança manual em /vendas.`
-              : "Lança a venda manual em /vendas pra subir no ranking.",
+        const ok = await registrarVendaDoFechamento({
+          leadId: l.id,
+          nome: l.nome,
+          vendedorId: l.vendedorId,
+          valor: l.valorEstimado,
+        });
+        if (ok)
+          notify.success(
+            "Negócio fechado! 🎉",
+            "Venda gerada — financeiro, comissão e ranking atualizados.",
           );
-          return;
-        }
-        notify.success(
-          "Negócio fechado! 🎉",
-          "Venda gerada — financeiro, comissão e ranking atualizados.",
-        );
-      } else if (status === "fechamento") {
-        // Edge case: status virou fechamento mas vendedor não estava setado.
-        // O guard no topo já previne isso, mas defensive.
-        notify.success(
-          "Negócio movido pra Fechamento",
-          "Atribui um vendedor com ⋮ → Compartilhar pra gerar venda.",
-        );
       } else {
         notify.success(`Movido para ${LEAD_STATUS_INFO[status].label}`);
       }
