@@ -98,13 +98,19 @@ export default function OportunidadesPage() {
                       </span>
                     </div>
                     <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">{o.motivo}</p>
+                    <p className="mt-0.5 text-sm text-[var(--color-text)]">🧠 {o.diagnostico}</p>
                     <p className="text-sm text-[var(--color-text-dim)]">💡 {o.sugestao}</p>
+                    {o.baseLimitada ? (
+                      <p className="text-[11px] italic text-[var(--color-muted)]">
+                        Recomendação baseada apenas na etapa atual e no tempo parado.
+                      </p>
+                    ) : null}
                     <p className="mt-0.5 text-xs text-[var(--color-muted)]">
                       {o.lead.valorEstimado > 0
                         ? `Valor estimado: ${o.lead.valorEstimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
                         : ""}
                       {vend ? `${o.lead.valorEstimado > 0 ? " · " : ""}Vendedor: ${vend.nome}` : ""}
-                      {o.trecho ? ` · Detectado na observação: “…${o.trecho}…”` : ""}
+                      {o.trecho ? ` · Detectado na observação deste cliente: “…${o.trecho}…”` : ""}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
