@@ -13,7 +13,7 @@ begin
   foreach t in array array[
     'vendedores','vendas','clientes','leads','metas','feriados',
     'config_producao','performance_config','performance_historico',
-    'temas','audit_log'
+    'temas','audit_log','resultados_contemplacoes'
   ]
   loop
     begin

@@ -90,6 +90,24 @@ export function filtrarPeriodo(itens: Contemplacao[], meses: FiltroMeses): Conte
   return itens.filter((i) => i.mesRef >= chave);
 }
 
+/** Filtro pelo PERÍODO GLOBAL (mesmo seletor do Dashboard): compara a data
+ *  da contemplação; registros sem data caem no mês de referência. */
+export function filtrarPorIntervalo(itens: Contemplacao[], from: Date, to: Date): Contemplacao[] {
+  const f = from.getTime();
+  const t = to.getTime();
+  const chaveMes = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const mesDe = chaveMes(from);
+  const mesAte = chaveMes(to);
+  return itens.filter((i) => {
+    if (i.dataContemplacao) {
+      // Meio-dia local: evita a borda de fuso ao converter "YYYY-MM-DD".
+      const d = new Date(`${i.dataContemplacao.slice(0, 10)}T12:00:00`).getTime();
+      return d >= f && d <= t;
+    }
+    return i.mesRef >= mesDe && i.mesRef <= mesAte;
+  });
+}
+
 export type ResumoResultados = {
   total: number;
   sorteios: number;

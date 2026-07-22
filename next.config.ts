@@ -64,6 +64,11 @@ const nextConfig: NextConfig = {
       "./node_modules/pdf-parse/**/*",
       "./node_modules/@napi-rs/canvas/**/*",
     ],
+    "/api/resultados/sync": [
+      "./node_modules/pdfjs-dist/**/*",
+      "./node_modules/pdf-parse/**/*",
+      "./node_modules/@napi-rs/canvas/**/*",
+    ],
   },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

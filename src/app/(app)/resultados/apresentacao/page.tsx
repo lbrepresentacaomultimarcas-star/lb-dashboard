@@ -1,18 +1,17 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useSession } from "@/lib/store";
+import { useResultados, useSession } from "@/lib/store";
 import {
   BRLc,
   filtrarPeriodo,
+  filtrarPorIntervalo,
   mesLabel,
   resumir,
-  resultadosApi,
-  type Contemplacao,
   type FiltroMeses,
 } from "@/lib/resultados";
 
@@ -22,20 +21,31 @@ import {
 function Apresentacao() {
   const sp = useSearchParams();
   const session = useSession();
+  // Mesma fonte dos demais módulos (store global + Realtime). O período vem
+  // do painel via ?de&ate; ?meses continua aceito como retrocompatível.
+  const itens = useResultados();
+  const de = sp.get("de");
+  const ate = sp.get("ate");
   const meses = (Number(sp.get("meses")) || 12) as FiltroMeses;
 
-  const [itens, setItens] = useState<Contemplacao[]>([]);
   const [cheia, setCheia] = useState(false);
 
-  useEffect(() => {
-    void resultadosApi.listar().then(setItens);
-  }, []);
-
-  const doPeriodo = useMemo(() => filtrarPeriodo(itens, meses), [itens, meses]);
+  const doPeriodo = useMemo(() => {
+    if (de && ate) {
+      return filtrarPorIntervalo(itens, new Date(`${de}T00:00:00`), new Date(`${ate}T23:59:59.999`));
+    }
+    return filtrarPeriodo(itens, meses);
+  }, [itens, de, ate, meses]);
   const resumo = useMemo(() => resumir(doPeriodo), [doPeriodo]);
   const maxMes = Math.max(1, ...resumo.porMes.map((m) => m.qtd));
   const periodoLabel =
-    meses === 0 ? "todo o histórico" : meses === 1 ? "no último mês" : `nos últimos ${meses} meses`;
+    de && ate
+      ? "no período selecionado"
+      : meses === 0
+        ? "todo o histórico"
+        : meses === 1
+          ? "no último mês"
+          : `nos últimos ${meses} meses`;
 
   async function toggleTelaCheia() {
     try {

@@ -23,17 +23,19 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
-import { useSession, useVendas } from "@/lib/store";
+import { reloadResultados, useResultados, useSession, useVendas } from "@/lib/store";
+import { PeriodFilter } from "@/components/period-filter";
+import { dateToInputValue, formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
 import {
   BRLc,
   dataLabel,
-  filtrarPeriodo,
+  filtrarPorIntervalo,
   mesLabel,
   parsearResultados,
   resumir,
   resultadosApi,
   type Contemplacao,
-  type FiltroMeses,
+  type LinhaImportada,
   type ResultadoParse,
 } from "@/lib/resultados";
 import {
@@ -46,14 +48,6 @@ import {
   type FormatoMaterial,
   type TemplateFeed,
 } from "@/lib/materiais";
-
-const PERIODOS: { v: FiltroMeses; label: string }[] = [
-  { v: 1, label: "Último mês" },
-  { v: 3, label: "3 meses" },
-  { v: 6, label: "6 meses" },
-  { v: 12, label: "12 meses" },
-  { v: 0, label: "Todo o histórico" },
-];
 
 const EMOJI_TIPO: Record<string, string> = { Sorteio: "🎯", "Lance Fixo": "📌", "Lance Livre": "🚀" };
 
@@ -118,12 +112,14 @@ export default function ResultadosPage() {
   const vendas = useVendas();
   const isAdmin = session?.papel === "admin";
 
-  const [itens, setItens] = useState<Contemplacao[]>([]);
-  const [carregado, setCarregado] = useState(false);
-  const [periodo, setPeriodo] = useState<FiltroMeses>(12);
+  // Mesma fonte e mecânica dos demais módulos: store global (carregado no
+  // boot, recarregado pelo Realtime) + período global igual ao Dashboard.
+  const itens = useResultados();
+  const [period, setPeriod] = useState<Period>(() => periodFromPreset("mes-atual"));
   const [busca, setBusca] = useState("");
   const [modalMaterial, setModalMaterial] = useState(false);
   const [modalImport, setModalImport] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   // Importação
   const [impUrl, setImpUrl] = useState("");
@@ -136,17 +132,75 @@ export default function ResultadosPage() {
   const [logExtracao, setLogExtracao] = useState<string[]>([]);
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
 
-  async function carregar() {
-    const r = await resultadosApi.listar();
-    setItens(r);
-    setCarregado(true);
+  /* ------------------------ sincronização automática ------------------------ */
+  // Busca os PDFs do mês na pasta OFICIAL (salva no sistema — sem link),
+  // parseia no servidor e grava só o que for novo. Roda sozinha 1x por dia
+  // quando o admin abre a tela; o Realtime espalha pra todos os aparelhos.
+  async function sincronizar(silencioso = false) {
+    if (sincronizando) return;
+    setSincronizando(true);
+    try {
+      const res = await fetch("/api/resultados/sync", { method: "POST" });
+      const bruto = await res.text();
+      let j: {
+        linhas?: LinhaImportada[];
+        totalBrasil?: number;
+        totalSE?: number;
+        error?: string;
+        log?: string[];
+      };
+      try {
+        j = JSON.parse(bruto) as typeof j;
+      } catch {
+        j = { error: `Resposta inesperada do servidor (HTTP ${res.status}).` };
+      }
+      if (j.log?.length) console.log("[resultados/sync] diagnóstico:\n" + j.log.join("\n"));
+      if (!res.ok || !j.linhas) {
+        if (!silencioso) notify.error(j.error ?? `Falha na sincronização (HTTP ${res.status}).`);
+        return;
+      }
+      if (j.linhas.length > 0) {
+        const r = await resultadosApi.salvar(j.linhas);
+        if (!r.ok) {
+          if (!silencioso) notify.error(r.erro ?? "Falha ao salvar a sincronização.");
+          return;
+        }
+        await reloadResultados();
+        if (r.inseridos > 0)
+          notify.success(`Resultados sincronizados: ${r.inseridos} contemplação(ões) nova(s) de Sergipe.`);
+        else if (!silencioso)
+          notify.info("Resultados em dia — nenhuma contemplação nova de Sergipe.");
+      } else if (!silencioso) {
+        notify.info(
+          `Mês verificado (${j.totalBrasil ?? 0} contemplações no Brasil) — nenhuma de Sergipe até agora.`,
+        );
+      }
+    } catch (e) {
+      if (!silencioso) notify.error(e instanceof Error ? e.message : "Falha na sincronização.");
+    } finally {
+      setSincronizando(false);
+    }
   }
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void carregar();
-  }, []);
 
-  const doPeriodo = useMemo(() => filtrarPeriodo(itens, periodo), [itens, periodo]);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!isAdmin) return;
+    const hoje = new Date().toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem("lb:resultados:autosync") === hoje) return;
+      localStorage.setItem("lb:resultados:autosync", hoje);
+    } catch {
+      /* sem localStorage — sincroniza mesmo assim */
+    }
+    void sincronizar(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  const doPeriodo = useMemo(
+    () => filtrarPorIntervalo(itens, period.from, period.to),
+    [itens, period],
+  );
   const resumo = useMemo(() => resumir(doPeriodo), [doPeriodo]);
   const daBusca = useMemo(() => {
     const q = busca.trim();
@@ -164,7 +218,7 @@ export default function ResultadosPage() {
   );
 
   const maxMes = Math.max(1, ...resumo.porMes.map((m) => m.qtd));
-  const periodoLabel = PERIODOS.find((p) => p.v === periodo)?.label ?? "";
+  const periodoLabel = formatPeriodLabel(period);
   const preparadoPor = session?.nome;
 
   /* ------------------------------ Gerar Material ---------------------------- */
@@ -297,7 +351,7 @@ export default function ResultadosPage() {
     setPrevia(null);
     setImpUrl("");
     setImpTexto("");
-    void carregar();
+    void reloadResultados();
   }
 
   /* --------------------------------- render --------------------------------- */
@@ -315,14 +369,22 @@ export default function ResultadosPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin ? (
+            <Button variant="secondary" onClick={() => void sincronizar(false)} disabled={sincronizando}>
+              {sincronizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {sincronizando ? "Sincronizando…" : "Sincronizar agora"}
+            </Button>
+          ) : null}
+          {isAdmin ? (
             <Button variant="secondary" onClick={() => setModalImport(true)}>
-              <FileUp className="h-4 w-4" /> Importar resultado
+              <FileUp className="h-4 w-4" /> Importar histórico
             </Button>
           ) : null}
           <Button variant="secondary" onClick={() => setModalMaterial(true)}>
             <ImageIcon className="h-4 w-4" /> Gerar Material
           </Button>
-          <Link href={`/resultados/apresentacao?meses=${periodo}`}>
+          <Link
+            href={`/resultados/apresentacao?de=${dateToInputValue(period.from)}&ate=${dateToInputValue(period.to)}`}
+          >
             <Button>
               <MonitorPlay className="h-4 w-4" /> Apresentar ao Cliente
             </Button>
@@ -330,35 +392,23 @@ export default function ResultadosPage() {
         </div>
       </div>
 
-      {/* filtros de período + pesquisa por grupo/cota */}
+      {/* período global (igual ao Dashboard) + pesquisa por grupo/cota */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {PERIODOS.map((p) => (
-          <button
-            key={p.v}
-            onClick={() => setPeriodo(p.v)}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
-              periodo === p.v
-                ? "border-[var(--color-brand)] bg-[var(--color-brand)]/15 text-[var(--color-text)]"
-                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+        <PeriodFilter period={period} onChange={setPeriod} align="start" />
         <div className="relative min-w-56 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
           <Input className="pl-9" placeholder="Pesquisar grupo ou cota… (ex.: 2063 ou 1781)" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
       </div>
 
-      {carregado && itens.length === 0 ? (
+      {itens.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-10 text-center">
           <Award className="mx-auto h-10 w-10 text-[var(--color-muted)]" />
-          <p className="mt-2 font-bold text-[var(--color-text)]">Nenhum resultado importado ainda</p>
+          <p className="mt-2 font-bold text-[var(--color-text)]">Nenhum resultado no histórico ainda</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-text-dim)]">
             {isAdmin
-              ? "Clique em “Importar resultado” e cole o link da pasta do mês no Drive (ou envie o PDF) — o sistema lê os resultados oficiais e filtra automaticamente as cotas de Sergipe."
-              : "Peça ao administrador para importar o resultado oficial do mês."}
+              ? "Clique em “Sincronizar agora” — o sistema busca sozinho os resultados do mês na pasta oficial da administradora e filtra as cotas de Sergipe. Pra carregar meses antigos, use “Importar histórico”."
+              : "Os resultados oficiais são sincronizados automaticamente pelo administrador — em breve aparecem aqui."}
           </p>
         </div>
       ) : (
@@ -529,7 +579,8 @@ export default function ResultadosPage() {
       )}
 
       <p className="mt-6 text-center text-xs text-[var(--color-muted)]">
-        Resultados LB · dados oficiais das assembleias (filtro automático de Sergipe) · crédito estimado a partir do % dos lances · histórico permanente.
+        Resultados LB · sincronização automática com a pasta oficial da administradora (filtro de Sergipe) · crédito
+        estimado a partir do % dos lances · histórico permanente · atualização em tempo real.
       </p>
 
       {/* ------------------------------ modal material ---------------------------- */}

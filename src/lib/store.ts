@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
 import { bumpSync } from "./sync-bus";
+import { resultadosApi, type Contemplacao } from "./resultados";
 import {
   auditFromDb,
   auditToDb,
@@ -93,6 +94,8 @@ type State = {
   temas: Tema[];
   temaAtivo: Tema;
   audit: AuditLog[];
+  /** Contemplações oficiais (Resultados LB) — mesma mecânica dos demais. */
+  resultados: Contemplacao[];
   session: SessionUser | null;
   ready: boolean;
 };
@@ -110,6 +113,7 @@ const state: State = {
   temas: [],
   temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
+  resultados: [],
   session: null,
   ready: false,
 };
@@ -370,6 +374,7 @@ export function initStore(): Promise<void> {
           reloadPerformanceHistorico(),
           reloadTemas(),
           reloadAudit(),
+          reloadResultados(),
         ]);
         attachRealtime();
       }
@@ -413,6 +418,12 @@ async function reloadVendas() {
     state.vendas = (data as DbVenda[]).map(vendaFromDb);
     notify();
   }
+}
+/** Exportada: a página de Resultados chama após salvar uma importação
+ *  (o realtime cobre os OUTROS aparelhos; o próprio fica instantâneo). */
+export async function reloadResultados() {
+  state.resultados = await resultadosApi.listar();
+  notify();
 }
 async function reloadClientes() {
   const sb = supabaseBrowser();
@@ -519,6 +530,7 @@ export async function reloadAllData(): Promise<void> {
     reloadPerformanceHistorico(),
     reloadTemas(),
     reloadAudit(),
+    reloadResultados(),
   ]);
 }
 
@@ -546,6 +558,7 @@ function attachRealtime() {
   sub("performance_historico", reloadPerformanceHistorico);
   sub("temas", reloadTemas);
   sub("audit_log", reloadAudit);
+  sub("resultados_contemplacoes", reloadResultados);
 }
 
 // ============================================================
@@ -565,6 +578,9 @@ export function useLeads(): Lead[] {
 }
 export function useAudit(): AuditLog[] {
   return useSyncExternalStore(subscribe, () => state.audit, () => state.audit);
+}
+export function useResultados(): Contemplacao[] {
+  return useSyncExternalStore(subscribe, () => state.resultados, () => state.resultados);
 }
 export function useMetas(): Meta[] {
   return useSyncExternalStore(subscribe, () => state.metas, () => state.metas);
