@@ -47,6 +47,8 @@ export type DbVenda = {
   cliente: string;
   valor: number | string;
   data: string;
+  criado_em?: string | null;
+  status?: string | null;
   observacao: string | null;
 };
 
@@ -56,6 +58,8 @@ export const vendaFromDb = (r: DbVenda): Venda => ({
   cliente: r.cliente,
   valor: num(r.valor),
   data: r.data,
+  criadoEm: r.criado_em ?? undefined,
+  status: r.status ?? undefined,
   observacao: r.observacao ?? undefined,
 });
 
@@ -65,7 +69,9 @@ export const vendaToDb = (v: Partial<Venda>): Partial<DbVenda> => {
   if (v.cliente !== undefined) out.cliente = v.cliente;
   if (v.valor !== undefined) out.valor = v.valor;
   if (v.data !== undefined) out.data = v.data;
+  if (v.status !== undefined) out.status = v.status || null;
   if (v.observacao !== undefined) out.observacao = v.observacao || null;
+  // criado_em NUNCA é escrito pela aplicação (imutável).
   return out;
 };
 

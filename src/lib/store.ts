@@ -683,6 +683,26 @@ export const vendasApi = {
       detalhes: `${input.cliente} — ${input.valor}`,
     });
   },
+  /** Correção administrativa. `detalhesAudit` já vem formatado da tela (com
+   *  valores/datas anterior→novo e motivo) — quem/quando o logAudit carimba.
+   *  NUNCA toca em criado_em (imutável). A data efetiva editada (`data`) é a
+   *  que TODOS os módulos usam, então a correção reflete em tudo. */
+  async update(id: string, patch: Partial<Venda>, detalhesAudit?: string) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("vendas").update(vendaToDb(patch)).eq("id", id);
+      if (error) throw error;
+    }
+    state.vendas = state.vendas.map((s) => (s.id === id ? { ...s, ...patch } : s));
+    if (!supabaseEnabled) lsWrite(K_VENDAS, state.vendas);
+    notify();
+    void logAudit({
+      acao: "editar",
+      entidade: "venda",
+      entidadeId: id,
+      detalhes: detalhesAudit ?? `${patch.cliente ?? ""} — ${patch.valor ?? ""}`,
+    });
+  },
   async remove(id: string) {
     const v = state.vendas.find((s) => s.id === id);
     if (supabaseEnabled) {

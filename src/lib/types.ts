@@ -13,9 +13,16 @@ export type Venda = {
   vendedorId: string;
   cliente: string;
   valor: number;
+  /** DATA EFETIVA DA VENDA (o dia em que a venda aconteceu) — é o que TODOS os
+   *  relatórios, ranking, faturamento e IA usam. Editável pelo admin. */
   data: string;
+  /** Data de criação do registro no sistema — imutável, só pra rastreio. */
+  criadoEm?: string;
+  status?: string; // rótulo editável (Confirmada/Pendente/Cancelada)
   observacao?: string;
 };
+
+export const VENDA_STATUS = ["Confirmada", "Pendente", "Cancelada"] as const;
 
 export type Cliente = {
   id: string;
