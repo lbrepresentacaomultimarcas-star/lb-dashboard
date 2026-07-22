@@ -42,14 +42,25 @@ function fromDb(r: Row): Contemplacao {
 }
 
 export const resultadosApi = {
-  async listar(): Promise<Contemplacao[]> {
-    if (!supabaseEnabled) return [];
-    const { data } = await supabaseBrowser()
+  /** Igual aos demais reloads do store: devolve {data, error} pra quem chama
+   *  decidir. NUNCA mais engole o erro silenciosamente (era o que zerava o
+   *  módulo num hiccup de rede/auth enquanto vendas/leads se preservavam). */
+  async listarSafe(): Promise<{ data: Contemplacao[]; error: string | null }> {
+    if (!supabaseEnabled) return { data: [], error: null };
+    const { data, error } = await supabaseBrowser()
       .from("resultados_contemplacoes")
       .select("*")
       .order("mes_ref", { ascending: false })
       .limit(20000);
-    return ((data ?? []) as Row[]).map(fromDb);
+    if (error) {
+      console.error("[resultados] falha ao ler resultados_contemplacoes:", error);
+      return { data: [], error: error.message };
+    }
+    return { data: ((data ?? []) as Row[]).map(fromDb), error: null };
+  },
+
+  async listar(): Promise<Contemplacao[]> {
+    return (await this.listarSafe()).data;
   },
 
   /** Insere em lote ignorando duplicados (índice único cuida da idempotência). */

@@ -420,9 +420,13 @@ async function reloadVendas() {
   }
 }
 /** Exportada: a página de Resultados chama após salvar uma importação
- *  (o realtime cobre os OUTROS aparelhos; o próprio fica instantâneo). */
+ *  (o realtime cobre os OUTROS aparelhos; o próprio fica instantâneo).
+ *  Igual aos demais reloads: só substitui em caso de sucesso — um hiccup de
+ *  rede/auth NÃO pode zerar o que já estava carregado. */
 export async function reloadResultados() {
-  state.resultados = await resultadosApi.listar();
+  const { data, error } = await resultadosApi.listarSafe();
+  if (error) return; // preserva o estado anterior (mesmo padrão de reloadVendas)
+  state.resultados = data;
   notify();
 }
 async function reloadClientes() {
