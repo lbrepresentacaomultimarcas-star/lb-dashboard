@@ -40,7 +40,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeads, useSession, useVendas, useVendedores, vendasApi } from "@/lib/store";
+import { leadsApi, useLeads, useSession, useVendasAll, useVendedores, vendasApi } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { Avatar } from "@/components/avatar";
 import {
@@ -273,7 +273,7 @@ type LeadTag = {
 
 export default function LeadsPage() {
   const leads = useLeads();
-  const vendas = useVendas();
+  const vendas = useVendasAll(); // idempotência do fechamento vê canceladas também
   const vendedores = useVendedores();
   const session = useSession();
   const gestor = temPermissao(session, "supervisor");

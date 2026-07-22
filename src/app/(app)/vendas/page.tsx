@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { History, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
-import { useAudit, useSession, useVendas, useVendedores, vendasApi } from "@/lib/store";
+import { useAudit, useSession, useVendasAll, useVendedores, vendasApi } from "@/lib/store";
 import { brl, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
 import { VENDA_STATUS, type Venda } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -70,7 +70,7 @@ type EditState = {
 
 export default function VendasPage() {
   const vendedores = useVendedores();
-  const vendas = useVendas();
+  const vendas = useVendasAll(); // gestão vê TODAS, inclusive canceladas
   const session = useSession();
   const audit = useAudit();
   const isAdmin = session?.papel === "admin";

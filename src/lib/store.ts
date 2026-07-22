@@ -571,7 +571,28 @@ function attachRealtime() {
 export function useVendedores(): Vendedor[] {
   return useSyncExternalStore(subscribe, () => state.vendedores, () => state.vendedores);
 }
+// Vendas CANCELADAS não entram em NENHUM indicador (faturamento, ranking, IA,
+// metas, gamificação…). Cache por referência: só recomputa quando state.vendas
+// troca — mantém a referência estável exigida pelo useSyncExternalStore.
+let _vendasSrc: Venda[] | null = null;
+let _vendasAtivas: Venda[] = [];
+function vendasContabilizaveis(): Venda[] {
+  if (state.vendas !== _vendasSrc) {
+    _vendasSrc = state.vendas;
+    _vendasAtivas = state.vendas.filter((v) => (v.status ?? "Confirmada") !== "Cancelada");
+  }
+  return _vendasAtivas;
+}
+
+/** Vendas que CONTAM nos indicadores (exclui Canceladas). Use em todo módulo
+ *  de métrica — é o default. */
 export function useVendas(): Venda[] {
+  return useSyncExternalStore(subscribe, vendasContabilizaveis, vendasContabilizaveis);
+}
+
+/** TODAS as vendas, inclusive Canceladas. Só pra gestão (tela de Vendas),
+ *  checagem de idempotência (fechamento de lead) e linha do tempo. */
+export function useVendasAll(): Venda[] {
   return useSyncExternalStore(subscribe, () => state.vendas, () => state.vendas);
 }
 export function useClientes(): Cliente[] {
