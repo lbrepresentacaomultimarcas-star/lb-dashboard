@@ -698,6 +698,7 @@ export const vendasApi = {
       lsWrite(K_VENDAS, state.vendas);
     }
     notify();
+    bumpSync(); // ranking usa a RPC ranking_dados → refetch imediato nesta máquina
     void logAudit({
       acao: "criar",
       entidade: "venda",
@@ -717,6 +718,7 @@ export const vendasApi = {
     state.vendas = state.vendas.map((s) => (s.id === id ? { ...s, ...patch } : s));
     if (!supabaseEnabled) lsWrite(K_VENDAS, state.vendas);
     notify();
+    bumpSync(); // edição de venda → ranking (RPC) recalcula na hora, sem esperar o realtime
     void logAudit({
       acao: "editar",
       entidade: "venda",
@@ -734,6 +736,7 @@ export const vendasApi = {
     state.vendas = state.vendas.filter((s) => s.id !== id);
     if (!supabaseEnabled) lsWrite(K_VENDAS, state.vendas);
     notify();
+    bumpSync(); // remoção de venda → ranking (RPC) recalcula na hora
     void logAudit({ acao: "remover", entidade: "venda", entidadeId: id, detalhes: v?.cliente });
   },
 };
@@ -873,6 +876,7 @@ export const metasApi = {
       lsWrite(K_METAS, state.metas);
     }
     notify();
+    bumpSync(); // meta afeta a % do ranking (RPC) → recalcula na hora
     void logAudit({
       acao: "editar",
       entidade: "meta",
@@ -895,6 +899,7 @@ export const metasApi = {
     );
     if (!supabaseEnabled) lsWrite(K_METAS, state.metas);
     notify();
+    bumpSync(); // meta removida → ranking (RPC) recalcula na hora
   },
 };
 
