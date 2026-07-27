@@ -130,6 +130,7 @@ export type DbLead = {
   em_recuperacao?: boolean | null;
   perdido_em?: string | null;
   recuperado_em?: string | null;
+  recuperacao_removido_em?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -150,6 +151,7 @@ export const leadFromDb = (r: DbLead): Lead => ({
   emRecuperacao: r.em_recuperacao ?? false,
   perdidoEm: r.perdido_em ?? undefined,
   recuperadoEm: r.recuperado_em ?? undefined,
+  recuperacaoRemovidoEm: r.recuperacao_removido_em ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
@@ -168,6 +170,7 @@ export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
   if (l.emRecuperacao !== undefined) out.em_recuperacao = l.emRecuperacao;
   if (l.perdidoEm !== undefined) out.perdido_em = l.perdidoEm || null;
   if (l.recuperadoEm !== undefined) out.recuperado_em = l.recuperadoEm || null;
+  if (l.recuperacaoRemovidoEm !== undefined) out.recuperacao_removido_em = l.recuperacaoRemovidoEm || null;
   return out;
 };
 

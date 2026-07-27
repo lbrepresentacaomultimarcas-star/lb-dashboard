@@ -913,6 +913,52 @@ export const recuperacaoApi = {
     if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
     notify();
   },
+
+  /** Remove leads da Central de Recuperação (banco) SEM excluir do CRM: apenas
+   *  carimba `recuperacao_removido_em`. O lead e todo o histórico ficam intactos
+   *  (segue na coluna Perdidos do funil). Registra "Removido da Central de
+   *  Recuperação." no histórico de cada cliente (autor + data/hora). */
+  async limpar(leadIds: string[]) {
+    if (leadIds.length === 0) return;
+    const agora = new Date().toISOString();
+    const email = state.session?.email;
+    const DETALHE = "Removido da Central de Recuperação.";
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("leads")
+        .update({ recuperacao_removido_em: agora })
+        .in("id", leadIds);
+      if (error) throw error;
+      // Histórico por cliente (insert em lote — não bloqueia a limpeza se falhar).
+      try {
+        const rows = leadIds.map((id) =>
+          auditToDb({ acao: "editar", entidade: "lead", entidadeId: id, usuarioEmail: email, detalhes: DETALHE }),
+        );
+        const { data } = await sb.from("audit_log").insert(rows).select();
+        if (data) state.audit = [...(data as DbAuditLog[]).map(auditFromDb), ...state.audit].slice(0, 500);
+      } catch {
+        /* falha de log não desfaz a limpeza */
+      }
+    } else {
+      const novos: AuditLog[] = leadIds.map((id) => ({
+        id: uid(),
+        acao: "editar",
+        entidade: "lead",
+        entidadeId: id,
+        usuarioEmail: email,
+        detalhes: DETALHE,
+        criadoEm: agora,
+      }));
+      state.audit = [...novos, ...state.audit].slice(0, 500);
+      lsWrite(K_AUDIT, state.audit);
+    }
+    const alvo = new Set(leadIds);
+    state.leads = state.leads.map((l) => (alvo.has(l.id) ? { ...l, recuperacaoRemovidoEm: agora } : l));
+    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    notify();
+    bumpSync();
+  },
 };
 
 // ============================================================

@@ -90,6 +90,8 @@ export type Lead = {
   perdidoEm?: string;
   /** Momento em que foi efetivamente recuperado (fechou após recuperação). */
   recuperadoEm?: string;
+  /** Momento em que foi removido da Central de Recuperação (banco). null = ainda no banco. */
+  recuperacaoRemovidoEm?: string;
 };
 
 export type AuditLog = {

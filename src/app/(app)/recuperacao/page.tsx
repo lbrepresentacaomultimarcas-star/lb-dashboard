@@ -13,6 +13,7 @@ import {
   Printer,
   RotateCcw,
   Search,
+  Trash2,
   TrendingUp,
   Trophy,
   Wallet,
@@ -98,7 +99,11 @@ export default function RecuperacaoPage() {
   const nomeVend = (id?: string) => vendedores.find((v) => v.id === id)?.nome ?? "Sem consultor";
 
   // ---------- métricas do painel ----------
-  const perdidos = useMemo(() => leads.filter((l) => l.status === "perdido"), [leads]);
+  // Banco de recuperação = perdidos que NÃO foram removidos da Central (limpos).
+  const perdidos = useMemo(
+    () => leads.filter((l) => l.status === "perdido" && !l.recuperacaoRemovidoEm),
+    [leads],
+  );
   const emRecuperacao = useMemo(
     () => leads.filter((l) => l.emRecuperacao && l.status !== "perdido" && l.status !== "fechamento"),
     [leads],
@@ -176,6 +181,10 @@ export default function RecuperacaoPage() {
   const [motivo, setMotivo] = useState("");
   const [salvando, setSalvando] = useState(false);
 
+  // ---------- limpeza do banco ----------
+  const [limparOpen, setLimparOpen] = useState(false);
+  const [limpando, setLimpando] = useState(false);
+
   const idsParaTransferir = selecionados.map((l) => l.id);
 
   async function confirmarTransferencia() {
@@ -196,6 +205,27 @@ export default function RecuperacaoPage() {
       notify.error("Erro ao transferir", e instanceof Error ? e.message : undefined);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function confirmarLimpeza() {
+    // Com seleção → limpa só os marcados; sem seleção → toda a lista atual.
+    const alvos = selecionados.length > 0 ? selecionados : lista;
+    const ids = alvos.map((l) => l.id);
+    if (ids.length === 0) return setLimparOpen(false);
+    setLimpando(true);
+    try {
+      await recuperacaoApi.limpar(ids);
+      notify.success(
+        `${ids.length} cliente(s) removido(s) da Central`,
+        "Continuam no CRM, com todo o histórico preservado.",
+      );
+      setSel(new Set());
+      setLimparOpen(false);
+    } catch (e) {
+      notify.error("Erro ao limpar", e instanceof Error ? e.message : undefined);
+    } finally {
+      setLimpando(false);
     }
   }
 
@@ -309,6 +339,10 @@ export default function RecuperacaoPage() {
   const selCls =
     "h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white outline-none focus:border-[var(--color-brand)]";
 
+  // Limpeza: com seleção → limpa os marcados; sem seleção → toda a lista atual.
+  const modoSel = selecionados.length > 0;
+  const qtdLimpeza = modoSel ? selecionados.length : lista.length;
+
   // Acesso EXCLUSIVO de administrador — bloqueia inclusive URL direta.
   if (!admin) {
     return (
@@ -365,6 +399,15 @@ export default function RecuperacaoPage() {
               <ArrowRightLeft className="h-4 w-4" /> Transferir {selecionados.length > 0 ? `(${selecionados.length})` : ""}
             </Button>
           )}
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setLimparOpen(true)}
+            disabled={qtdLimpeza === 0}
+            title={modoSel ? "Remove os selecionados da Central (não exclui do CRM)" : "Limpa a lista atual da Central (não exclui do CRM)"}
+          >
+            <Trash2 className="h-4 w-4" /> {modoSel ? `Limpar selecionados (${selecionados.length})` : "Limpar Banco de Recuperação"}
+          </Button>
         </div>
       </header>
 
@@ -596,6 +639,40 @@ export default function RecuperacaoPage() {
             <Button variant="ghost" onClick={() => setTransfOpen(false)}>Cancelar</Button>
             <Button onClick={confirmarTransferencia} disabled={salvando || !novoVend || idsParaTransferir.length === 0}>
               <ArrowRightLeft className="h-4 w-4" /> {salvando ? "Transferindo…" : "Confirmar transferência"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ---------- modal de limpeza do banco ---------- */}
+      <Modal
+        open={limparOpen}
+        onClose={() => setLimparOpen(false)}
+        title="Limpar Banco de Recuperação"
+        icon={<Trash2 className="h-5 w-5" />}
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 p-4 text-sm leading-relaxed text-white/85">
+            <p className="mb-1 text-base font-extrabold text-[var(--color-danger)]">ATENÇÃO!</p>
+            <p>Você está prestes a limpar o Banco de Recuperação.</p>
+            <p className="mt-2">
+              Essa ação removerá{" "}
+              <b>
+                {modoSel
+                  ? `os ${selecionados.length} clientes selecionados`
+                  : `todos os ${lista.length} clientes desta lista`}
+              </b>
+              , mas <b>NÃO excluirá nenhum cliente do CRM</b>.
+            </p>
+            <p className="mt-2">Os históricos permanecerão preservados.</p>
+            <p className="mt-3 font-semibold">Deseja continuar?</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setLimparOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={confirmarLimpeza} disabled={limpando || qtdLimpeza === 0}>
+              <Trash2 className="h-4 w-4" /> {limpando ? "Limpando…" : "Confirmar"}
             </Button>
           </div>
         </div>
