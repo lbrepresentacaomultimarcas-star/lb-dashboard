@@ -857,7 +857,7 @@ export default function LeadsPage() {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        {s === "perdido" && (
+                        {s === "perdido" && temPermissao(session, "admin") && (
                           <Link
                             href="/recuperacao"
                             title="Abrir a Central de Recuperação de Leads"

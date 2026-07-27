@@ -57,7 +57,7 @@ export const NAV: (NavItem | NavGroup)[] = [
     items: [
       { href: "/vendas", label: "Vendas", icon: ShoppingCart },
       { href: "/leads", label: "Pipeline / Leads", icon: Sparkles },
-      { href: "/recuperacao", label: "Recuperação de Leads", icon: LifeBuoy },
+      { href: "/recuperacao", label: "Recuperação de Leads", icon: LifeBuoy, minimo: "admin" },
       { href: "/oportunidades", label: "Oportunidades", icon: Lightbulb },
       { href: "/consorcio", label: "Consórcio", icon: Landmark },
       { href: "/resultados", label: "Resultados LB", icon: Award },

@@ -7,6 +7,7 @@ import {
   FileDown,
   FileSpreadsheet,
   LifeBuoy,
+  Lock,
   MessageCircle,
   Phone,
   Printer,
@@ -18,7 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { recuperacaoApi, useLeads, useSession, useVendedores } from "@/lib/store";
-import { temPermissao } from "@/lib/permissions";
+import { ehAdmin, temPermissao } from "@/lib/permissions";
 import {
   ETAPAS_RECUPERACAO,
   LEAD_TIPO_INFO,
@@ -91,6 +92,7 @@ export default function RecuperacaoPage() {
   const leads = useLeads();
   const vendedores = useVendedores();
   const session = useSession();
+  const admin = ehAdmin(session);
   const gestor = temPermissao(session, "supervisor");
 
   const nomeVend = (id?: string) => vendedores.find((v) => v.id === id)?.nome ?? "Sem consultor";
@@ -300,6 +302,25 @@ export default function RecuperacaoPage() {
 
   const selCls =
     "h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white outline-none focus:border-[var(--color-brand)]";
+
+  // Acesso EXCLUSIVO de administrador — bloqueia inclusive URL direta.
+  if (!admin) {
+    return (
+      <PremiumStage>
+        <div className="grid min-h-[55vh] place-items-center px-4 text-center">
+          <div className="lb-fade-up max-w-md">
+            <span className="lb-orb mx-auto mb-4 h-14 w-14" style={{ ["--orb" as string]: "#f43f5e" }}>
+              <Lock className="h-6 w-6" />
+            </span>
+            <h1 className="text-2xl font-extrabold text-white">Acesso restrito</h1>
+            <p className="mt-2 text-sm text-white/55">
+              A Central de Recuperação de Leads é exclusiva para administradores.
+            </p>
+          </div>
+        </div>
+      </PremiumStage>
+    );
+  }
 
   return (
     <PremiumStage>
