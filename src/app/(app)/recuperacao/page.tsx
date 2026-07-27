@@ -143,7 +143,13 @@ export default function RecuperacaoPage() {
 
   // ---------- seleção ----------
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const selVisiveis = lista.filter((l) => sel.has(l.id));
+  // Leads marcados nos checkboxes = base EXCLUSIVA de exportação/impressão/
+  // transferência. INDEPENDE dos filtros da tela (busca/consultor/nível) — os
+  // filtros só afetam o que a lista EXIBE, nunca o que é exportado.
+  const selecionados = useMemo(
+    () => perdidos.filter((l) => sel.has(l.id)).sort((a, b) => diasParado(b) - diasParado(a)),
+    [perdidos, sel],
+  );
   const todosSel = lista.length > 0 && lista.every((l) => sel.has(l.id));
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -170,7 +176,7 @@ export default function RecuperacaoPage() {
   const [motivo, setMotivo] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const idsParaTransferir = selVisiveis.map((l) => l.id);
+  const idsParaTransferir = selecionados.map((l) => l.id);
 
   async function confirmarTransferencia() {
     if (!novoVend) return notify.error("Escolha o novo consultor");
@@ -210,7 +216,7 @@ export default function RecuperacaoPage() {
     "Nível",
   ];
   const linhas = () =>
-    lista.map((l) => [
+    selecionados.map((l) => [
       l.nome,
       l.telefone || "—",
       nomeVend(l.vendedorId),
@@ -226,12 +232,12 @@ export default function RecuperacaoPage() {
     ]);
 
   async function exportarPdf() {
-    if (lista.length === 0) return notify.error("Nenhum lead na lista atual");
+    if (selecionados.length === 0) return notify.error("Marque os leads (checkbox) que deseja exportar.");
     try {
       await exportPdf({
         filename: `recuperacao-leads-${hoje}.pdf`,
         titulo: "Central de Recuperação de Leads — LB",
-        subtitulo: `${lista.length} leads · gerado em ${new Date().toLocaleString("pt-BR")}`,
+        subtitulo: `${selecionados.length} leads selecionados · gerado em ${new Date().toLocaleString("pt-BR")}`,
         head: HEAD,
         body: linhas(),
       });
@@ -240,7 +246,7 @@ export default function RecuperacaoPage() {
     }
   }
   async function exportarXlsx() {
-    if (lista.length === 0) return notify.error("Nenhum lead na lista atual");
+    if (selecionados.length === 0) return notify.error("Marque os leads (checkbox) que deseja exportar.");
     try {
       await exportXlsx(`recuperacao-leads-${hoje}.xlsx`, { Recuperação: [HEAD, ...linhas()] });
     } catch (e) {
@@ -250,8 +256,8 @@ export default function RecuperacaoPage() {
 
   // ---------- impressão (janela limpa A4) ----------
   function imprimir() {
-    if (lista.length === 0) return notify.error("Nenhum lead na lista atual");
-    const linhasHtml = lista
+    if (selecionados.length === 0) return notify.error("Marque os leads (checkbox) que deseja imprimir.");
+    const linhasHtml = selecionados
       .map((l, i) => {
         const nv = NIVEL_RECUPERACAO_INFO[nivelDe(l)];
         return `<tr>
@@ -279,7 +285,7 @@ export default function RecuperacaoPage() {
         @media print{body{margin:12mm}}
       </style></head><body>
       <h1>Central de Recuperação de Leads — LB</h1>
-      <p class="sub">${lista.length} leads · gerado em ${new Date().toLocaleString("pt-BR")}</p>
+      <p class="sub">${selecionados.length} leads selecionados · gerado em ${new Date().toLocaleString("pt-BR")}</p>
       <table><thead><tr>
         <th>Nº</th><th>Nome</th><th>Telefone</th><th>Consultor anterior</th><th>Nível</th><th>Motivo da perda</th><th>Última observação</th>
       </tr></thead><tbody>${linhasHtml}</tbody></table>
@@ -340,23 +346,23 @@ export default function RecuperacaoPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={imprimir}>
-            <Printer className="h-4 w-4" /> Imprimir
+          <Button variant="secondary" size="sm" onClick={imprimir} disabled={selecionados.length === 0} title="Imprime só os leads marcados">
+            <Printer className="h-4 w-4" /> Imprimir{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
           </Button>
-          <Button variant="secondary" size="sm" onClick={exportarPdf}>
-            <FileDown className="h-4 w-4" /> PDF
+          <Button variant="secondary" size="sm" onClick={exportarPdf} disabled={selecionados.length === 0} title="Exporta só os leads marcados">
+            <FileDown className="h-4 w-4" /> PDF{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
           </Button>
-          <Button variant="secondary" size="sm" onClick={exportarXlsx}>
-            <FileSpreadsheet className="h-4 w-4" /> Excel
+          <Button variant="secondary" size="sm" onClick={exportarXlsx} disabled={selecionados.length === 0} title="Exporta só os leads marcados">
+            <FileSpreadsheet className="h-4 w-4" /> Excel{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
           </Button>
           {gestor && (
             <Button
               size="sm"
               onClick={() => setTransfOpen(true)}
-              disabled={selVisiveis.length === 0}
-              title={selVisiveis.length === 0 ? "Selecione leads na lista" : "Transferir selecionados"}
+              disabled={selecionados.length === 0}
+              title={selecionados.length === 0 ? "Marque leads na lista" : "Transferir selecionados"}
             >
-              <ArrowRightLeft className="h-4 w-4" /> Transferir {selVisiveis.length > 0 ? `(${selVisiveis.length})` : ""}
+              <ArrowRightLeft className="h-4 w-4" /> Transferir {selecionados.length > 0 ? `(${selecionados.length})` : ""}
             </Button>
           )}
         </div>
@@ -429,7 +435,9 @@ export default function RecuperacaoPage() {
             <option key={v.id} value={v.id} className="bg-[#0b0d16]">{v.nome}</option>
           ))}
         </select>
-        <span className="text-xs text-white/45">{lista.length} lead(s)</span>
+        <span className="text-xs text-white/45">
+          {lista.length} na lista{selecionados.length > 0 ? ` · ${selecionados.length} selecionados` : ""}
+        </span>
       </div>
 
       {/* ---------- tabela ---------- */}
