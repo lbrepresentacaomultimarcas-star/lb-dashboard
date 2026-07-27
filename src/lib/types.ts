@@ -62,6 +62,10 @@ export const LEAD_TIPO_INFO: Record<LeadTipo, { label: string }> = {
   servico: { label: "Serviço" },
 };
 
+/** Nível de recuperação — definido MANUALMENTE pelo gestor/supervisor na
+ *  Central de Recuperação. Ajuda o consultor novato a priorizar. */
+export type NivelRecuperacao = "facil" | "medio" | "dificil" | "sem_info";
+
 export type Lead = {
   id: string;
   nome: string;
@@ -75,6 +79,17 @@ export type Lead = {
   observacao?: string;
   criadoEm: string;
   atualizadoEm?: string;
+  // ---- Central de Recuperação (todos opcionais/aditivos) ----
+  /** Nível de recuperação definido pelo gestor (🟢🟡🔴⚪). */
+  nivelRecuperacao?: NivelRecuperacao;
+  /** Motivo pelo qual o lead foi marcado como perdido. */
+  motivoPerda?: string;
+  /** true quando o lead foi redistribuído pela Central de Recuperação. */
+  emRecuperacao?: boolean;
+  /** Momento em que virou "perdido" (base do "dias parado"). */
+  perdidoEm?: string;
+  /** Momento em que foi efetivamente recuperado (fechou após recuperação). */
+  recuperadoEm?: string;
 };
 
 export type AuditLog = {
@@ -185,3 +200,23 @@ export const LEAD_STATUS_INFO: Record<
   fechamento: { label: "Fechamento", tone: "success" },
   perdido: { label: "Perdido", tone: "danger" },
 };
+
+/** Rótulo/cor/emoji de cada Nível de Recuperação (Central de Recuperação). */
+export const NIVEL_RECUPERACAO_INFO: Record<
+  NivelRecuperacao,
+  { label: string; emoji: string; cor: string; dica: string }
+> = {
+  facil: { label: "Fácil", emoji: "🟢", cor: "#22c55e", dica: "Demonstrou interesse, faltou acompanhamento." },
+  medio: { label: "Médio", emoji: "🟡", cor: "#f59e0b", dica: "Pediu para retornar futuramente." },
+  dificil: { label: "Difícil", emoji: "🔴", cor: "#f43f5e", dica: "Informou que fechou com outra empresa." },
+  sem_info: { label: "Sem informação", emoji: "⚪", cor: "#9aa6b4", dica: "Sem histórico suficiente para entender a perda." },
+};
+
+/** Etapas onde um lead pode ser reiniciado ao ser transferido pela Central de
+ *  Recuperação (o gestor escolhe "onde iniciar este lead"). */
+export const ETAPAS_RECUPERACAO: { status: LeadStatus; label: string }[] = [
+  { status: "primeiro_contato", label: "Primeiro Contato" },
+  { status: "reuniao", label: "Fazer e Passar Proposta" },
+  { status: "reuniao_agendada", label: "Reunião Agendada" },
+  { status: "acompanhamento", label: "Acompanhamento para Fechamento" },
+];

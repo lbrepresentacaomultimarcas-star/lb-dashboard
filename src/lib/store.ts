@@ -44,12 +44,15 @@ import type {
   Cliente,
   Feriado,
   Lead,
+  LeadStatus,
   Meta,
+  NivelRecuperacao,
   PerformanceSnapshot,
   SessionUser,
   Venda,
   Vendedor,
 } from "./types";
+import { LEAD_STATUS_INFO, NIVEL_RECUPERACAO_INFO } from "./types";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import { CONFIG_PERFORMANCE_PADRAO, type ConfigPerformance } from "./performance";
 import {
@@ -829,6 +832,86 @@ export const leadsApi = {
     if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
     notify();
     void logAudit({ acao: "remover", entidade: "lead", entidadeId: id, detalhes: nome });
+  },
+};
+
+// ============================================================
+// API — Central de Recuperação de Leads (redistribuição de perdidos)
+// Não altera nada do funil existente; só age nos campos aditivos do lead.
+// ============================================================
+export const recuperacaoApi = {
+  /** Transfere leads perdidos para um novo consultor, reiniciando cada um na
+   *  etapa escolhida pelo gestor. Preserva o histórico (audit_log) e marca
+   *  `emRecuperacao`. Quando o lead fechar, a venda já sai no nome do NOVO
+   *  responsável (registrarVendaDoFechamento usa o vendedorId atual do lead). */
+  async transferir(
+    leadIds: string[],
+    opts: { novoVendedorId: string; etapa: LeadStatus; motivo: string },
+  ) {
+    const novo = state.vendedores.find((v) => v.id === opts.novoVendedorId);
+    const patch: Partial<Lead> = {
+      vendedorId: opts.novoVendedorId,
+      status: opts.etapa,
+      emRecuperacao: true,
+    };
+    for (const id of leadIds) {
+      const lead = state.leads.find((l) => l.id === id);
+      if (!lead) continue;
+      const anterior = state.vendedores.find((v) => v.id === lead.vendedorId);
+      if (supabaseEnabled) {
+        const sb = supabaseBrowser();
+        const { error } = await sb.from("leads").update(leadToDb(patch)).eq("id", id);
+        if (error) throw error;
+      }
+      state.leads = state.leads.map((l) => (l.id === id ? { ...l, ...patch } : l));
+      void logAudit({
+        acao: "transferir",
+        entidade: "lead",
+        entidadeId: id,
+        detalhes:
+          `Recuperação: "${lead.nome}" · de ${anterior?.nome ?? "sem consultor"} → ` +
+          `${novo?.nome ?? "?"} · início em "${LEAD_STATUS_INFO[opts.etapa].label}"` +
+          (opts.motivo ? ` · motivo: ${opts.motivo}` : ""),
+      });
+    }
+    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    notify();
+    bumpSync(); // responsável mudou → ranking/indicadores refazem na hora
+  },
+
+  /** Define (ou limpa, com null) o Nível de Recuperação. Manual — gestor. */
+  async definirNivel(id: string, nivel: NivelRecuperacao | null) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("leads").update({ nivel_recuperacao: nivel }).eq("id", id);
+      if (error) throw error;
+    }
+    state.leads = state.leads.map((l) =>
+      l.id === id ? { ...l, nivelRecuperacao: nivel ?? undefined } : l,
+    );
+    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    notify();
+    void logAudit({
+      acao: "editar",
+      entidade: "lead",
+      entidadeId: id,
+      detalhes: `nível de recuperação → ${nivel ? NIVEL_RECUPERACAO_INFO[nivel].label : "—"}`,
+    });
+  },
+
+  /** Registra/edita o motivo da perda de um lead. */
+  async definirMotivo(id: string, motivo: string) {
+    const val = motivo.trim();
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("leads").update({ motivo_perda: val || null }).eq("id", id);
+      if (error) throw error;
+    }
+    state.leads = state.leads.map((l) =>
+      l.id === id ? { ...l, motivoPerda: val || undefined } : l,
+    );
+    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    notify();
   },
 };
 

@@ -1,4 +1,4 @@
-import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
 import type { ConfigPerformance } from "../performance";
 import type { EstiloTema, StatusTema, Tema } from "../temas";
@@ -124,6 +124,12 @@ export type DbLead = {
   observacao: string | null;
   criado_em: string;
   atualizado_em?: string | null;
+  // Central de Recuperação (colunas aditivas — podem não existir antes da migration)
+  nivel_recuperacao?: string | null;
+  motivo_perda?: string | null;
+  em_recuperacao?: boolean | null;
+  perdido_em?: string | null;
+  recuperado_em?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -139,6 +145,11 @@ export const leadFromDb = (r: DbLead): Lead => ({
   observacao: r.observacao ?? undefined,
   criadoEm: r.criado_em,
   atualizadoEm: r.atualizado_em ?? undefined,
+  nivelRecuperacao: (r.nivel_recuperacao as NivelRecuperacao | null) ?? undefined,
+  motivoPerda: r.motivo_perda ?? undefined,
+  emRecuperacao: r.em_recuperacao ?? false,
+  perdidoEm: r.perdido_em ?? undefined,
+  recuperadoEm: r.recuperado_em ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
@@ -152,6 +163,11 @@ export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
   if (l.vendedorId !== undefined) out.vendedor_id = l.vendedorId || null;
   if (l.origem !== undefined) out.origem = l.origem || null;
   if (l.observacao !== undefined) out.observacao = l.observacao || null;
+  if (l.nivelRecuperacao !== undefined) out.nivel_recuperacao = l.nivelRecuperacao ?? null;
+  if (l.motivoPerda !== undefined) out.motivo_perda = l.motivoPerda || null;
+  if (l.emRecuperacao !== undefined) out.em_recuperacao = l.emRecuperacao;
+  if (l.perdidoEm !== undefined) out.perdido_em = l.perdidoEm || null;
+  if (l.recuperadoEm !== undefined) out.recuperado_em = l.recuperadoEm || null;
   return out;
 };
 

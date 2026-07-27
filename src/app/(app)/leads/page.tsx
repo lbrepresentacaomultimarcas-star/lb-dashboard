@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   BarChart3,
@@ -855,13 +856,24 @@ export default function LeadsPage() {
                           <p className="text-[10px] text-white/55 tabular-nums">{brl(totais[s])}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => abrirNovo(s)}
-                        className="rounded-md p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-                        title="Adicionar nesta etapa"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {s === "perdido" && (
+                          <Link
+                            href="/recuperacao"
+                            title="Abrir a Central de Recuperação de Leads"
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300 transition-colors hover:bg-emerald-400/20"
+                          >
+                            <FileText className="h-3.5 w-3.5" /> Recuperação
+                          </Link>
+                        )}
+                        <button
+                          onClick={() => abrirNovo(s)}
+                          className="rounded-md p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+                          title="Adicionar nesta etapa"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* corpo da coluna */}
