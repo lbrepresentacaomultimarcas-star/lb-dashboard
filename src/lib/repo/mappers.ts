@@ -1,4 +1,4 @@
-import type { AuditLog, Cliente, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
 import type { ConfigPerformance } from "../performance";
 import type { EstiloTema, StatusTema, Tema } from "../temas";
@@ -371,6 +371,34 @@ export const configProducaoToDb = (c: ConfigProducao): Partial<DbConfigProducao>
   inicio_proximo_ciclo: c.inicioProximoCiclo,
   data_inicio_regra: c.dataInicioRegra,
 });
+
+// ============================================================
+// Dashboard config (1 linha por org) — Painel Inteligente
+// ============================================================
+export type DbDashboardConfig = {
+  org_id: string;
+  lembrete: string | null;
+  meta_ligacoes: number | string;
+  meta_reunioes: number | string;
+  meta_vendas: number | string;
+  atualizado_em: string;
+};
+
+export const dashboardConfigFromDb = (r: DbDashboardConfig): DashboardConfig => ({
+  lembrete: r.lembrete ?? "",
+  metaLigacoes: num(r.meta_ligacoes),
+  metaReunioes: num(r.meta_reunioes),
+  metaVendas: num(r.meta_vendas),
+});
+
+export const dashboardConfigToDb = (c: Partial<DashboardConfig>): Partial<DbDashboardConfig> => {
+  const out: Partial<DbDashboardConfig> = {};
+  if (c.lembrete !== undefined) out.lembrete = c.lembrete || null;
+  if (c.metaLigacoes !== undefined) out.meta_ligacoes = c.metaLigacoes;
+  if (c.metaReunioes !== undefined) out.meta_reunioes = c.metaReunioes;
+  if (c.metaVendas !== undefined) out.meta_vendas = c.metaVendas;
+  return out;
+};
 
 // ============================================================
 // Performance config (1 linha por org) — pesos + metas

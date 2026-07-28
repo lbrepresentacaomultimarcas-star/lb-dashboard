@@ -222,3 +222,19 @@ export const ETAPAS_RECUPERACAO: { status: LeadStatus; label: string }[] = [
   { status: "reuniao_agendada", label: "Reunião Agendada" },
   { status: "acompanhamento", label: "Acompanhamento para Fechamento" },
 ];
+
+/** Config do Painel Inteligente do Dashboard (1 por org, editável pelo admin). */
+export type DashboardConfig = {
+  /** Texto do "Lembrete do Dia". Vazio = usa o lembrete padrão rotativo. */
+  lembrete: string;
+  metaLigacoes: number;
+  metaReunioes: number;
+  metaVendas: number;
+};
+
+export const DASHBOARD_CONFIG_PADRAO: DashboardConfig = {
+  lembrete: "",
+  metaLigacoes: 30,
+  metaReunioes: 5,
+  metaVendas: 1,
+};

@@ -11,6 +11,8 @@ import {
   clienteToDb,
   configProducaoFromDb,
   configProducaoToDb,
+  dashboardConfigFromDb,
+  dashboardConfigToDb,
   feriadoFromDb,
   feriadoToDb,
   leadFromDb,
@@ -30,6 +32,7 @@ import {
   type DbAuditLog,
   type DbCliente,
   type DbConfigProducao,
+  type DbDashboardConfig,
   type DbFeriado,
   type DbLead,
   type DbMeta,
@@ -42,6 +45,7 @@ import {
 import type {
   AuditLog,
   Cliente,
+  DashboardConfig,
   Feriado,
   Lead,
   LeadStatus,
@@ -52,7 +56,7 @@ import type {
   Venda,
   Vendedor,
 } from "./types";
-import { LEAD_STATUS_INFO, NIVEL_RECUPERACAO_INFO } from "./types";
+import { DASHBOARD_CONFIG_PADRAO, LEAD_STATUS_INFO, NIVEL_RECUPERACAO_INFO } from "./types";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import { CONFIG_PERFORMANCE_PADRAO, type ConfigPerformance } from "./performance";
 import {
@@ -92,6 +96,7 @@ type State = {
   metas: Meta[];
   feriados: Feriado[];
   configProducao: ConfigProducao;
+  dashboardConfig: DashboardConfig;
   performanceConfig: ConfigPerformance;
   performanceHistorico: PerformanceSnapshot[];
   temas: Tema[];
@@ -111,6 +116,7 @@ const state: State = {
   metas: [],
   feriados: [],
   configProducao: CONFIG_PRODUCAO_PADRAO,
+  dashboardConfig: DASHBOARD_CONFIG_PADRAO,
   performanceConfig: CONFIG_PERFORMANCE_PADRAO,
   performanceHistorico: [],
   temas: [],
@@ -373,6 +379,7 @@ export function initStore(): Promise<void> {
           reloadMetas(),
           reloadFeriados(),
           reloadConfigProducao(),
+          reloadDashboardConfig(),
           reloadPerformanceConfig(),
           reloadPerformanceHistorico(),
           reloadTemas(),
@@ -487,6 +494,17 @@ async function reloadConfigProducao() {
     notify();
   }
 }
+async function reloadDashboardConfig() {
+  const sb = supabaseBrowser();
+  // 1 linha por org (ou nenhuma). Sem linha → usa os defaults.
+  const { data, error } = await sb.from("dashboard_config").select("*").maybeSingle();
+  if (!error) {
+    state.dashboardConfig = data
+      ? dashboardConfigFromDb(data as DbDashboardConfig)
+      : DASHBOARD_CONFIG_PADRAO;
+    notify();
+  }
+}
 async function reloadPerformanceConfig() {
   const sb = supabaseBrowser();
   const { data, error } = await sb.from("performance_config").select("*").maybeSingle();
@@ -533,6 +551,7 @@ export async function reloadAllData(): Promise<void> {
     reloadMetas(),
     reloadFeriados(),
     reloadConfigProducao(),
+    reloadDashboardConfig(),
     reloadPerformanceConfig(),
     reloadPerformanceHistorico(),
     reloadTemas(),
@@ -561,6 +580,7 @@ function attachRealtime() {
   sub("metas", reloadMetas);
   sub("feriados", reloadFeriados);
   sub("config_producao", reloadConfigProducao);
+  sub("dashboard_config", reloadDashboardConfig);
   sub("performance_config", reloadPerformanceConfig);
   sub("performance_historico", reloadPerformanceHistorico);
   sub("temas", reloadTemas);
@@ -618,6 +638,9 @@ export function useFeriados(): Feriado[] {
 }
 export function useConfigProducao(): ConfigProducao {
   return useSyncExternalStore(subscribe, () => state.configProducao, () => state.configProducao);
+}
+export function useDashboardConfig(): DashboardConfig {
+  return useSyncExternalStore(subscribe, () => state.dashboardConfig, () => state.dashboardConfig);
 }
 export function usePerformanceConfig(): ConfigPerformance {
   return useSyncExternalStore(subscribe, () => state.performanceConfig, () => state.performanceConfig);
@@ -1109,6 +1132,32 @@ export const configProducaoApi = {
 };
 
 // ============================================================
+// API — config do Painel do Dashboard (1 linha por org, admin)
+// ============================================================
+export const dashboardConfigApi = {
+  async save(cfg: DashboardConfig) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data: existing } = await sb.from("dashboard_config").select("org_id").maybeSingle();
+      if (existing) {
+        const { error } = await sb
+          .from("dashboard_config")
+          .update({ ...dashboardConfigToDb(cfg), atualizado_em: new Date().toISOString() })
+          .eq("org_id", (existing as { org_id: string }).org_id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("dashboard_config").insert(dashboardConfigToDb(cfg));
+        if (error) throw error;
+      }
+    }
+    state.dashboardConfig = cfg;
+    notify();
+    bumpSync();
+    void logAudit({ acao: "editar", entidade: "dashboard_config", detalhes: "Painel do Dashboard" });
+  },
+};
+
+// ============================================================
 // API — config de performance (1 linha por org)
 // ============================================================
 export const performanceConfigApi = {
@@ -1282,6 +1331,7 @@ export const sessionApi = {
         reloadMetas(),
         reloadFeriados(),
         reloadConfigProducao(),
+        reloadDashboardConfig(),
         reloadPerformanceConfig(),
         reloadPerformanceHistorico(),
         reloadTemas(),

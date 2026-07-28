@@ -29,6 +29,7 @@ import { SalesChart } from "@/components/sales-chart-loader";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
 import { PeriodFilter } from "@/components/period-filter";
+import { PainelInteligente } from "@/components/dashboard/painel-inteligente";
 import { AnimatedBRL, AnimatedNum } from "@/components/ui/spark";
 
 function StatPremium({
@@ -121,6 +122,7 @@ export default function DashboardPage() {
 
   return (
     <PremiumStage>
+      <PainelInteligente />
       <header className="lb-fade-up flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>
@@ -131,7 +133,7 @@ export default function DashboardPage() {
               {gestor ? "Visão Geral da Operação" : "Meu Desempenho"}
             </h1>
             <p className="text-sm text-white/55">
-              {gestor ? "Toda a equipe" : `Olá, ${session?.nome ?? ""}`} · {formatPeriodLabel(period)}
+              {gestor ? "Toda a equipe" : "Meu painel pessoal"} · {formatPeriodLabel(period)}
             </p>
           </div>
         </div>

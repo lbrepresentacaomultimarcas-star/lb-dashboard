@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { ImagePlus, LayoutDashboard, RefreshCw, Trash2, Upload } from "lucide-react";
 import { readFileAsDataUrl, settings, useImageSetting, type ImageSettingKey } from "@/lib/settings";
 import { setAutoRefresh, useAutoRefresh } from "@/lib/refresh";
+import { dashboardConfigApi, useDashboardConfig } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 
 type Slot = {
@@ -184,6 +186,98 @@ function AutoRefreshCard() {
   );
 }
 
+function PainelDashboardCard() {
+  const cfg = useDashboardConfig();
+  const [snapshot, setSnapshot] = useState(cfg);
+  const [lembrete, setLembrete] = useState(cfg.lembrete);
+  const [ligacoes, setLigacoes] = useState(String(cfg.metaLigacoes));
+  const [reunioes, setReunioes] = useState(String(cfg.metaReunioes));
+  const [vendas, setVendas] = useState(String(cfg.metaVendas));
+  const [salvando, setSalvando] = useState(false);
+
+  // Config mudou (chegou do banco / realtime) → ressincroniza o formulário.
+  // Padrão recomendado: ajustar estado DURANTE o render, guardado por igualdade
+  // (em vez de setState dentro de useEffect).
+  if (snapshot !== cfg) {
+    setSnapshot(cfg);
+    setLembrete(cfg.lembrete);
+    setLigacoes(String(cfg.metaLigacoes));
+    setReunioes(String(cfg.metaReunioes));
+    setVendas(String(cfg.metaVendas));
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await dashboardConfigApi.save({
+        lembrete: lembrete.trim(),
+        metaLigacoes: Math.max(0, parseInt(ligacoes, 10) || 0),
+        metaReunioes: Math.max(0, parseInt(reunioes, 10) || 0),
+        metaVendas: Math.max(0, parseInt(vendas, 10) || 0),
+      });
+      notify.success("Painel do Dashboard salvo", "Aparece para todos os usuários.");
+    } catch (e) {
+      notify.error("Erro ao salvar", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const inputNum =
+    "h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-[var(--color-brand)]/40";
+
+  return (
+    <Card>
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+          <LayoutDashboard className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <CardTitle>Painel do Dashboard</CardTitle>
+          <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+            Define o Lembrete do Dia e a Meta do Dia exibidos no topo do Dashboard para todos os usuários.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <Label>📌 Lembrete do Dia</Label>
+              <textarea
+                value={lembrete}
+                onChange={(e) => setLembrete(e.target.value)}
+                rows={2}
+                placeholder="Ex.: Nenhum cliente deve ficar sem retorno hoje. (vazio = frase automática do dia)"
+                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-[var(--color-brand)]/40"
+              />
+            </div>
+            <div>
+              <Label>🎯 Meta do Dia</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <span className="mb-1 block text-[11px] text-[var(--color-text-dim)]">Ligações</span>
+                  <input type="number" min={0} value={ligacoes} onChange={(e) => setLigacoes(e.target.value)} className={inputNum} />
+                </div>
+                <div>
+                  <span className="mb-1 block text-[11px] text-[var(--color-text-dim)]">Reuniões</span>
+                  <input type="number" min={0} value={reunioes} onChange={(e) => setReunioes(e.target.value)} className={inputNum} />
+                </div>
+                <div>
+                  <span className="mb-1 block text-[11px] text-[var(--color-text-dim)]">Vendas</span>
+                  <input type="number" min={0} value={vendas} onChange={(e) => setVendas(e.target.value)} className={inputNum} />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={salvar} disabled={salvando}>
+                {salvando ? "Salvando…" : "Salvar painel"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function ConfiguracoesPage() {
   return (
     <div className="space-y-6">
@@ -199,6 +293,13 @@ export default function ConfiguracoesPage() {
           Dados em tempo real
         </h2>
         <AutoRefreshCard />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+          Painel do Dashboard
+        </h2>
+        <PainelDashboardCard />
       </section>
 
       <section className="space-y-4">
