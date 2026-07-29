@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { syncVendedor } from "@/lib/server/sync-vendedor";
 import type { Papel } from "@/lib/types";
 
-const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "vendedor"];
+const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "lider", "vendedor"];
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
@@ -44,7 +45,7 @@ export async function PATCH(req: NextRequest) {
   const admin = supabaseAdmin();
   const { data: target, error: terr } = await admin
     .from("profiles")
-    .select("id, vendedor_id")
+    .select("id, nome, email, papel, vendedor_id")
     .eq("id", body.userId)
     .single();
   if (terr || !target) return Response.json({ error: "Usuário não encontrado" }, { status: 404 });
@@ -55,13 +56,27 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (body.papel !== undefined) patch.papel = body.papel;
   if (body.equipeId !== undefined) patch.equipe_id = body.equipeId;
-  // Schema usa `vendedor_id` (nao vendedor_ref) — semanticamente o UUID do
-  // admin dono da org, usado pela current_org_id() na RLS multi-tenant.
-  if (body.vendedorRef !== undefined) patch.vendedor_id = body.vendedorRef;
+  // vendedor_ref = link REAL com a tabela vendedores (NÃO o vendedor_id, que
+  // guarda o UUID do dono da org p/ a current_org_id() da RLS multi-tenant).
+  if (body.vendedorRef !== undefined) patch.vendedor_ref = body.vendedorRef;
   if (body.ativo !== undefined) patch.ativo = body.ativo;
   if (body.nome !== undefined) patch.nome = body.nome;
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+
+  // Mudança de cargo re-sincroniza o vínculo colaborador↔vendedor: mantém
+  // histórico/metas/comissão; cria registro se virou "Vendedor" sem ter. Nunca apaga.
+  try {
+    await syncVendedor({
+      profileId: body.userId,
+      nome: (body.nome ?? target.nome) as string,
+      email: target.email as string,
+      papel: (body.papel ?? target.papel) as Papel,
+      orgId: auth.orgId,
+    });
+  } catch {
+    /* não falha a atualização por causa do sync */
+  }
   return Response.json({ ok: true });
 }
 

@@ -35,7 +35,7 @@ type DbProfile = {
 };
 type DbEquipe = { id: string; nome: string; cor: string | null };
 
-const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "vendedor"];
+const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "lider", "vendedor"];
 const selCls =
   "h-8 rounded-md border border-white/12 bg-white/5 px-2 text-xs text-white outline-none focus:border-[#3B82F6] disabled:opacity-60";
 

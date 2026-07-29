@@ -112,7 +112,9 @@ export type Meta = {
   criadoEm: string;
 };
 
-export type Papel = "admin" | "coordenador" | "supervisor" | "vendedor";
+/** Hierarquia de gestão. Ordem de poder: admin > coordenador > supervisor > líder > vendedor.
+ *  O Líder é a etapa de preparação de um vendedor para virar Supervisor. */
+export type Papel = "admin" | "coordenador" | "supervisor" | "lider" | "vendedor";
 
 export const PAPEL_INFO: Record<
   Papel,
@@ -121,7 +123,8 @@ export const PAPEL_INFO: Record<
   admin: { label: "Admin", tone: "brand", ordem: 0 },
   coordenador: { label: "Coordenador", tone: "warn", ordem: 1 },
   supervisor: { label: "Supervisor", tone: "success", ordem: 2 },
-  vendedor: { label: "Vendedor", tone: "neutral", ordem: 3 },
+  lider: { label: "Líder", tone: "success", ordem: 3 },
+  vendedor: { label: "Vendedor", tone: "neutral", ordem: 4 },
 };
 
 export type Profile = {
@@ -129,8 +132,11 @@ export type Profile = {
   nome: string;
   email: string;
   papel: Papel;
+  /** UUID do dono da org (RLS/current_org_id) — NÃO é o id da tabela vendedores. */
   vendedorId?: string;
   equipeId?: string;
+  /** Link REAL com a tabela vendedores (vendedores.id). Preenchido pelo auto-sync. */
+  vendedorRef?: string;
   ativo: boolean;
   criadoEm: string;
 };
@@ -140,14 +146,20 @@ export type SessionUser = {
   nome: string;
   email: string;
   papel: Papel;
+  /** id na tabela vendedores (registro de vendas do próprio usuário), se houver. */
   vendedorId?: string;
+  /** equipe a que o usuário pertence (escopo por equipe do RBAC). */
+  equipeId?: string;
 };
 
 export type Equipe = {
   id: string;
   nome: string;
   cor: string;
+  /** Líder da equipe (profile.id). Acompanhamento/gestão, sem poderes administrativos. */
   liderId?: string;
+  /** Supervisor da equipe (profile.id). Responsável pela equipe. */
+  supervisorId?: string;
   criadoEm: string;
 };
 

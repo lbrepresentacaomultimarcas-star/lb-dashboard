@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { siteBaseUrl } from "@/lib/site-url";
+import { syncVendedor } from "@/lib/server/sync-vendedor";
 import type { Papel } from "@/lib/types";
 
 type Body = {
@@ -63,6 +64,14 @@ export async function POST(req: NextRequest) {
   const { error: uerr } = await admin.from("profiles").update(patch).eq("id", userId);
   if (uerr) {
     return Response.json({ error: uerr.message, userId }, { status: 400 });
+  }
+
+  // Vínculo automático colaborador↔vendedor (fim do cadastro duplo). Não bloqueia
+  // a criação do colaborador se falhar.
+  try {
+    await syncVendedor({ profileId: userId, nome, email: body.email, papel, orgId: auth.orgId });
+  } catch {
+    /* segue — o admin pode religar o vínculo depois */
   }
 
   return Response.json({

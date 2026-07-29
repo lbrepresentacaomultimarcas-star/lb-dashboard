@@ -328,15 +328,16 @@ async function buildSession(
     // vendedores, o vinculo e por EMAIL. Lookup extra abaixo resolve.
     const { data: prof } = await sb
       .from("profiles")
-      .select("nome, papel")
+      .select("nome, papel, equipe_id, vendedor_ref")
       .eq("id", u.id)
       .single();
 
-    // Busca o id na tabela vendedores pelo email. Se nao existir (admin
-    // puro, sem registro de vendedor), `vendedorId` fica undefined e o
-    // form simplesmente nao pre-preenche.
-    let vendedorRecordId: string | undefined;
-    if (u.email) {
+    // vendedorId = vínculo DIRETO com a tabela vendedores (profiles.vendedor_ref).
+    // Fallback pelo email (compat com quem ainda não tem o ref preenchido — o
+    // auto-sync do RBAC vai preencher). Sem registro → undefined (admin puro).
+    let vendedorRecordId: string | undefined =
+      (prof?.vendedor_ref as string | undefined) ?? undefined;
+    if (!vendedorRecordId && u.email) {
       const { data: vRow } = await sb
         .from("vendedores")
         .select("id")
@@ -352,6 +353,7 @@ async function buildSession(
       email: u.email ?? "",
       papel: (prof?.papel as SessionUser["papel"]) ?? "vendedor",
       vendedorId: vendedorRecordId,
+      equipeId: (prof?.equipe_id as string | undefined) ?? undefined,
     };
   } catch {
     // Se falhar (ex: coluna ainda não migrada), assume vendedor (mais restrito)

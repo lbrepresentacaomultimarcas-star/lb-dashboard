@@ -244,6 +244,7 @@ export type DbProfile = {
   papel: Papel;
   vendedor_id: string | null;
   equipe_id: string | null;
+  vendedor_ref?: string | null;
   ativo: boolean;
   criado_em: string;
 };
@@ -255,6 +256,7 @@ export const profileFromDb = (r: DbProfile): Profile => ({
   papel: r.papel,
   vendedorId: r.vendedor_id ?? undefined,
   equipeId: r.equipe_id ?? undefined,
+  vendedorRef: r.vendedor_ref ?? undefined,
   ativo: r.ativo ?? true,
   criadoEm: r.criado_em,
 });
@@ -267,6 +269,7 @@ export type DbEquipe = {
   nome: string;
   cor: string | null;
   lider_id: string | null;
+  supervisor_id?: string | null;
   criado_em: string;
 };
 
@@ -275,6 +278,7 @@ export const equipeFromDb = (r: DbEquipe): Equipe => ({
   nome: r.nome,
   cor: r.cor ?? "#6366f1",
   liderId: r.lider_id ?? undefined,
+  supervisorId: r.supervisor_id ?? undefined,
   criadoEm: r.criado_em,
 });
 
@@ -283,6 +287,7 @@ export const equipeToDb = (e: Partial<Equipe>): Partial<DbEquipe> => {
   if (e.nome !== undefined) out.nome = e.nome;
   if (e.cor !== undefined) out.cor = e.cor || null;
   if (e.liderId !== undefined) out.lider_id = e.liderId || null;
+  if (e.supervisorId !== undefined) out.supervisor_id = e.supervisorId || null;
   return out;
 };
 

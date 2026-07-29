@@ -1,10 +1,11 @@
 import type { Papel, SessionUser } from "./types";
 
-/** Hierarquia: admin > coordenador > supervisor > vendedor */
+/** Hierarquia: admin > coordenador > supervisor > líder > vendedor */
 const NIVEL: Record<Papel, number> = {
-  admin: 3,
-  coordenador: 2,
-  supervisor: 1,
+  admin: 4,
+  coordenador: 3,
+  supervisor: 2,
+  lider: 1,
   vendedor: 0,
 };
 
