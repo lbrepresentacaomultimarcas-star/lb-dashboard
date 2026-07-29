@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
+import { siteBaseUrl } from "@/lib/site-url";
 
 /**
  * Handler do callback de auth.
@@ -18,14 +19,16 @@ export async function GET(request: NextRequest) {
   // Recuperação de senha cai na página de definir nova senha; o resto vai pro dashboard.
   const next =
     searchParams.get("next") ?? (type === "recovery" ? "/redefinir-senha" : "/dashboard");
+  // Produção usa NEXT_PUBLIC_SITE_URL (domínio oficial); local usa o origin.
+  const base = siteBaseUrl(origin);
 
   const sb = await supabaseServer();
 
   if (code) {
     const { error } = await sb.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) return NextResponse.redirect(`${base}${next}`);
     return NextResponse.redirect(
-      `${origin}/login?erro=${encodeURIComponent(error.message)}`,
+      `${base}/login?erro=${encodeURIComponent(error.message)}`,
     );
   }
 
@@ -40,13 +43,13 @@ export async function GET(request: NextRequest) {
         | "email",
       token_hash: tokenHash,
     });
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) return NextResponse.redirect(`${base}${next}`);
     return NextResponse.redirect(
-      `${origin}/login?erro=${encodeURIComponent(error.message)}`,
+      `${base}/login?erro=${encodeURIComponent(error.message)}`,
     );
   }
 
   return NextResponse.redirect(
-    `${origin}/login?erro=${encodeURIComponent("Link de autenticação inválido")}`,
+    `${base}/login?erro=${encodeURIComponent("Link de autenticação inválido")}`,
   );
 }

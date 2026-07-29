@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { siteBaseUrl } from "@/lib/site-url";
 import type { Papel } from "@/lib/types";
 
 type Body = {
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
     // Convite via email (magic link / definir senha)
     const { data, error } = await admin.auth.admin.inviteUserByEmail(body.email, {
       data: { nome },
-      redirectTo: `${req.nextUrl.origin}/auth/callback`,
+      // Produção usa NEXT_PUBLIC_SITE_URL (domínio oficial); local usa o origin.
+      redirectTo: `${siteBaseUrl(req.nextUrl.origin)}/auth/callback`,
     });
     if (error || !data.user) {
       return Response.json({ error: error?.message ?? "Falha ao convidar" }, { status: 400 });

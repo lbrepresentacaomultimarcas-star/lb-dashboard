@@ -68,6 +68,7 @@ import {
   type Tema,
 } from "./temas";
 import { uid } from "./utils";
+import { siteBaseUrl } from "./site-url";
 
 // ============================================================
 // Storage keys (modo local)
@@ -1403,10 +1404,10 @@ export const sessionApi = {
       throw new Error("Recuperação de senha exige Supabase configurado.");
     }
     const sb = supabaseBrowser();
-    const redirectTo =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/callback?next=/redefinir-senha`
-        : undefined;
+    // Produção usa NEXT_PUBLIC_SITE_URL (domínio oficial); local usa o origin.
+    const base =
+      typeof window !== "undefined" ? siteBaseUrl(window.location.origin) : undefined;
+    const redirectTo = base ? `${base}/auth/callback?next=/redefinir-senha` : undefined;
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   },
