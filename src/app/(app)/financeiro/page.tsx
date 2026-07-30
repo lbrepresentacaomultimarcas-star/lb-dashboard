@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Crown, DollarSign, PiggyBank, TrendingUp, Wallet } from "lucide-react";
-import { useMetas, useVendas, useVendedores } from "@/lib/store";
+import { useMetasEscopo, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import {
   desempenhoPorVendedor,
   faturamentoMensal,
@@ -17,9 +17,9 @@ import { PremiumStage } from "@/components/premium-stage";
 import { AnimatedBRL, Sparkline } from "@/components/ui/spark";
 
 export default function FinanceiroPage() {
-  const vendedores = useVendedores();
-  const vendas = useVendas();
-  const metas = useMetas();
+  const vendedores = useVendedoresEscopo();
+  const vendas = useVendasEscopo();
+  const metas = useMetasEscopo();
 
   const { config, feriados, chaveAtual } = useCicloProducao();
   const mesAtual = chaveAtual;

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Target } from "lucide-react";
-import { metasApi, useMetas, useVendas, useVendedores } from "@/lib/store";
+import { metasApi, useMetasEscopo, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { brl, formatNumBR, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
@@ -29,9 +29,9 @@ function ringColor(pct: number) {
 }
 
 export default function MetasPage() {
-  const vendedores = useVendedores();
-  const metas = useMetas();
-  const vendas = useVendas();
+  const vendedores = useVendedoresEscopo();
+  const metas = useMetasEscopo();
+  const vendas = useVendasEscopo();
   const { config, feriados, chaveAtual } = useCicloProducao();
   const meses = useMemo(() => monthsRange(chaveAtual), [chaveAtual]);
   const [salvando, setSalvando] = useState<string | null>(null);

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CalendarDays, Clock, Pin, Target } from "lucide-react";
-import { useDashboardConfig, useMetas, useSession, useVendas, useVendedores } from "@/lib/store";
+import { useDashboardConfig, useMetasEscopo, useSession, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { cicloAtual } from "@/lib/ciclo";
 import { brl, pct } from "@/lib/utils";
@@ -43,9 +43,9 @@ function Relogio() {
 
 export function PainelInteligente() {
   const session = useSession();
-  const vendas = useVendas(); // já exclui Canceladas
-  const metas = useMetas();
-  const vendedores = useVendedores();
+  const vendas = useVendasEscopo(); // já exclui Canceladas
+  const metas = useMetasEscopo();
+  const vendedores = useVendedoresEscopo();
   const cfg = useDashboardConfig();
   const { config, feriados } = useCicloProducao();
 

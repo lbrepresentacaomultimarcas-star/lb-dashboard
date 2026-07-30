@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Crown, Pencil, Plus, Trash2, Users } from "lucide-react";
-import { useMetas, useVendas, useVendedores, vendedoresApi } from "@/lib/store";
+import { useMetasEscopo, useVendasEscopo, useVendedoresEscopo, vendedoresApi } from "@/lib/store";
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import type { Vendedor } from "@/lib/types";
 import { brl, parseNumBR, pct } from "@/lib/utils";
@@ -37,9 +37,9 @@ function pctColor(p: number) {
 }
 
 export default function VendedoresPage() {
-  const vendedores = useVendedores();
-  const vendas = useVendas();
-  const metas = useMetas();
+  const vendedores = useVendedoresEscopo();
+  const vendas = useVendasEscopo();
+  const metas = useMetasEscopo();
   const desempenho = desempenhoPorVendedor(vendedores, vendas, metas);
   const melhor = desempenho.length ? desempenho.reduce((a, b) => (b.vendido > a.vendido ? b : a)) : null;
   const [open, setOpen] = useState(false);

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { History } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { useAudit, useVendasAll } from "@/lib/store";
+import { useAudit, useVendasAllEscopo } from "@/lib/store";
 import { timelineDoLead } from "@/lib/inteligencia";
 import type { Lead } from "@/lib/types";
 
@@ -11,7 +11,7 @@ import type { Lead } from "@/lib/types";
  *  observação e venda — em ordem cronológica (mais recente primeiro). */
 export function TimelineLead({ lead, onClose }: { lead: Lead | null; onClose: () => void }) {
   const audits = useAudit();
-  const vendas = useVendasAll();
+  const vendas = useVendasAllEscopo();
   const eventos = useMemo(
     () => (lead ? timelineDoLead(lead, audits, vendas) : []),
     [lead, audits, vendas],

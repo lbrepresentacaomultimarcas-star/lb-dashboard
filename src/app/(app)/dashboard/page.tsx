@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DollarSign, Sparkles, Target, TrendingUp, Trophy, UserCircle, Users } from "lucide-react";
 import {
   useClientes,
-  useLeads,
-  useMetas,
+  useLeadsEscopo,
+  useMetasEscopo,
   usePerformanceConfig,
   useSession,
-  useVendas,
-  useVendedores,
+  useVendasEscopo,
+  useVendedoresEscopo,
 } from "@/lib/store";
 import {
   faturamentoMensal,
@@ -73,11 +73,11 @@ function pctColor(p: number) {
 
 export default function DashboardPage() {
   const session = useSession();
-  const vendedores = useVendedores();
-  const vendas = useVendas();
+  const vendedores = useVendedoresEscopo();
+  const vendas = useVendasEscopo();
   const clientes = useClientes();
-  const leads = useLeads();
-  const metas = useMetas();
+  const leads = useLeadsEscopo();
+  const metas = useMetasEscopo();
   const { config, feriados } = useCicloProducao();
   const resolvePreset = useCallback(
     (p: PeriodPreset) => periodFromPreset(p, new Date(), config, feriados),

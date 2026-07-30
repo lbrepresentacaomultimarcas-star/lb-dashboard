@@ -17,7 +17,7 @@ import {
   MetaMes,
   RankingPremium,
 } from "@/components/analise/widgets";
-import { useAudit, useLeads, useMetas, useVendas, useVendedores } from "@/lib/store";
+import { useAudit, useLeadsEscopo, useMetasEscopo, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { periodFromPreset, type Period } from "@/lib/period";
@@ -80,11 +80,11 @@ export default function AnaliseComercialPage() {
 }
 
 function CentroInteligencia() {
-  const leads = useLeads();
+  const leads = useLeadsEscopo();
   const audits = useAudit();
-  const vendas = useVendas();
-  const vendedores = useVendedores();
-  const metas = useMetas();
+  const vendas = useVendasEscopo();
+  const vendedores = useVendedoresEscopo();
+  const metas = useMetasEscopo();
   const { config, feriados } = useCicloProducao();
 
   // Instante de abertura da tela (estável entre re-renders — exigência do lint

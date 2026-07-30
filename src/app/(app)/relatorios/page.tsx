@@ -4,10 +4,10 @@ import { useMemo } from "react";
 import { BarChart3, Database, Download, FileSpreadsheet, FileText, Trophy, TrendingUp } from "lucide-react";
 import {
   useClientes,
-  useLeads,
-  useMetas,
-  useVendas,
-  useVendedores,
+  useLeadsEscopo,
+  useMetasEscopo,
+  useVendasEscopo,
+  useVendedoresEscopo,
 } from "@/lib/store";
 import { desempenhoPorVendedor, faturamentoMensal } from "@/lib/selectors";
 import { useCicloProducao } from "@/lib/use-ciclo";
@@ -26,11 +26,11 @@ function posColor(i: number) {
 }
 
 export default function RelatoriosPage() {
-  const vendedores = useVendedores();
-  const vendas = useVendas();
+  const vendedores = useVendedoresEscopo();
+  const vendas = useVendasEscopo();
   const clientes = useClientes();
-  const leads = useLeads();
-  const metas = useMetas();
+  const leads = useLeadsEscopo();
+  const metas = useMetasEscopo();
   const { config, feriados, chaveAtual } = useCicloProducao();
   const { linhas: perfLinhas, media: perfMedia } = usePerformanceEquipe();
   const serie12 = useMemo(() => faturamentoMensal(vendas, 12, config, feriados), [vendas, config, feriados]);

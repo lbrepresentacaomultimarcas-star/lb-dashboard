@@ -6,7 +6,7 @@ import { CheckCircle2, Clock, ExternalLink, Lightbulb, MessageCircle } from "luc
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PremiumStage } from "@/components/premium-stage";
-import { useLeads, useSession, useVendedores } from "@/lib/store";
+import { useLeadsEscopo, useSession, useVendedoresEscopo } from "@/lib/store";
 import { LEAD_STATUS_INFO } from "@/lib/types";
 import { analisarOportunidades, whatsappDoLead } from "@/lib/oportunidades";
 
@@ -17,8 +17,8 @@ const PRIORIDADE_INFO: Record<number, { label: string; tone: "danger" | "warn" |
 };
 
 export default function OportunidadesPage() {
-  const leads = useLeads();
-  const vendedores = useVendedores();
+  const leads = useLeadsEscopo();
+  const vendedores = useVendedoresEscopo();
   const session = useSession();
 
   // Vendedor logado vê as suas por padrão; gestão vê todas (com filtro).

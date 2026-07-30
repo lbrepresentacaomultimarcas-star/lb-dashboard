@@ -19,6 +19,7 @@ import {
   leadToDb,
   metaFromDb,
   metaToDb,
+  profileFromDb,
   performanceConfigFromDb,
   performanceConfigToDb,
   performanceSnapFromDb,
@@ -36,6 +37,7 @@ import {
   type DbFeriado,
   type DbLead,
   type DbMeta,
+  type DbProfile,
   type DbPerformanceConfig,
   type DbPerformanceHistorico,
   type DbTema,
@@ -52,11 +54,13 @@ import type {
   Meta,
   NivelRecuperacao,
   PerformanceSnapshot,
+  Profile,
   SessionUser,
   Venda,
   Vendedor,
 } from "./types";
 import { DASHBOARD_CONFIG_PADRAO, LEAD_STATUS_INFO, NIVEL_RECUPERACAO_INFO } from "./types";
+import { calcularEscopo, noEscopo, type Escopo } from "./scope";
 import { CONFIG_PRODUCAO_PADRAO, type ConfigProducao } from "./ciclo";
 import { CONFIG_PERFORMANCE_PADRAO, type ConfigPerformance } from "./performance";
 import {
@@ -105,6 +109,8 @@ type State = {
   audit: AuditLog[];
   /** Contemplações oficiais (Resultados LB) — mesma mecânica dos demais. */
   resultados: Contemplacao[];
+  /** Elenco da empresa (profiles) — base do motor de escopo do RBAC. */
+  roster: Profile[];
   session: SessionUser | null;
   ready: boolean;
 };
@@ -124,6 +130,7 @@ const state: State = {
   temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
   resultados: [],
+  roster: [],
   session: null,
   ready: false,
 };
@@ -388,6 +395,7 @@ export function initStore(): Promise<void> {
           reloadTemas(),
           reloadAudit(),
           reloadResultados(),
+          reloadRoster(),
         ]);
         attachRealtime();
       }
@@ -441,6 +449,20 @@ export async function reloadResultados() {
   if (error) return; // preserva o estado anterior (mesmo padrão de reloadVendas)
   state.resultados = data;
   notify();
+}
+/** Elenco da empresa (base do escopo do RBAC). Preserva em caso de erro. */
+export async function reloadRoster() {
+  try {
+    const res = await fetch("/api/roster");
+    if (!res.ok) return;
+    const j = (await res.json()) as { roster?: DbProfile[] };
+    if (j.roster) {
+      state.roster = j.roster.map(profileFromDb);
+      notify();
+    }
+  } catch {
+    /* mantém o roster anterior — um hiccup não pode zerar o escopo */
+  }
 }
 async function reloadClientes() {
   const sb = supabaseBrowser();
@@ -560,6 +582,7 @@ export async function reloadAllData(): Promise<void> {
     reloadTemas(),
     reloadAudit(),
     reloadResultados(),
+    reloadRoster(),
   ]);
 }
 
@@ -632,6 +655,70 @@ export function useAudit(): AuditLog[] {
 }
 export function useResultados(): Contemplacao[] {
   return useSyncExternalStore(subscribe, () => state.resultados, () => state.resultados);
+}
+
+// ============================================================
+// RBAC — escopo por cargo/equipe (motor puro em lib/scope.ts)
+// Admin/Coordenador = tudo; Supervisor/Líder = a equipe; Vendedor = só o seu.
+// ============================================================
+let _escSrcS: SessionUser | null = null;
+let _escSrcR: Profile[] = [];
+let _escCache: Escopo = calcularEscopo(null, []);
+function escopoAtual(): Escopo {
+  if (state.session !== _escSrcS || state.roster !== _escSrcR) {
+    _escSrcS = state.session;
+    _escSrcR = state.roster;
+    _escCache = calcularEscopo(state.session, state.roster);
+  }
+  return _escCache;
+}
+export function useRoster(): Profile[] {
+  return useSyncExternalStore(subscribe, () => state.roster, () => state.roster);
+}
+export function useEscopo(): Escopo {
+  return useSyncExternalStore(subscribe, escopoAtual, escopoAtual);
+}
+
+/** Snapshot escopado com REFERÊNCIA ESTÁVEL (exigência do useSyncExternalStore):
+ *  só recomputa quando a fonte OU o escopo trocam. verTudo → devolve a fonte. */
+function snapEscopo<T>(getSource: () => T[], getVendedorId: (x: T) => string | undefined) {
+  let src: T[] | null = null;
+  let esc: Escopo | null = null;
+  let out: T[] = [];
+  return (): T[] => {
+    const s = getSource();
+    const e = escopoAtual();
+    if (s !== src || e !== esc) {
+      src = s;
+      esc = e;
+      out = e.vendedorIdsVisiveis === null ? s : s.filter((x) => noEscopo(e, getVendedorId(x)));
+    }
+    return out;
+  };
+}
+const leadsEscSnap = snapEscopo<Lead>(() => state.leads, (l) => l.vendedorId);
+const vendasEscSnap = snapEscopo<Venda>(vendasContabilizaveis, (v) => v.vendedorId);
+const vendasAllEscSnap = snapEscopo<Venda>(() => state.vendas, (v) => v.vendedorId);
+const metasEscSnap = snapEscopo<Meta>(() => state.metas, (m) => m.vendedorId);
+const vendedoresEscSnap = snapEscopo<Vendedor>(() => state.vendedores, (v) => v.id);
+
+/** Leads visíveis pelo escopo do usuário logado (admin/coordenador = todos). */
+export function useLeadsEscopo(): Lead[] {
+  return useSyncExternalStore(subscribe, leadsEscSnap, leadsEscSnap);
+}
+/** Vendas contabilizáveis (exclui Canceladas) já escopadas. */
+export function useVendasEscopo(): Venda[] {
+  return useSyncExternalStore(subscribe, vendasEscSnap, vendasEscSnap);
+}
+/** TODAS as vendas (inclui Canceladas) já escopadas. */
+export function useVendasAllEscopo(): Venda[] {
+  return useSyncExternalStore(subscribe, vendasAllEscSnap, vendasAllEscSnap);
+}
+export function useMetasEscopo(): Meta[] {
+  return useSyncExternalStore(subscribe, metasEscSnap, metasEscSnap);
+}
+export function useVendedoresEscopo(): Vendedor[] {
+  return useSyncExternalStore(subscribe, vendedoresEscSnap, vendedoresEscSnap);
 }
 export function useMetas(): Meta[] {
   return useSyncExternalStore(subscribe, () => state.metas, () => state.metas);
@@ -1339,6 +1426,7 @@ export const sessionApi = {
         reloadPerformanceHistorico(),
         reloadTemas(),
         reloadAudit(),
+        reloadRoster(),
       ]);
       attachRealtime();
     } else {

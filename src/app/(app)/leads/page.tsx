@@ -41,7 +41,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeads, useSession, useVendasAll, useVendedores, vendasApi } from "@/lib/store";
+import { leadsApi, useLeadsEscopo, useSession, useVendasAllEscopo, useVendedoresEscopo, vendasApi } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { Avatar } from "@/components/avatar";
 import {
@@ -273,9 +273,9 @@ type LeadTag = {
 };
 
 export default function LeadsPage() {
-  const leads = useLeads();
-  const vendas = useVendasAll(); // idempotência do fechamento vê canceladas também
-  const vendedores = useVendedores();
+  const leads = useLeadsEscopo();
+  const vendas = useVendasAllEscopo(); // idempotência do fechamento vê canceladas também
+  const vendedores = useVendedoresEscopo();
   const session = useSession();
   const gestor = temPermissao(session, "supervisor");
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");

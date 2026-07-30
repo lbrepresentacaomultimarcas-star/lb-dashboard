@@ -8,7 +8,7 @@ import { RoleGuard } from "@/components/role-guard";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { BRL, GaugeConversao } from "@/components/analise/widgets";
-import { useAudit, useLeads, useMetas, useSession, useVendas, useVendedores } from "@/lib/store";
+import { useAudit, useLeadsEscopo, useMetasEscopo, useSession, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { periodFromPreset } from "@/lib/period";
@@ -97,11 +97,11 @@ export default function CentralIaPage() {
 }
 
 function CentralIa() {
-  const leads = useLeads();
+  const leads = useLeadsEscopo();
   const audits = useAudit();
-  const vendas = useVendas();
-  const vendedores = useVendedores();
-  const metas = useMetas();
+  const vendas = useVendasEscopo();
+  const vendedores = useVendedoresEscopo();
+  const metas = useMetasEscopo();
   const session = useSession();
   const { config, feriados } = useCicloProducao();
   const [agoraMs] = useState(() => Date.now());

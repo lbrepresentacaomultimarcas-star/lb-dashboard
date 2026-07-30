@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
-import { reloadResultados, useResultados, useSession, useVendas } from "@/lib/store";
+import { reloadResultados, useResultados, useSession, useVendasEscopo } from "@/lib/store";
 import { PeriodFilter } from "@/components/period-filter";
 import { dateToInputValue, formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
 import {
@@ -109,7 +109,7 @@ function TabelaContemplacoes({ itens }: { itens: Contemplacao[] }) {
 
 export default function ResultadosPage() {
   const session = useSession();
-  const vendas = useVendas();
+  const vendas = useVendasEscopo();
   const isAdmin = session?.papel === "admin";
 
   // Mesma fonte e mecânica dos demais módulos: store global (carregado no
