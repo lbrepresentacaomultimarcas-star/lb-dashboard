@@ -354,7 +354,7 @@ async function buildSession(
       const { data: vRow } = await sb
         .from("vendedores")
         .select("id")
-        .eq("email", u.email)
+        .ilike("email", u.email) // case-insensitive: casa "Fulano@X" com "fulano@x"
         .eq("ativo", true)
         .maybeSingle();
       vendedorRecordId = (vRow?.id as string | undefined) ?? undefined;
