@@ -18,6 +18,7 @@ import {
   Trophy,
   UserCircle,
   Users,
+  UsersRound,
   Wallet,
 } from "lucide-react";
 import type { Papel, SessionUser } from "@/lib/types";
@@ -39,6 +40,7 @@ export type NavGroup = {
 
 export const NAV: (NavItem | NavGroup)[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   {

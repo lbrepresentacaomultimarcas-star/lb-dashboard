@@ -28,11 +28,19 @@ export async function GET() {
   // org = UUID do dono (vendedor_id do profile) ou o próprio id (admin dono).
   const orgId = (me.vendedor_id as string | null) ?? me.id;
 
-  const { data, error } = await admin
-    .from("profiles")
-    .select("id, nome, email, papel, vendedor_id, equipe_id, vendedor_ref, ativo, criado_em")
-    .or(`id.eq.${orgId},vendedor_id.eq.${orgId}`)
-    .order("criado_em", { ascending: true });
-  if (error) return Response.json({ error: error.message }, { status: 400 });
-  return Response.json({ roster: data ?? [] });
+  const [rosterRes, equipesRes] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("id, nome, email, papel, vendedor_id, equipe_id, vendedor_ref, ativo, criado_em")
+      .or(`id.eq.${orgId},vendedor_id.eq.${orgId}`)
+      .order("criado_em", { ascending: true }),
+    // Equipes da MESMA empresa — nome/cor/líder/supervisor p/ a tela Minha Equipe.
+    admin
+      .from("equipes")
+      .select("id, nome, cor, lider_id, supervisor_id, criado_em")
+      .eq("org_id", orgId)
+      .order("criado_em", { ascending: true }),
+  ]);
+  if (rosterRes.error) return Response.json({ error: rosterRes.error.message }, { status: 400 });
+  return Response.json({ roster: rosterRes.data ?? [], equipes: equipesRes.data ?? [] });
 }

@@ -17,6 +17,7 @@ type DbEquipe = {
   nome: string;
   cor: string | null;
   lider_id: string | null;
+  supervisor_id: string | null;
   criado_em: string;
 };
 type DbProfile = {
@@ -70,7 +71,7 @@ export default function EquipesPage() {
   const [editing, setEditing] = useState<DbEquipe | null>(null);
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [form, setForm] = useState({ nome: "", cor: CORES[0], liderId: "" });
+  const [form, setForm] = useState({ nome: "", cor: CORES[0], liderId: "", supervisorId: "" });
   const refreshTick = useRefreshTick();
 
   async function carregar() {
@@ -110,12 +111,12 @@ export default function EquipesPage() {
 
   function abrirNovo() {
     setEditing(null);
-    setForm({ nome: "", cor: CORES[Math.floor(Math.random() * CORES.length)], liderId: "" });
+    setForm({ nome: "", cor: CORES[Math.floor(Math.random() * CORES.length)], liderId: "", supervisorId: "" });
     setOpen(true);
   }
   function abrirEditar(e: DbEquipe) {
     setEditing(e);
-    setForm({ nome: e.nome, cor: e.cor ?? CORES[0], liderId: e.lider_id ?? "" });
+    setForm({ nome: e.nome, cor: e.cor ?? CORES[0], liderId: e.lider_id ?? "", supervisorId: e.supervisor_id ?? "" });
     setOpen(true);
   }
   async function salvar(e: React.FormEvent) {
@@ -128,6 +129,7 @@ export default function EquipesPage() {
         nome: form.nome.trim(),
         cor: form.cor,
         liderId: form.liderId || null,
+        supervisorId: form.supervisorId || null,
       });
       const r = await fetch("/api/admin/equipes", {
         method: editing ? "PATCH" : "POST",
@@ -334,7 +336,7 @@ export default function EquipesPage() {
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? "Editar Equipe" : "Nova Equipe"}
-        subtitle="Defina nome, cor e líder"
+        subtitle="Defina nome, cor, supervisor e líder"
         icon={<UsersRound className="h-5 w-5" />}
       >
         <form onSubmit={salvar} className="space-y-4">
@@ -366,6 +368,30 @@ export default function EquipesPage() {
             </div>
           </div>
           <div>
+            <Label htmlFor="supervisor">Supervisor (opcional)</Label>
+            <select
+              id="supervisor"
+              value={form.supervisorId}
+              onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
+              className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
+            >
+              <option value="">— sem supervisor —</option>
+              {users
+                .filter(
+                  (u) =>
+                    u.papel === "admin" ||
+                    u.papel === "coordenador" ||
+                    u.papel === "supervisor" ||
+                    u.papel === "lider",
+                )
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome} — {PAPEL_INFO[u.papel].label}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div>
             <Label htmlFor="lider">Líder (opcional)</Label>
             <select
               id="lider"
@@ -375,7 +401,13 @@ export default function EquipesPage() {
             >
               <option value="">— sem líder —</option>
               {users
-                .filter((u) => u.papel === "admin" || u.papel === "coordenador" || u.papel === "supervisor")
+                .filter(
+                  (u) =>
+                    u.papel === "admin" ||
+                    u.papel === "coordenador" ||
+                    u.papel === "supervisor" ||
+                    u.papel === "lider",
+                )
                 .map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nome} — {PAPEL_INFO[u.papel].label}

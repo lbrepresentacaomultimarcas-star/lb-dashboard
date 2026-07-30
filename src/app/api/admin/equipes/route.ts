@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
     nome?: string;
     cor?: string;
-    liderId?: string;
+    liderId?: string | null;
+    supervisorId?: string | null;
   };
   if (!body.nome) return Response.json({ error: "Nome obrigatório" }, { status: 400 });
   const admin = supabaseAdmin();
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
       nome: body.nome,
       cor: body.cor ?? "#6366f1",
       lider_id: body.liderId ?? null,
+      supervisor_id: body.supervisorId ?? null,
       org_id: auth.orgId,
     })
     .select()
@@ -47,6 +49,7 @@ export async function PATCH(req: NextRequest) {
     nome?: string;
     cor?: string;
     liderId?: string | null;
+    supervisorId?: string | null;
   };
   if (!body.id) return Response.json({ error: "id obrigatório" }, { status: 400 });
   const admin = supabaseAdmin();
@@ -54,6 +57,7 @@ export async function PATCH(req: NextRequest) {
   if (body.nome !== undefined) patch.nome = body.nome;
   if (body.cor !== undefined) patch.cor = body.cor;
   if (body.liderId !== undefined) patch.lider_id = body.liderId;
+  if (body.supervisorId !== undefined) patch.supervisor_id = body.supervisorId;
   const { error } = await admin
     .from("equipes")
     .update(patch)

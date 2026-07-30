@@ -13,6 +13,7 @@ import {
   configProducaoToDb,
   dashboardConfigFromDb,
   dashboardConfigToDb,
+  equipeFromDb,
   feriadoFromDb,
   feriadoToDb,
   leadFromDb,
@@ -34,6 +35,7 @@ import {
   type DbCliente,
   type DbConfigProducao,
   type DbDashboardConfig,
+  type DbEquipe,
   type DbFeriado,
   type DbLead,
   type DbMeta,
@@ -48,6 +50,7 @@ import type {
   AuditLog,
   Cliente,
   DashboardConfig,
+  Equipe,
   Feriado,
   Lead,
   LeadStatus,
@@ -111,6 +114,8 @@ type State = {
   resultados: Contemplacao[];
   /** Elenco da empresa (profiles) — base do motor de escopo do RBAC. */
   roster: Profile[];
+  /** Equipes da empresa (nome/cor/líder/supervisor) — p/ a tela Minha Equipe. */
+  equipes: Equipe[];
   session: SessionUser | null;
   ready: boolean;
 };
@@ -131,6 +136,7 @@ const state: State = {
   audit: [],
   resultados: [],
   roster: [],
+  equipes: [],
   session: null,
   ready: false,
 };
@@ -455,9 +461,10 @@ export async function reloadRoster() {
   try {
     const res = await fetch("/api/roster");
     if (!res.ok) return;
-    const j = (await res.json()) as { roster?: DbProfile[] };
+    const j = (await res.json()) as { roster?: DbProfile[]; equipes?: DbEquipe[] };
     if (j.roster) {
       state.roster = j.roster.map(profileFromDb);
+      if (j.equipes) state.equipes = j.equipes.map(equipeFromDb);
       notify();
     }
   } catch {
@@ -674,6 +681,10 @@ function escopoAtual(): Escopo {
 }
 export function useRoster(): Profile[] {
   return useSyncExternalStore(subscribe, () => state.roster, () => state.roster);
+}
+/** Equipes da empresa (Minha Equipe / seletor de equipe do admin). */
+export function useEquipes(): Equipe[] {
+  return useSyncExternalStore(subscribe, () => state.equipes, () => state.equipes);
 }
 export function useEscopo(): Escopo {
   return useSyncExternalStore(subscribe, escopoAtual, escopoAtual);
