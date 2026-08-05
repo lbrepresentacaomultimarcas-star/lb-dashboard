@@ -215,6 +215,137 @@ export const LEAD_STATUS_INFO: Record<
   perdido: { label: "Perdido", tone: "danger" },
 };
 
+// ============================================================
+// Central de Leads (intake/distribuição — módulo pré-Pipeline)
+// ============================================================
+export type Prioridade = "urgente" | "alta" | "normal" | "baixa";
+
+export const PRIORIDADE_INFO: Record<Prioridade, { label: string; cor: string; ordem: number }> = {
+  urgente: { label: "Urgente", cor: "#ef4444", ordem: 0 },
+  alta: { label: "Alta", cor: "#f59e0b", ordem: 1 },
+  normal: { label: "Normal", cor: "#3b82f6", ordem: 2 },
+  baixa: { label: "Baixa", cor: "#64748b", ordem: 3 },
+};
+
+export type CentralLeadStatus =
+  | "novo"
+  | "aguardando"
+  | "em_atendimento"
+  | "aguardando_resposta"
+  | "nao_atendeu"
+  | "convertido"
+  | "perdido";
+
+export const CENTRAL_STATUS_INFO: Record<
+  CentralLeadStatus,
+  { label: string; tone: "neutral" | "brand" | "warn" | "success" | "danger" }
+> = {
+  novo: { label: "Novo", tone: "neutral" },
+  aguardando: { label: "Aguardando ligação", tone: "brand" },
+  em_atendimento: { label: "Em atendimento", tone: "warn" },
+  aguardando_resposta: { label: "Aguardando resposta", tone: "warn" },
+  nao_atendeu: { label: "Não atendeu", tone: "warn" },
+  convertido: { label: "Convertido", tone: "success" },
+  perdido: { label: "Perdido", tone: "danger" },
+};
+
+/** Motivos de perda sugeridos na Central de Leads. */
+export const MOTIVOS_PERDA_CENTRAL = [
+  "Sem interesse",
+  "Número errado",
+  "Pós-venda",
+  "Curioso",
+  "Outros",
+] as const;
+
+export type CentralLead = {
+  id: string;
+  nome: string;
+  telefone?: string;
+  produto?: string;
+  origem?: string;
+  observacoes?: string;
+  prioridade: Prioridade;
+  /** Consultor dono → vendedores.id (nulo = ainda não distribuído). */
+  vendedorId?: string;
+  /** profiles.id do admin que distribuiu. */
+  distribuidoPor?: string;
+  status: CentralLeadStatus;
+  recebidoEm: string;
+  distribuidoEm?: string;
+  ligacaoIniciadaEm?: string;
+  atendidoEm?: string;
+  mensagemEnviadaEm?: string;
+  convertidoEm?: string;
+  encerradoEm?: string;
+  motivoPerda?: string;
+  /** leads.id do Pipeline quando convertido. */
+  leadId?: string;
+  externalId?: string;
+  criadoEm: string;
+  atualizadoEm?: string;
+};
+
+/** Evento da timeline/auditoria de um lead da Central. */
+export type CentralLeadEvento = {
+  id: string;
+  centralLeadId: string;
+  tipo: string;
+  campo?: string;
+  valorAnterior?: string;
+  valorNovo?: string;
+  detalhe?: string;
+  autorId?: string;
+  autorNome?: string;
+  criadoEm: string;
+};
+
+/** Notificação interna (base p/ avisos — sem push ainda). */
+export type Notificacao = {
+  id: string;
+  userId: string;
+  tipo: string;
+  titulo: string;
+  mensagem?: string;
+  link?: string;
+  entidade?: string;
+  entidadeId?: string;
+  lida: boolean;
+  lidaEm?: string;
+  criadoEm: string;
+};
+
+/** Retorno da RPC central_dashboard (chaves snake_case do banco). */
+export type CentralDashboard = {
+  recebidos: number;
+  distribuidos: number;
+  aguardando_ligacao: number;
+  atendidos: number;
+  nao_atendidos: number;
+  aguardando_resposta: number;
+  convertidos: number;
+  perdidos: number;
+  tempo_medio_distribuicao_seg: number | null;
+  tempo_medio_primeira_ligacao_seg: number | null;
+  tempo_medio_atendimento_seg: number | null;
+  tempo_medio_conversao_seg: number | null;
+  por_origem: { origem: string; total: number; convertidos: number }[];
+  por_consultor: { vendedor_id: string; total: number; convertidos: number }[];
+};
+
+/** Uma linha do ranking de produtividade (RPC central_ranking). */
+export type CentralRankingRow = {
+  vendedor_id: string;
+  trabalhados: number;
+  distribuidos: number;
+  atendidos: number;
+  convertidos: number;
+  taxa_atendimento: number;
+  taxa_conversao: number;
+  taxa_qualificacao: number;
+  tempo_resposta_seg: number | null;
+};
+
 /** Rótulo/cor/emoji de cada Nível de Recuperação (Central de Recuperação). */
 export const NIVEL_RECUPERACAO_INFO: Record<
   NivelRecuperacao,

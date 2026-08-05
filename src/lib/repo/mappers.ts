@@ -1,4 +1,4 @@
-import type { AuditLog, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, CentralLead, CentralLeadEvento, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Notificacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
 import type { ConfigPerformance } from "../performance";
 import type { EstiloTema, StatusTema, Tema } from "../temas";
@@ -320,6 +320,137 @@ export const producaoToDb = (p: Partial<Producao>): Partial<DbProducao> => {
   if (p.ativa !== undefined) out.ativa = p.ativa;
   return out;
 };
+
+// ============================================================
+// Central de Leads
+// ============================================================
+export type DbCentralLead = {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  produto: string | null;
+  origem: string | null;
+  observacoes: string | null;
+  prioridade: string;
+  vendedor_id: string | null;
+  distribuido_por: string | null;
+  status: string;
+  recebido_em: string;
+  distribuido_em: string | null;
+  ligacao_iniciada_em: string | null;
+  atendido_em: string | null;
+  mensagem_enviada_em: string | null;
+  convertido_em: string | null;
+  encerrado_em: string | null;
+  motivo_perda: string | null;
+  lead_id: string | null;
+  external_id: string | null;
+  criado_em: string;
+  atualizado_em: string | null;
+};
+
+export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
+  id: r.id,
+  nome: r.nome,
+  telefone: r.telefone ?? undefined,
+  produto: r.produto ?? undefined,
+  origem: r.origem ?? undefined,
+  observacoes: r.observacoes ?? undefined,
+  prioridade: (r.prioridade as CentralLead["prioridade"]) ?? "normal",
+  vendedorId: r.vendedor_id ?? undefined,
+  distribuidoPor: r.distribuido_por ?? undefined,
+  status: (r.status as CentralLead["status"]) ?? "novo",
+  recebidoEm: r.recebido_em,
+  distribuidoEm: r.distribuido_em ?? undefined,
+  ligacaoIniciadaEm: r.ligacao_iniciada_em ?? undefined,
+  atendidoEm: r.atendido_em ?? undefined,
+  mensagemEnviadaEm: r.mensagem_enviada_em ?? undefined,
+  convertidoEm: r.convertido_em ?? undefined,
+  encerradoEm: r.encerrado_em ?? undefined,
+  motivoPerda: r.motivo_perda ?? undefined,
+  leadId: r.lead_id ?? undefined,
+  externalId: r.external_id ?? undefined,
+  criadoEm: r.criado_em,
+  atualizadoEm: r.atualizado_em ?? undefined,
+});
+
+export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead> => {
+  const out: Partial<DbCentralLead> = {};
+  if (c.nome !== undefined) out.nome = c.nome;
+  if (c.telefone !== undefined) out.telefone = c.telefone || null;
+  if (c.produto !== undefined) out.produto = c.produto || null;
+  if (c.origem !== undefined) out.origem = c.origem || null;
+  if (c.observacoes !== undefined) out.observacoes = c.observacoes || null;
+  if (c.prioridade !== undefined) out.prioridade = c.prioridade;
+  if (c.vendedorId !== undefined) out.vendedor_id = c.vendedorId || null;
+  if (c.distribuidoPor !== undefined) out.distribuido_por = c.distribuidoPor || null;
+  if (c.status !== undefined) out.status = c.status;
+  if (c.distribuidoEm !== undefined) out.distribuido_em = c.distribuidoEm || null;
+  if (c.ligacaoIniciadaEm !== undefined) out.ligacao_iniciada_em = c.ligacaoIniciadaEm || null;
+  if (c.atendidoEm !== undefined) out.atendido_em = c.atendidoEm || null;
+  if (c.mensagemEnviadaEm !== undefined) out.mensagem_enviada_em = c.mensagemEnviadaEm || null;
+  if (c.convertidoEm !== undefined) out.convertido_em = c.convertidoEm || null;
+  if (c.encerradoEm !== undefined) out.encerrado_em = c.encerradoEm || null;
+  if (c.motivoPerda !== undefined) out.motivo_perda = c.motivoPerda || null;
+  if (c.leadId !== undefined) out.lead_id = c.leadId || null;
+  if (c.externalId !== undefined) out.external_id = c.externalId || null;
+  // recebido_em / criado_em / atualizado_em: gerenciados pelo banco
+  return out;
+};
+
+export type DbCentralLeadEvento = {
+  id: string;
+  central_lead_id: string;
+  tipo: string;
+  campo: string | null;
+  valor_anterior: string | null;
+  valor_novo: string | null;
+  detalhe: string | null;
+  autor_id: string | null;
+  autor_nome: string | null;
+  criado_em: string;
+};
+
+export const centralEventoFromDb = (r: DbCentralLeadEvento): CentralLeadEvento => ({
+  id: r.id,
+  centralLeadId: r.central_lead_id,
+  tipo: r.tipo,
+  campo: r.campo ?? undefined,
+  valorAnterior: r.valor_anterior ?? undefined,
+  valorNovo: r.valor_novo ?? undefined,
+  detalhe: r.detalhe ?? undefined,
+  autorId: r.autor_id ?? undefined,
+  autorNome: r.autor_nome ?? undefined,
+  criadoEm: r.criado_em,
+});
+
+export type DbNotificacao = {
+  id: string;
+  user_id: string;
+  tipo: string;
+  titulo: string;
+  mensagem: string | null;
+  link: string | null;
+  entidade: string | null;
+  entidade_id: string | null;
+  lida: boolean;
+  lida_em: string | null;
+  criado_em: string;
+};
+
+export const notificacaoFromDb = (r: DbNotificacao): Notificacao => ({
+  id: r.id,
+  userId: r.user_id,
+  tipo: r.tipo,
+  titulo: r.titulo,
+  mensagem: r.mensagem ?? undefined,
+  link: r.link ?? undefined,
+  entidade: r.entidade ?? undefined,
+  entidadeId: r.entidade_id ?? undefined,
+  lida: r.lida,
+  lidaEm: r.lida_em ?? undefined,
+  criadoEm: r.criado_em,
+});
 
 // ============================================================
 // Feriado (regra de fechamento)

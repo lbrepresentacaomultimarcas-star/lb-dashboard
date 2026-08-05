@@ -7,6 +7,10 @@ import { resultadosApi, type Contemplacao } from "./resultados";
 import {
   auditFromDb,
   auditToDb,
+  centralEventoFromDb,
+  centralLeadFromDb,
+  centralLeadToDb,
+  notificacaoFromDb,
   clienteFromDb,
   clienteToDb,
   configProducaoFromDb,
@@ -32,6 +36,9 @@ import {
   vendedorFromDb,
   vendedorToDb,
   type DbAuditLog,
+  type DbCentralLead,
+  type DbCentralLeadEvento,
+  type DbNotificacao,
   type DbCliente,
   type DbConfigProducao,
   type DbDashboardConfig,
@@ -48,6 +55,10 @@ import {
 } from "./repo/mappers";
 import type {
   AuditLog,
+  CentralDashboard,
+  CentralLead,
+  CentralLeadEvento,
+  CentralRankingRow,
   Cliente,
   DashboardConfig,
   Equipe,
@@ -56,7 +67,9 @@ import type {
   LeadStatus,
   Meta,
   NivelRecuperacao,
+  Notificacao,
   PerformanceSnapshot,
+  Prioridade,
   Profile,
   SessionUser,
   Venda,
@@ -116,6 +129,9 @@ type State = {
   roster: Profile[];
   /** Equipes da empresa (nome/cor/líder/supervisor) — p/ a tela Minha Equipe. */
   equipes: Equipe[];
+  /** Central de Leads — fila ativa (não encerrados) + notificações internas. */
+  centralLeads: CentralLead[];
+  notificacoes: Notificacao[];
   session: SessionUser | null;
   ready: boolean;
 };
@@ -137,6 +153,8 @@ const state: State = {
   resultados: [],
   roster: [],
   equipes: [],
+  centralLeads: [],
+  notificacoes: [],
   session: null,
   ready: false,
 };
@@ -402,6 +420,8 @@ export function initStore(): Promise<void> {
           reloadAudit(),
           reloadResultados(),
           reloadRoster(),
+          reloadCentralLeads(),
+          reloadNotificacoes(),
         ]);
         attachRealtime();
       }
@@ -470,6 +490,96 @@ export async function reloadRoster() {
   } catch {
     /* mantém o roster anterior — um hiccup não pode zerar o escopo */
   }
+}
+
+/** Central de Leads — fila ATIVA (não encerrados). Histórico e métricas vêm por
+ *  RPC (central_dashboard/central_ranking), não pelo cliente → escala. */
+async function reloadCentralLeads() {
+  if (!supabaseEnabled) return;
+  const sb = supabaseBrowser();
+  const { data, error } = await sb
+    .from("central_leads")
+    .select("*")
+    .is("encerrado_em", null)
+    .order("recebido_em", { ascending: false })
+    .limit(1000);
+  if (!error && data) {
+    state.centralLeads = (data as DbCentralLead[]).map(centralLeadFromDb);
+    notify();
+  }
+}
+async function reloadNotificacoes() {
+  if (!supabaseEnabled) return;
+  const sb = supabaseBrowser();
+  const { data, error } = await sb
+    .from("notificacoes")
+    .select("*")
+    .order("criado_em", { ascending: false })
+    .limit(100);
+  if (!error && data) {
+    state.notificacoes = (data as DbNotificacao[]).map(notificacaoFromDb);
+    notify();
+  }
+}
+
+/** produto (texto) → LeadTipo do Pipeline, quando reconhecido. */
+function produtoParaTipo(produto?: string): Lead["tipo"] {
+  if (!produto) return undefined;
+  const map: Record<string, Lead["tipo"]> = {
+    "imóvel": "imovel", imovel: "imovel", carro: "carro", moto: "moto",
+    "caminhão": "caminhao", caminhao: "caminhao", terreno: "terreno",
+    "maquinário": "maquinario", maquinario: "maquinario",
+    "serviço": "servico", servico: "servico",
+  };
+  return map[produto.trim().toLowerCase()];
+}
+
+/** Grava um evento na timeline/auditoria de um lead da Central. */
+async function logEventoCentral(
+  centralLeadId: string,
+  ev: { tipo: string; campo?: string; valorAnterior?: string; valorNovo?: string; detalhe?: string },
+) {
+  if (!supabaseEnabled) return;
+  const sb = supabaseBrowser();
+  await sb.from("central_leads_eventos").insert({
+    central_lead_id: centralLeadId,
+    tipo: ev.tipo,
+    campo: ev.campo ?? null,
+    valor_anterior: ev.valorAnterior ?? null,
+    valor_novo: ev.valorNovo ?? null,
+    detalhe: ev.detalhe ?? null,
+    autor_nome: state.session?.nome ?? null,
+    // org_id + autor_id: defaults do banco (current_org_id / auth.uid)
+  });
+}
+
+/** Cria uma notificação interna p/ um usuário (destinatário = profiles.id). */
+async function notificarUsuario(
+  userId: string | undefined,
+  n: { tipo: string; titulo: string; mensagem?: string; link?: string; entidadeId?: string },
+) {
+  if (!supabaseEnabled || !userId) return;
+  const sb = supabaseBrowser();
+  await sb.from("notificacoes").insert({
+    user_id: userId,
+    tipo: n.tipo,
+    titulo: n.titulo,
+    mensagem: n.mensagem ?? null,
+    link: n.link ?? null,
+    entidade: "central_lead",
+    entidade_id: n.entidadeId ?? null,
+  });
+}
+
+/** Update parcial de um central_lead + sincroniza o estado local. */
+async function patchCentral(id: string, patch: Partial<CentralLead>) {
+  if (supabaseEnabled) {
+    const sb = supabaseBrowser();
+    const { error } = await sb.from("central_leads").update(centralLeadToDb(patch)).eq("id", id);
+    if (error) throw error;
+  }
+  state.centralLeads = state.centralLeads.map((c) => (c.id === id ? { ...c, ...patch } : c));
+  notify();
 }
 async function reloadClientes() {
   const sb = supabaseBrowser();
@@ -590,6 +700,8 @@ export async function reloadAllData(): Promise<void> {
     reloadAudit(),
     reloadResultados(),
     reloadRoster(),
+    reloadCentralLeads(),
+    reloadNotificacoes(),
   ]);
 }
 
@@ -619,6 +731,8 @@ function attachRealtime() {
   sub("temas", reloadTemas);
   sub("audit_log", reloadAudit);
   sub("resultados_contemplacoes", reloadResultados);
+  sub("central_leads", reloadCentralLeads);
+  sub("notificacoes", reloadNotificacoes);
 }
 
 // ============================================================
@@ -685,6 +799,14 @@ export function useRoster(): Profile[] {
 /** Equipes da empresa (Minha Equipe / seletor de equipe do admin). */
 export function useEquipes(): Equipe[] {
   return useSyncExternalStore(subscribe, () => state.equipes, () => state.equipes);
+}
+/** Central de Leads — fila ativa (RLS entrega só o que o cargo pode ver). */
+export function useCentralLeads(): CentralLead[] {
+  return useSyncExternalStore(subscribe, () => state.centralLeads, () => state.centralLeads);
+}
+/** Notificações internas do usuário logado. */
+export function useNotificacoes(): Notificacao[] {
+  return useSyncExternalStore(subscribe, () => state.notificacoes, () => state.notificacoes);
 }
 export function useEscopo(): Escopo {
   return useSyncExternalStore(subscribe, escopoAtual, escopoAtual);
@@ -1086,6 +1208,242 @@ export const recuperacaoApi = {
 };
 
 // ============================================================
+// API — Central de Leads (intake/distribuição → promove pro Pipeline)
+// ============================================================
+export const centralLeadsApi = {
+  /** Cadastro manual de 1 lead cru. */
+  async add(input: {
+    nome: string;
+    telefone?: string;
+    produto?: string;
+    origem?: string;
+    observacoes?: string;
+    prioridade?: Prioridade;
+    vendedorId?: string;
+  }): Promise<CentralLead> {
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from("central_leads")
+      .insert(
+        centralLeadToDb({
+          ...input,
+          prioridade: input.prioridade ?? "normal",
+          status: input.vendedorId ? "aguardando" : "novo",
+          distribuidoEm: input.vendedorId ? new Date().toISOString() : undefined,
+          distribuidoPor: input.vendedorId ? state.session?.id : undefined,
+        }),
+      )
+      .select()
+      .single();
+    if (error) throw error;
+    const cl = centralLeadFromDb(data as DbCentralLead);
+    state.centralLeads = [cl, ...state.centralLeads];
+    notify();
+    void logEventoCentral(cl.id, { tipo: "criado", detalhe: input.nome });
+    return cl;
+  },
+
+  /** Importação em lote (Excel/CSV/colar). Entra como NOVO. */
+  async importar(
+    rows: Array<{ nome: string; telefone?: string; produto?: string; origem?: string; prioridade?: Prioridade }>,
+  ): Promise<number> {
+    const validos = rows.filter((r) => (r.nome ?? "").trim());
+    if (validos.length === 0) return 0;
+    const sb = supabaseBrowser();
+    const payload = validos.map((r) =>
+      centralLeadToDb({
+        nome: r.nome.trim(),
+        telefone: r.telefone,
+        produto: r.produto,
+        origem: r.origem || "Importação",
+        prioridade: r.prioridade ?? "normal",
+        status: "novo",
+      }),
+    );
+    const { data, error } = await sb.from("central_leads").insert(payload).select();
+    if (error) throw error;
+    const novos = (data as DbCentralLead[]).map(centralLeadFromDb);
+    state.centralLeads = [...novos, ...state.centralLeads];
+    notify();
+    await sb.from("central_leads_eventos").insert(
+      novos.map((cl) => ({
+        central_lead_id: cl.id,
+        tipo: "criado",
+        detalhe: "Importação",
+        autor_nome: state.session?.nome ?? null,
+      })),
+    );
+    void logAudit({ acao: "importar", entidade: "central_lead", detalhes: `${novos.length} leads` });
+    return novos.length;
+  },
+
+  /** Distribui leads a um consultor (só admin no app). Registra e notifica. */
+  async distribuir(centralLeadIds: string[], vendedorId: string): Promise<void> {
+    if (centralLeadIds.length === 0 || !vendedorId) return;
+    const agora = new Date().toISOString();
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("central_leads")
+        .update(
+          centralLeadToDb({
+            vendedorId,
+            distribuidoPor: state.session?.id,
+            status: "aguardando",
+            distribuidoEm: agora,
+          }),
+        )
+        .in("id", centralLeadIds);
+      if (error) throw error;
+    }
+    state.centralLeads = state.centralLeads.map((c) =>
+      centralLeadIds.includes(c.id)
+        ? { ...c, vendedorId, distribuidoPor: state.session?.id, status: "aguardando" as const, distribuidoEm: agora }
+        : c,
+    );
+    notify();
+    const nomeVend = state.vendedores.find((v) => v.id === vendedorId)?.nome ?? "consultor";
+    for (const id of centralLeadIds) void logEventoCentral(id, { tipo: "distribuido", detalhe: `→ ${nomeVend}` });
+    const prof = state.roster.find((p) => p.vendedorRef === vendedorId);
+    void notificarUsuario(prof?.id, {
+      tipo: "central_distribuicao",
+      titulo: `Você recebeu ${centralLeadIds.length} novo(s) lead(s)`,
+      mensagem: "Abra a Central de Leads para começar.",
+      link: "/central",
+    });
+    void logAudit({ acao: "distribuir", entidade: "central_lead", detalhes: `${centralLeadIds.length} → ${nomeVend}` });
+  },
+
+  /** Consultor iniciou o atendimento (botão LIGAR — não faz a ligação). */
+  async iniciarLigacao(id: string): Promise<void> {
+    await patchCentral(id, { status: "em_atendimento", ligacaoIniciadaEm: new Date().toISOString() });
+    void logEventoCentral(id, { tipo: "ligar", detalhe: "Iniciou atendimento" });
+  },
+
+  /** ATENDEU → cria o lead no Pipeline (primeiro_contato) e encerra na Central. */
+  async atendeu(id: string, observacoes: string): Promise<void> {
+    const cl = state.centralLeads.find((c) => c.id === id);
+    if (!cl) return;
+    const agora = new Date().toISOString();
+    const histBase = cl.observacoes ? cl.observacoes + "\n" : "";
+    const obs = observacoes.trim() ? `Atendimento: ${observacoes.trim()}` : "Convertido da Central de Leads";
+    const lead = await leadsApi.add({
+      nome: cl.nome,
+      email: "",
+      telefone: cl.telefone ?? "",
+      valorEstimado: 0,
+      status: "primeiro_contato",
+      tipo: produtoParaTipo(cl.produto),
+      vendedorId: cl.vendedorId,
+      origem: cl.origem ?? "Central de Leads",
+      observacao: `${histBase}${obs}`,
+    });
+    await patchCentral(id, {
+      status: "convertido",
+      atendidoEm: cl.atendidoEm ?? agora,
+      convertidoEm: agora,
+      encerradoEm: agora,
+      leadId: lead.id,
+      observacoes: `${histBase}${obs}`,
+    });
+    void logEventoCentral(id, { tipo: "atendeu", detalhe: observacoes.trim() || undefined });
+    void logEventoCentral(id, { tipo: "convertido", campo: "lead_id", valorNovo: lead.id, detalhe: "→ Pipeline (Primeiro contato)" });
+  },
+
+  /** NÃO ATENDEU (segue na Central; depois "mensagem enviada"). */
+  async naoAtendeu(id: string, observacoes: string): Promise<void> {
+    const cl = state.centralLeads.find((c) => c.id === id);
+    const nova =
+      (cl?.observacoes ? cl.observacoes + "\n" : "") +
+      (observacoes.trim() ? `Não atendeu: ${observacoes.trim()}` : "Não atendeu");
+    await patchCentral(id, { status: "nao_atendeu", observacoes: nova });
+    void logEventoCentral(id, { tipo: "nao_atendeu", detalhe: observacoes.trim() || undefined });
+  },
+
+  /** Mensagem enviada no WhatsApp → aguardando resposta. */
+  async mensagemEnviada(id: string): Promise<void> {
+    await patchCentral(id, { status: "aguardando_resposta", mensagemEnviadaEm: new Date().toISOString() });
+    void logEventoCentral(id, { tipo: "mensagem", detalhe: "Mensagem enviada no WhatsApp" });
+  },
+
+  /** PERDIDO (não vai pro Pipeline) — com motivo. */
+  async perder(id: string, motivo: string): Promise<void> {
+    await patchCentral(id, { status: "perdido", motivoPerda: motivo, encerradoEm: new Date().toISOString() });
+    void logEventoCentral(id, { tipo: "perdido", campo: "motivo_perda", valorNovo: motivo, detalhe: motivo });
+  },
+
+  /** Muda a prioridade (auditado). */
+  async mudarPrioridade(id: string, prioridade: Prioridade): Promise<void> {
+    const antes = state.centralLeads.find((c) => c.id === id)?.prioridade;
+    await patchCentral(id, { prioridade });
+    void logEventoCentral(id, { tipo: "prioridade", campo: "prioridade", valorAnterior: antes, valorNovo: prioridade });
+  },
+
+  /** Adiciona uma observação (auditada). */
+  async addObservacao(id: string, texto: string): Promise<void> {
+    const t = texto.trim();
+    if (!t) return;
+    const cl = state.centralLeads.find((c) => c.id === id);
+    const nova = (cl?.observacoes ? cl.observacoes + "\n" : "") + t;
+    await patchCentral(id, { observacoes: nova });
+    void logEventoCentral(id, { tipo: "observacao", detalhe: t });
+  },
+
+  /** Timeline completa de um lead (lida sob demanda). */
+  async historico(centralLeadId: string): Promise<CentralLeadEvento[]> {
+    if (!supabaseEnabled) return [];
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from("central_leads_eventos")
+      .select("*")
+      .eq("central_lead_id", centralLeadId)
+      .order("criado_em", { ascending: true });
+    if (error || !data) return [];
+    return (data as DbCentralLeadEvento[]).map(centralEventoFromDb);
+  },
+
+  /** Métricas do painel do gestor (RPC — agrega no banco, por período). */
+  async dashboard(from: string, to: string): Promise<CentralDashboard | null> {
+    if (!supabaseEnabled) return null;
+    const sb = supabaseBrowser();
+    const { data, error } = await sb.rpc("central_dashboard", { p_from: from, p_to: to });
+    if (error) return null;
+    return data as CentralDashboard;
+  },
+
+  /** Ranking de produtividade por consultor (RPC), por período. */
+  async ranking(from: string, to: string): Promise<CentralRankingRow[]> {
+    if (!supabaseEnabled) return [];
+    const sb = supabaseBrowser();
+    const { data, error } = await sb.rpc("central_ranking", { p_from: from, p_to: to });
+    if (error || !data) return [];
+    return data as CentralRankingRow[];
+  },
+};
+
+/** Notificações internas (badges / central de avisos). */
+export const notificacoesApi = {
+  async marcarLida(id: string): Promise<void> {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      await sb.from("notificacoes").update({ lida: true, lida_em: new Date().toISOString() }).eq("id", id);
+    }
+    state.notificacoes = state.notificacoes.map((n) => (n.id === id ? { ...n, lida: true } : n));
+    notify();
+  },
+  async marcarTodasLidas(): Promise<void> {
+    const ids = state.notificacoes.filter((n) => !n.lida).map((n) => n.id);
+    if (ids.length === 0) return;
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      await sb.from("notificacoes").update({ lida: true, lida_em: new Date().toISOString() }).in("id", ids);
+    }
+    state.notificacoes = state.notificacoes.map((n) => ({ ...n, lida: true }));
+    notify();
+  },
+};
+
+// ============================================================
 // API — metas
 // ============================================================
 export const metasApi = {
@@ -1438,6 +1796,8 @@ export const sessionApi = {
         reloadTemas(),
         reloadAudit(),
         reloadRoster(),
+        reloadCentralLeads(),
+        reloadNotificacoes(),
       ]);
       attachRealtime();
     } else {
