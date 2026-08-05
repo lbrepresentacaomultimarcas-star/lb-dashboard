@@ -1320,34 +1320,55 @@ export const centralLeadsApi = {
     void logEventoCentral(id, { tipo: "ligar", detalhe: "Iniciou atendimento" });
   },
 
-  /** ATENDEU → cria o lead no Pipeline (primeiro_contato) e encerra na Central. */
-  async atendeu(id: string, observacoes: string): Promise<void> {
+  /** ATENDEU → cria o negócio no Pipeline na ETAPA escolhida pelo consultor
+   *  (nunca fixa) e encerra na Central (sai da fila na hora). A etapa vem do
+   *  modal, que lê STATUS_ORDER — a decisão da etapa é exclusiva do consultor. */
+  async atendeu(id: string, observacoes: string, etapa: LeadStatus): Promise<void> {
     const cl = state.centralLeads.find((c) => c.id === id);
     if (!cl) return;
     const agora = new Date().toISOString();
     const histBase = cl.observacoes ? cl.observacoes + "\n" : "";
-    const obs = observacoes.trim() ? `Atendimento: ${observacoes.trim()}` : "Convertido da Central de Leads";
+    const obs = observacoes.trim() ? `Atendimento: ${observacoes.trim()}` : "Enviado ao Pipeline pela Central de Leads";
+    // 1) cria o negócio no Pipeline na etapa escolhida, no nome do consultor
     const lead = await leadsApi.add({
       nome: cl.nome,
       email: "",
       telefone: cl.telefone ?? "",
       valorEstimado: 0,
-      status: "primeiro_contato",
+      status: etapa,
       tipo: produtoParaTipo(cl.produto),
       vendedorId: cl.vendedorId,
       origem: cl.origem ?? "Central de Leads",
       observacao: `${histBase}${obs}`,
     });
-    await patchCentral(id, {
-      status: "convertido",
-      atendidoEm: cl.atendidoEm ?? agora,
-      convertidoEm: agora,
-      encerradoEm: agora,
-      leadId: lead.id,
-      observacoes: `${histBase}${obs}`,
-    });
+    // 2) encerra o registro na Central (convertido)
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("central_leads")
+        .update(
+          centralLeadToDb({
+            status: "convertido",
+            atendidoEm: cl.atendidoEm ?? agora,
+            convertidoEm: agora,
+            encerradoEm: agora,
+            leadId: lead.id,
+            observacoes: `${histBase}${obs}`,
+          }),
+        )
+        .eq("id", id);
+      if (error) throw error;
+    }
+    // 3) sai da fila da Central NA HORA (encerrado não fica na fila ativa)
+    state.centralLeads = state.centralLeads.filter((c) => c.id !== id);
+    notify();
     void logEventoCentral(id, { tipo: "atendeu", detalhe: observacoes.trim() || undefined });
-    void logEventoCentral(id, { tipo: "convertido", campo: "lead_id", valorNovo: lead.id, detalhe: "→ Pipeline (Primeiro contato)" });
+    void logEventoCentral(id, {
+      tipo: "convertido",
+      campo: "etapa",
+      valorNovo: etapa,
+      detalhe: `Enviado para "${LEAD_STATUS_INFO[etapa].label}"`,
+    });
   },
 
   /** NÃO ATENDEU (segue na Central; depois "mensagem enviada"). */

@@ -22,12 +22,15 @@ import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores 
 import { ehAdmin } from "@/lib/permissions";
 import {
   CENTRAL_STATUS_INFO,
+  LEAD_STATUS_INFO,
   LEAD_TIPO_INFO,
   MOTIVOS_PERDA_CENTRAL,
   PRIORIDADE_INFO,
+  STATUS_ORDER,
   type CentralLead,
   type CentralLeadEvento,
   type CentralLeadStatus,
+  type LeadStatus,
   type Prioridade,
 } from "@/lib/types";
 import { notify } from "@/lib/notify";
@@ -131,6 +134,7 @@ export default function CentralLeadsPage() {
   const [obs, setObs] = useState("");
   const [motivo, setMotivo] = useState<string>(MOTIVOS_PERDA_CENTRAL[0]);
   const [motivoOutro, setMotivoOutro] = useState("");
+  const [etapa, setEtapa] = useState<LeadStatus | "">(""); // etapa escolhida no ATENDER
   const [salvando, setSalvando] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [timelineDe, setTimelineDe] = useState<CentralLead | null>(null);
@@ -202,16 +206,18 @@ export default function CentralLeadsPage() {
     setObs("");
     setMotivo(MOTIVOS_PERDA_CENTRAL[0]);
     setMotivoOutro("");
+    setEtapa(""); // consultor escolhe a etapa — nunca assume
   }
 
   async function confirmarAcao(e: React.FormEvent) {
     e.preventDefault();
     if (!acao) return;
+    if (acao.tipo === "atendeu" && !etapa) return; // etapa é obrigatória
     setSalvando(true);
     try {
       if (acao.tipo === "atendeu") {
-        await centralLeadsApi.atendeu(acao.lead.id, obs);
-        notify.success("Lead movido para o Pipeline", "Primeiro contato");
+        await centralLeadsApi.atendeu(acao.lead.id, obs, etapa as LeadStatus);
+        notify.success("Enviado ao Pipeline", LEAD_STATUS_INFO[etapa as LeadStatus].label);
       } else if (acao.tipo === "naoatendeu") {
         await centralLeadsApi.naoAtendeu(acao.lead.id, obs);
         notify.success("Registrado", "Não atendeu");
@@ -603,7 +609,7 @@ export default function CentralLeadsPage() {
         onClose={() => setAcao(null)}
         title={
           acao?.tipo === "atendeu"
-            ? "Atendeu — enviar para o Pipeline"
+            ? "Atender e enviar ao Pipeline"
             : acao?.tipo === "naoatendeu"
               ? "Não atendeu"
               : "Marcar como perdido"
@@ -644,29 +650,73 @@ export default function CentralLeadsPage() {
                 </div>
               )}
             </>
+          ) : acao?.tipo === "atendeu" ? (
+            <>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                <span className="text-white/45">Consultor: </span>
+                <span className="font-semibold text-white">{nomeVend(acao.lead.vendedorId)}</span>
+              </div>
+              <div>
+                <Label>Etapa inicial no Pipeline</Label>
+                <div className="mt-1 grid gap-1.5">
+                  {STATUS_ORDER.map((s) => {
+                    const sel = etapa === s;
+                    return (
+                      <label
+                        key={s}
+                        className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          sel
+                            ? "border-[#3B82F6] bg-[#3B82F6]/12 text-white"
+                            : "border-white/10 bg-white/[0.02] text-white/75 hover:bg-white/[0.05]"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="etapa-central"
+                          checked={sel}
+                          onChange={() => setEtapa(s)}
+                          className="h-4 w-4 accent-[#3B82F6]"
+                        />
+                        {LEAD_STATUS_INFO[s].label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="obs">Observações (opcional)</Label>
+                <textarea
+                  id="obs"
+                  value={obs}
+                  onChange={(e) => setObs(e.target.value)}
+                  rows={3}
+                  placeholder="O que o cliente falou, próximos passos…"
+                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-white outline-none focus:border-[#3B82F6]"
+                />
+              </div>
+              <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200/90">
+                Ao confirmar, o negócio é criado no <b>Pipeline</b> na etapa escolhida, no seu nome, com todo o
+                histórico — e o card sai da Central na hora.
+              </p>
+            </>
           ) : (
             <div>
-              <Label htmlFor="obs">Observações {acao?.tipo === "naoatendeu" ? "(opcional)" : ""}</Label>
+              <Label htmlFor="obs">Observações (opcional)</Label>
               <textarea
                 id="obs"
                 value={obs}
                 onChange={(e) => setObs(e.target.value)}
                 rows={4}
-                placeholder={acao?.tipo === "atendeu" ? "O que o cliente falou, próximos passos…" : "Ex.: caixa postal, chamou e não atendeu…"}
+                placeholder="Ex.: caixa postal, chamou e não atendeu…"
                 className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-white outline-none focus:border-[#3B82F6]"
               />
             </div>
-          )}
-          {acao?.tipo === "atendeu" && (
-            <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200/90">
-              Ao salvar, o lead entra no <b>Pipeline</b> em <b>Primeiro contato</b> no seu nome, com todo o histórico. Ele sai da Central.
-            </p>
           )}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="secondary" onClick={() => setAcao(null)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={salvando}>
+            <Button type="submit" disabled={salvando || (acao?.tipo === "atendeu" && !etapa)}>
               {salvando ? "Salvando…" : "Confirmar"}
             </Button>
           </div>

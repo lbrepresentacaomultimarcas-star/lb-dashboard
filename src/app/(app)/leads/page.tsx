@@ -47,6 +47,7 @@ import { Avatar } from "@/components/avatar";
 import {
   LEAD_STATUS_INFO,
   LEAD_TIPO_INFO,
+  STATUS_ORDER,
   type Lead,
   type LeadStatus,
   type LeadTipo,
@@ -59,16 +60,6 @@ import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { TimelineLead } from "@/components/leads/timeline-lead";
-
-const STATUS_ORDER: LeadStatus[] = [
-  "oportunidade",
-  "primeiro_contato",
-  "reuniao",
-  "reuniao_agendada",
-  "acompanhamento",
-  "fechamento",
-  "perdido",
-];
 
 type StageTone = {
   color: string;

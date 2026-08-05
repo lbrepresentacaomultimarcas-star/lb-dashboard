@@ -215,6 +215,21 @@ export const LEAD_STATUS_INFO: Record<
   perdido: { label: "Perdido", tone: "danger" },
 };
 
+/**
+ * Ordem canônica das colunas/etapas do Pipeline. FONTE ÚNICA: o Pipeline e a
+ * Central de Leads (modal "Atender e enviar ao Pipeline") leem daqui — mudar a
+ * ordem/etapas aqui reflete automaticamente nos dois, sem tocar em mais nada.
+ */
+export const STATUS_ORDER: LeadStatus[] = [
+  "oportunidade",
+  "primeiro_contato",
+  "reuniao",
+  "reuniao_agendada",
+  "acompanhamento",
+  "fechamento",
+  "perdido",
+];
+
 // ============================================================
 // Central de Leads (intake/distribuição — módulo pré-Pipeline)
 // ============================================================
