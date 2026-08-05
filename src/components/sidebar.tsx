@@ -11,6 +11,7 @@ import {
   CalendarClock,
   ChevronDown,
   History,
+  Inbox,
   Landmark,
   LayoutDashboard,
   Lightbulb,
@@ -23,6 +24,7 @@ import {
   Trophy,
   UserCircle,
   Users,
+  UsersRound,
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,15 @@ type NavGroup = {
 
 const NAV: (NavItem | NavGroup)[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  {
+    label: "Central de Leads",
+    icon: Inbox,
+    items: [
+      { href: "/central", label: "Fila de Leads", icon: Inbox },
+      { href: "/central/painel", label: "Painel do Gestor", icon: BarChart3, minimo: "supervisor" },
+    ],
+  },
+  { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   {
