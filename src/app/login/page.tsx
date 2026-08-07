@@ -8,6 +8,7 @@ import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
+import { BrandBar } from "@/components/marca-dupla";
 import { KeyRound, LogIn, UserPlus } from "lucide-react";
 
 type Mode = "entrar" | "criar" | "recuperar";
@@ -59,7 +60,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[var(--color-bg)] p-4">
+    <div className="flex min-h-screen flex-col bg-[var(--color-bg)]">
+      <BrandBar />
+      <div className="grid flex-1 place-items-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-40 w-40 items-center justify-center">
@@ -176,6 +179,7 @@ export default function LoginPage() {
               : "Modo demo: qualquer email/senha funciona"}
           </p>
         </form>
+      </div>
       </div>
     </div>
   );

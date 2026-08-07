@@ -489,6 +489,68 @@ export function marca(ctx: Ctx, cx: number, y: number, escala = 1, comTagline = 
   ctx.restore();
 }
 
+/* ----------------------------- Co-branding --------------------------------- */
+// LB Representações (esquerda) + Multimarcas (direita), mesma altura, cada uma
+// sobre uma plaquinha clara. As imagens chegam prontas (carregadas no browser
+// das Configurações/override ou dos arquivos padrão em /public); no Node de
+// inspeção podem vir nulas → cai num selo "LB" desenhado.
+
+export type LogosCo = { lb?: CanvasImageSource | null; parceira?: CanvasImageSource | null };
+
+function imgRatio(img: CanvasImageSource, fallback = 2.2): number {
+  const w = (img as { width?: number }).width ?? 0;
+  const h = (img as { height?: number }).height ?? 0;
+  return w && h ? w / h : fallback;
+}
+
+/** Uma logo dentro de uma plaquinha branca arredondada (borda dourada + sombra). */
+function placaLogo(
+  ctx: Ctx,
+  img: CanvasImageSource | null | undefined,
+  xAncora: number,
+  y: number,
+  h: number,
+  ancora: "esq" | "dir",
+  rotuloFallback = "LB",
+) {
+  const ratio = img ? imgRatio(img, 1) : 1;
+  const logoH = h;
+  const logoW = logoH * ratio;
+  const padX = h * 0.32, padY = h * 0.24;
+  const placaW = logoW + padX * 2;
+  const placaH = logoH + padY * 2;
+  const px = ancora === "dir" ? xAncora - placaW : xAncora;
+  ctx.save();
+  comSombra(ctx, "rgba(0,0,0,0.4)", 20, () => {
+    rrect(ctx, px, y, placaW, placaH, placaH * 0.28);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fill();
+  }, 0, 6);
+  rrect(ctx, px, y, placaW, placaH, placaH * 0.28);
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = rgba(hexRgb(PALETA.ouro), 0.55);
+  ctx.stroke();
+  if (img) {
+    ctx.drawImage(img, px + padX, y + padY, logoW, logoH);
+  } else {
+    ctx.fillStyle = PALETA.ouroEscuro;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = fonte(900, logoH * 0.58);
+    ctx.fillText(rotuloFallback, px + placaW / 2, y + placaH / 2 + 1);
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+  }
+  ctx.restore();
+  return { w: placaW, h: placaH };
+}
+
+/** Cabeçalho de co-branding: LB à esquerda, Multimarcas à direita (se houver). */
+export function coBrand(ctx: Ctx, W: number, yTop: number, logos: LogosCo | undefined, inset: number, h: number) {
+  placaLogo(ctx, logos?.lb, inset, yTop, h, "esq", "LB");
+  if (logos?.parceira) placaLogo(ctx, logos.parceira, W - inset, yTop, h, "dir");
+}
+
 /* -------------------------------- Gráficos --------------------------------- */
 
 export function donut(ctx: Ctx, cx: number, cy: number, rExt: number, rInt: number, fatias: { valor: number; cor: string }[], centro?: { titulo: string; sub: string }) {
@@ -793,12 +855,12 @@ function blocoLinha(ctx: Ctx, cx: number, yTop: number, txt: string, size: numbe
 
 /* -------------------------------- Templates -------------------------------- */
 
-function feedPremium(ctx: Ctx, d: DadosMaterial) {
+function feedPremium(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1080, H = 1080;
   fundo(ctx, W, H, { mapaCentro: true });
   moldura(ctx, W, H);
-  marca(ctx, W / 2, 120, 0.9);
-  let y = 258;
+  coBrand(ctx, W, 54, logos, 60, 64);
+  let y = 250;
   y = blocoEyebrow(ctx, W / 2, y, "RESULTADO OFICIAL · SERGIPE", 24) + 10;
   if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 18;
   y = blocoNumero(ctx, W / 2, y, String(d.total), 356) + 2;
@@ -824,21 +886,21 @@ function feedPremium(ctx: Ctx, d: DadosMaterial) {
   rodape(ctx, W / 2, 968, d, 0.85);
 }
 
-function feedExecutivo(ctx: Ctx, d: DadosMaterial) {
+function feedExecutivo(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1080, H = 1080;
   fundo(ctx, W, H, {});
   moldura(ctx, W, H);
-  // cabeçalho
-  marca(ctx, 176, 100, 0.6, false);
-  ctx.textBaseline = "alphabetic";
-  ctx.textAlign = "right";
-  ctx.fillStyle = PALETA.branco;
-  ctx.font = fonte(800, 30);
-  ctx.fillText("RESULTADOS OFICIAIS", W - 70, 88);
-  ctx.fillStyle = rgba(hexRgb(PALETA.ouro), 0.9);
-  ctx.font = fonte(600, 20);
-  ctx.fillText(`Sergipe · ${d.periodo}`, W - 70, 118);
-  if (d.recorde) blocoFaixaRecorde(ctx, W - 70, 138, d.recorde, "dir", 0.78);
+  // cabeçalho co-branding (LB esq. + Multimarcas dir.) + eyebrow/recorde;
+  // o corpo (KPIs a partir de y=200) permanece inalterado.
+  coBrand(ctx, W, 40, logos, 60, 52);
+  if (d.recorde) {
+    blocoFaixaRecorde(ctx, W / 2, 138, d.recorde);
+  } else {
+    ctx.fillStyle = rgba(hexRgb(PALETA.ouro), 0.95);
+    ctx.font = fonte(700, 24);
+    ctx.textBaseline = "top";
+    textoEspacado(ctx, `RESULTADOS OFICIAIS · SERGIPE · ${d.periodo.toUpperCase()}`, W / 2, 150, 3);
+  }
 
   // KPIs
   const cy = 200, ch = 188, cw = 300, gap = 24, x0 = 70;
@@ -882,12 +944,12 @@ function feedExecutivo(ctx: Ctx, d: DadosMaterial) {
   ctx.fillText(d.preparadoPor ? `Preparado por ${d.preparadoPor} · Consultor LB Representações` : "LB Representações · dados oficiais da administradora", W / 2, 1024);
 }
 
-function feedComercial(ctx: Ctx, d: DadosMaterial) {
+function feedComercial(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1080, H = 1080;
   fundo(ctx, W, H, {});
   moldura(ctx, W, H);
-  marca(ctx, W / 2, 110, 0.7);
-  let y = 244;
+  coBrand(ctx, W, 50, logos, 60, 60);
+  let y = 214;
   y = blocoTitulo(ctx, W / 2, y, "CONSÓRCIO CONTEMPLA EM SERGIPE", 56, 900) + 16;
   if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 14;
 
@@ -917,12 +979,12 @@ function feedComercial(ctx: Ctx, d: DadosMaterial) {
   rodape(ctx, W / 2, 968, d, 0.82);
 }
 
-function story(ctx: Ctx, d: DadosMaterial) {
+function story(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1080, H = 1920;
   fundo(ctx, W, H, {});
   moldura(ctx, W, H, 40);
-  marca(ctx, W / 2, 195, 1.05);
-  let y = 350;
+  coBrand(ctx, W, 66, logos, 70, 84);
+  let y = 300;
   y = blocoEyebrow(ctx, W / 2, y, "RESULTADO OFICIAL · SERGIPE", 30) + 6;
   y = blocoTitulo(ctx, W / 2, y, "CONSÓRCIO CONTEMPLA EM SERGIPE", 62, 900) + 16;
   if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 18;
@@ -952,12 +1014,12 @@ function story(ctx: Ctx, d: DadosMaterial) {
   rodape(ctx, W / 2, 1748, d, 1.05);
 }
 
-function status(ctx: Ctx, d: DadosMaterial) {
+function status(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1080, H = 1920;
   fundo(ctx, W, H, {});
   moldura(ctx, W, H, 40);
-  marca(ctx, W / 2, 205, 1.05);
-  let y = 380;
+  coBrand(ctx, W, 66, logos, 70, 84);
+  let y = 320;
   y = blocoTitulo(ctx, W / 2, y, "O CONSÓRCIO CONTEMPLA EM SERGIPE", 72, 920) + 18;
   if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 16;
   y = blocoNumero(ctx, W / 2, y, String(d.total), 380) + 2;
@@ -978,12 +1040,12 @@ function status(ctx: Ctx, d: DadosMaterial) {
   rodape(ctx, W / 2, 1748, d, 1.0);
 }
 
-function capaPdf(ctx: Ctx, d: DadosMaterial) {
+function capaPdf(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   const W = 1240, H = 1754;
   fundo(ctx, W, H, { mapaCentro: true });
   moldura(ctx, W, H, 46);
-  marca(ctx, W / 2, 240, 1.15);
-  let y = 428;
+  coBrand(ctx, W, 72, logos, 80, 84);
+  let y = 372;
   y = blocoEyebrow(ctx, W / 2, y, "RELATÓRIO OFICIAL DE CONTEMPLAÇÕES", 26) + 8;
   y = blocoTitulo(ctx, W / 2, y, "RESULTADOS EM SERGIPE", 72, 1060) + 6;
   y = blocoLinha(ctx, W / 2, y, d.periodo, 30, PALETA.cinza, 600) + 20;
@@ -1014,14 +1076,14 @@ function capaPdf(ctx: Ctx, d: DadosMaterial) {
 
 /* -------------------------------- Dispatch --------------------------------- */
 
-export function renderMaterial(ctx: Ctx, formato: FormatoMaterial, d: DadosMaterial, template?: TemplateFeed) {
+export function renderMaterial(ctx: Ctx, formato: FormatoMaterial, d: DadosMaterial, template?: TemplateFeed, logos?: LogosCo) {
   if (formato === "feed") {
     const t = template ?? templateFeed(d);
-    if (t === "Premium") return feedPremium(ctx, d);
-    if (t === "Executivo") return feedExecutivo(ctx, d);
-    return feedComercial(ctx, d);
+    if (t === "Premium") return feedPremium(ctx, d, logos);
+    if (t === "Executivo") return feedExecutivo(ctx, d, logos);
+    return feedComercial(ctx, d, logos);
   }
-  if (formato === "story") return story(ctx, d);
-  if (formato === "status") return status(ctx, d);
-  return capaPdf(ctx, d);
+  if (formato === "story") return story(ctx, d, logos);
+  if (formato === "status") return status(ctx, d, logos);
+  return capaPdf(ctx, d, logos);
 }

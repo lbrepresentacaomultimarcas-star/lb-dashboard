@@ -41,10 +41,12 @@ import {
 import {
   baixarImagem,
   baixarPdf,
+  carregarLogos,
   construirDados,
   imprimirRelatorio,
   nomeTemplate,
   renderEmCanvas,
+  resetLogos,
   type FormatoMaterial,
   type TemplateFeed,
 } from "@/lib/materiais";
@@ -225,6 +227,7 @@ export default function ResultadosPage() {
   const [matSel, setMatSel] = useState<OpcaoMaterial>("feed");
   const [matTemplate, setMatTemplate] = useState<TemplateFeed | undefined>(undefined);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
+  const [logosReady, setLogosReady] = useState(0);
 
   const matResumo = daBusca?.resumo ?? resumo;
   const matItens = daBusca?.itens ?? doPeriodo;
@@ -244,14 +247,27 @@ export default function ResultadosPage() {
   const previewFormato: FormatoMaterial | null =
     matSel === "print" ? null : matSel === "pdf" ? "pdf-capa" : matSel;
 
+  // Ao abrir o modal, (re)carrega as logos do co-branding e força re-render do preview.
+  useEffect(() => {
+    if (!modalMaterial) return;
+    resetLogos();
+    let vivo = true;
+    void carregarLogos().then(() => {
+      if (vivo) setLogosReady((n) => n + 1);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [modalMaterial]);
+
   useEffect(() => {
     if (!modalMaterial || !previewFormato || !previewRef.current) return;
     renderEmCanvas(previewRef.current, previewFormato, dadosMaterial, matSel === "feed" ? matTemplate : undefined);
-  }, [modalMaterial, previewFormato, dadosMaterial, matSel, matTemplate]);
+  }, [modalMaterial, previewFormato, dadosMaterial, matSel, matTemplate, logosReady]);
 
   function baixarMaterial() {
     if (matSel === "feed" || matSel === "story" || matSel === "status")
-      baixarImagem(matSel, dadosMaterial, matSel === "feed" ? matTemplate : undefined);
+      void baixarImagem(matSel, dadosMaterial, matSel === "feed" ? matTemplate : undefined);
     else if (matSel === "pdf") void baixarPdf(dadosMaterial, matItens);
     else imprimirRelatorio(dadosMaterial, matItens);
   }

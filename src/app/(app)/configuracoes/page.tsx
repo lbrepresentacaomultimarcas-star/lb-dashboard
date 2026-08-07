@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, LayoutDashboard, RefreshCw, Trash2, Upload } from "lucide-react";
-import { readFileAsDataUrl, settings, useImageSetting, type ImageSettingKey } from "@/lib/settings";
+import { readFileAsDataUrl, settings, useBoolSetting, useImageSetting, type ImageSettingKey } from "@/lib/settings";
 import { setAutoRefresh, useAutoRefresh } from "@/lib/refresh";
 import { dashboardConfigApi, useDashboardConfig } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -21,10 +21,19 @@ type Slot = {
 const SLOTS: Slot[] = [
   {
     key: "logo_principal",
-    titulo: "Logo principal",
-    descricao: "Aparece na sidebar e no login. Recomendado: PNG/JPG quadrado ~512×512.",
+    titulo: "Logo principal (LB Representações)",
+    descricao:
+      "Sua marca — aparece no canto ESQUERDO da faixa do topo (todas as telas), na sidebar, no login e nas artes. Recomendado: PNG/JPG quadrado ~512×512.",
     altura: 96,
     dim: "512×512px",
+  },
+  {
+    key: "logo_parceira",
+    titulo: "Logo parceira (Multimarcas)",
+    descricao:
+      "Aparece no canto DIREITO da faixa do topo e nas artes, ao lado da LB. Controle a exibição na chave acima. Recomendado: PNG/JPG horizontal, fundo claro.",
+    altura: 80,
+    dim: "horizontal",
   },
   {
     key: "logo_ranking",
@@ -278,6 +287,47 @@ function PainelDashboardCard() {
   );
 }
 
+function ExibirParceiraCard() {
+  const enabled = useBoolSetting("exibir_logo_parceira", true);
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+            <ImagePlus className="h-5 w-5" />
+          </span>
+          <div>
+            <CardTitle>Exibir logo parceira</CardTitle>
+            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+              Ligado: a logo da Multimarcas aparece no canto direito (topo das telas e nas artes), ao lado da LB.
+              Desligado: aparece somente a LB Representações.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => {
+            const novo = !enabled;
+            settings.setBool("exibir_logo_parceira", novo);
+            notify.success(novo ? "Logo parceira ativada" : "Logo parceira desativada");
+          }}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+            enabled ? "bg-[var(--color-brand)]" : "bg-[var(--color-surface-2)] border border-[var(--color-border)]"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+              enabled ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 export default function ConfiguracoesPage() {
   return (
     <div className="space-y-6">
@@ -304,7 +354,14 @@ export default function ConfiguracoesPage() {
 
       <section className="space-y-4">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
-          Artes do sistema
+          Marca e co-branding
+        </h2>
+        <ExibirParceiraCard />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+          Logos e artes do sistema
         </h2>
         <div className="grid gap-4 lg:grid-cols-2">
           {SLOTS.map((s) => (

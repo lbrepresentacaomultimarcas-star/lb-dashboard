@@ -5,10 +5,14 @@ import { useSyncExternalStore } from "react";
 const PREFIX = "lb:setting:";
 export type ImageSettingKey =
   | "logo_principal"
+  | "logo_parceira"
   | "logo_ranking"
   | "imagem_meta_1"
   | "imagem_meta_2"
   | "fundo_proposta";
+
+/** Preferências booleanas (ex.: exibir a logo parceira no co-branding). */
+export type BoolSettingKey = "exibir_logo_parceira";
 
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
@@ -42,6 +46,21 @@ export function useImageSetting(key: ImageSettingKey): string | null {
   return useSyncExternalStore(subscribe, () => read(key), () => null);
 }
 
+/** Lê uma preferência booleana; se nunca definida, devolve `padrao`. */
+function readBool(key: BoolSettingKey, padrao: boolean): boolean {
+  if (typeof window === "undefined") return padrao;
+  try {
+    const v = localStorage.getItem(PREFIX + key);
+    return v === null ? padrao : v === "1";
+  } catch {
+    return padrao;
+  }
+}
+
+export function useBoolSetting(key: BoolSettingKey, padrao = true): boolean {
+  return useSyncExternalStore(subscribe, () => readBool(key, padrao), () => padrao);
+}
+
 export const settings = {
   set(key: ImageSettingKey, dataUrl: string | null) {
     if (typeof window === "undefined") return;
@@ -52,6 +71,12 @@ export const settings = {
     notify();
   },
   get: read,
+  setBool(key: BoolSettingKey, val: boolean) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(PREFIX + key, val ? "1" : "0");
+    notify();
+  },
+  getBool: readBool,
 };
 
 if (typeof window !== "undefined") {
