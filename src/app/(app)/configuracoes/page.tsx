@@ -437,6 +437,28 @@ function ConexaoMetaCard() {
             <Item ok={status.config.orgId} label="Empresa vinculada" />
           </ul>
 
+          {!status.pronto ? (
+            <div className="rounded-lg border border-[var(--color-warn,#f59e0b)]/35 bg-[var(--color-warn,#f59e0b)]/8 p-3">
+              <p className="text-xs font-semibold">Próximo passo</p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                {!status.config.appSecret
+                  ? "Cadastre a chave secreta do app (App Secret) nas variáveis de ambiente da Vercel, com o nome META_APP_SECRET, e publique novamente. Sem ela o sistema recusa as mensagens da Meta por segurança."
+                  : !status.config.verifyToken
+                    ? "Cadastre META_VERIFY_TOKEN nas variáveis de ambiente da Vercel."
+                    : "Cadastre LB_ORG_ID nas variáveis de ambiente da Vercel."}
+              </p>
+            </div>
+          ) : status.totalRecebidos === 0 ? (
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
+              <p className="text-xs font-semibold">Tudo configurado deste lado</p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                O sistema está pronto e aguardando. Os leads começam a cair aqui assim que o número
+                da empresa estiver ativo na plataforma oficial do WhatsApp (Cloud API) e o aplicativo
+                estiver publicado na Meta.
+              </p>
+            </div>
+          ) : null}
+
           <div>
             <Label>URL de callback (cole na Meta)</Label>
             <div className="mt-1 flex items-center gap-2">

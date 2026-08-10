@@ -84,6 +84,22 @@ export async function POST(req: NextRequest) {
           .is("encerrado_em", null)
           .maybeSingle();
 
+        // A Meta reenvia o mesmo webhook quando demora a receber o 200. Marcamos
+        // cada evento com o id da mensagem (campo='wamid') usando as colunas de
+        // auditoria que já existem — sem alterar o banco. Se já processamos essa
+        // mensagem, ignora.
+        if (lead.mensagemId) {
+          const { data: repetida } = await db
+            .from("central_leads_eventos")
+            .select("id")
+            .eq("org_id", orgId)
+            .eq("campo", "wamid")
+            .eq("valor_novo", lead.mensagemId)
+            .limit(1)
+            .maybeSingle();
+          if (repetida) continue;
+        }
+
         if (existente) {
           // Caso real: o cliente responde o interesse ("1", "carro"…) NUMA MENSAGEM
           // SEGUINTE, quando o lead já existe. Se ainda não temos o produto e a
@@ -108,6 +124,8 @@ export async function POST(req: NextRequest) {
             org_id: orgId,
             central_lead_id: existente.id,
             tipo: "observacao",
+            campo: lead.mensagemId ? "wamid" : null,
+            valor_novo: lead.mensagemId ?? null,
             detalhe: `Nova mensagem no WhatsApp${lead.anuncio ? ` (anúncio: ${lead.anuncio})` : ""}.`,
             autor_nome: "Meta · Click-to-WhatsApp",
           });
@@ -142,11 +160,17 @@ export async function POST(req: NextRequest) {
           org_id: orgId,
           central_lead_id: criado.id,
           tipo: "criado",
+          campo: lead.mensagemId ? "wamid" : null,
+          valor_novo: lead.mensagemId ?? null,
           detalhe: lead.anuncio
             ? `Lead recebido do anúncio Click-to-WhatsApp: ${lead.anuncio}`
             : "Lead recebido pelo WhatsApp",
           autor_nome: "Meta · Click-to-WhatsApp",
         });
+
+        // avisa quem distribui — a Central já escuta `notificacoes` em tempo real,
+        // então o sino acende sozinho, sem ninguém ficar olhando a tela
+        await avisarAdmins(db, orgId, criado.id, lead);
       }
     }
 
@@ -159,6 +183,44 @@ export async function POST(req: NextRequest) {
 }
 
 /* ------------------------------------------------------------- helpers */
+
+/**
+ * Notifica quem pode distribuir (admin/coordenador) que chegou lead novo.
+ * Reusa a tabela `notificacoes`, que a Central já escuta em tempo real.
+ * Falha aqui nunca derruba o webhook — o lead já está salvo.
+ */
+async function avisarAdmins(
+  db: ReturnType<typeof supabaseAdmin>,
+  orgId: string,
+  leadId: string,
+  lead: { nome: string; produto?: string; anuncio?: string },
+) {
+  try {
+    // profiles não tem org_id (instalação de uma empresa só) — filtra por papel
+    const { data: gestores } = await db
+      .from("profiles")
+      .select("id")
+      .in("papel", ["admin", "coordenador"])
+      .eq("ativo", true);
+    if (!gestores?.length) return;
+
+    const detalhe = lead.produto ? ` · interesse: ${lead.produto}` : "";
+    await db.from("notificacoes").insert(
+      gestores.map((g) => ({
+        org_id: orgId,
+        user_id: g.id,
+        tipo: "central_lead_novo",
+        titulo: "Novo lead pelo WhatsApp",
+        mensagem: `${lead.nome}${detalhe}${lead.anuncio ? ` (anúncio: ${lead.anuncio})` : ""}`,
+        link: "/central",
+        entidade: "central_lead",
+        entidade_id: leadId,
+      })),
+    );
+  } catch (err) {
+    console.error("[intake] falha ao notificar admins (lead já foi salvo):", err);
+  }
+}
 
 /** Compara em tempo constante (evita timing attack no verify token). */
 function safeEqual(a: string, b: string): boolean {
@@ -193,8 +255,47 @@ type Mensagem = {
   id?: string;
   type?: string;
   text?: { body?: string };
+  /** resposta tocando num botão de menu interativo */
+  interactive?: {
+    type?: string;
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string; description?: string };
+  };
+  /** resposta rápida de template */
+  button?: { text?: string; payload?: string };
   referral?: Referral;
 };
+
+/**
+ * Texto que o cliente "disse", venha ele digitado OU tocando num botão.
+ * Sem isso, uma resposta por botão (menu 1–4) chegaria vazia e o interesse
+ * nunca seria identificado.
+ */
+function textoDaMensagem(msg: Mensagem): string | undefined {
+  const t =
+    msg.text?.body ??
+    msg.interactive?.button_reply?.title ??
+    msg.interactive?.list_reply?.title ??
+    msg.button?.text ??
+    msg.interactive?.button_reply?.id ??
+    msg.interactive?.list_reply?.id ??
+    msg.button?.payload;
+  return t?.trim() || undefined;
+}
+
+/** Descrição amigável pra mensagem sem texto (áudio, imagem, documento…). */
+function descreveTipo(tipo: string | undefined): string {
+  const mapa: Record<string, string> = {
+    audio: "🎤 Mensagem de áudio",
+    image: "🖼️ Enviou uma imagem",
+    video: "🎬 Enviou um vídeo",
+    document: "📎 Enviou um documento",
+    sticker: "Enviou uma figurinha",
+    location: "📍 Enviou a localização",
+    contacts: "Enviou um contato",
+  };
+  return mapa[tipo ?? ""] ?? "Enviou uma mensagem";
+}
 type Contato = { wa_id?: string; profile?: { name?: string } };
 type WebhookBody = {
   object?: string;
@@ -217,6 +318,8 @@ type LeadExtraido = {
   origem: string;
   observacoes?: string;
   anuncio?: string;
+  /** wamid — usado pra não processar 2x a mesma mensagem (a Meta reenvia). */
+  mensagemId?: string;
   externalId: string;
   payload: unknown;
 };
@@ -283,8 +386,12 @@ function extrairLeads(body: WebhookBody): LeadExtraido[] {
         const veioDeAnuncio = ref?.source_type === "ad" || !!ref?.source_id;
         const anuncio = ref?.headline?.trim() || ref?.source_id;
 
+        // texto digitado OU título do botão tocado
+        const texto = textoDaMensagem(msg);
+
         const partes: string[] = [];
-        if (msg.type === "text" && msg.text?.body) partes.push(`Mensagem: “${msg.text.body.trim()}”`);
+        if (texto) partes.push(`Mensagem: “${texto}”`);
+        else partes.push(descreveTipo(msg.type));
         if (veioDeAnuncio) {
           if (ref?.headline) partes.push(`Anúncio: ${ref.headline}`);
           if (ref?.source_id) partes.push(`ID do anúncio: ${ref.source_id}`);
@@ -294,10 +401,11 @@ function extrairLeads(body: WebhookBody): LeadExtraido[] {
         out.push({
           nome,
           telefone,
-          produto: detectarInteresse(msg.type === "text" ? msg.text?.body : undefined),
+          produto: detectarInteresse(texto),
           origem: veioDeAnuncio ? "Meta Ads · Click-to-WhatsApp" : "WhatsApp",
           observacoes: partes.join("\n") || undefined,
           anuncio: anuncio ?? undefined,
+          mensagemId: msg.id,
           externalId: `wa:${telefone}`,
           payload: { mensagem: msg, contato, metadata: value?.metadata, recebido_em: new Date().toISOString() },
         });
