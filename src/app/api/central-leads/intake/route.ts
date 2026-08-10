@@ -75,14 +75,19 @@ export async function POST(req: NextRequest) {
       }
 
       for (const lead of novos) {
-        // já existe lead ATIVO desse telefone? então só registra a nova mensagem
-        const { data: existente } = await db
+        // Já existe lead ATIVO desse telefone? Então é a mesma conversa: só
+        // registra a nova mensagem. A busca é por TELEFONE (não por external_id),
+        // porque um cliente que voltou depois de um lead encerrado precisa gerar
+        // um lead NOVO — e não ser descartado.
+        const { data: ativos } = await db
           .from("central_leads")
           .select("id, produto")
           .eq("org_id", orgId)
-          .eq("external_id", lead.externalId)
+          .eq("telefone", lead.telefone)
           .is("encerrado_em", null)
-          .maybeSingle();
+          .order("recebido_em", { ascending: false })
+          .limit(1);
+        const existente = ativos?.[0] ?? null;
 
         // A Meta reenvia o mesmo webhook quando demora a receber o 200. Marcamos
         // cada evento com o id da mensagem (campo='wamid') usando as colunas de
@@ -132,27 +137,38 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        const { data: criado, error } = await db
+        const novoLead = (externalId: string) => ({
+          org_id: orgId,
+          nome: lead.nome,
+          telefone: lead.telefone,
+          produto: lead.produto,
+          origem: lead.origem,
+          observacoes: lead.observacoes,
+          status: "novo",
+          prioridade: "alta", // veio de anúncio pago: responder rápido
+          external_id: externalId,
+          wa_contato: lead.payload,
+        });
+
+        let { data: criado, error } = await db
           .from("central_leads")
-          .insert({
-            org_id: orgId,
-            nome: lead.nome,
-            telefone: lead.telefone,
-            produto: lead.produto,
-            origem: lead.origem,
-            observacoes: lead.observacoes,
-            status: "novo",
-            prioridade: "alta", // veio de anúncio pago: responder rápido
-            external_id: lead.externalId,
-            wa_contato: lead.payload,
-          })
+          .insert(novoLead(lead.externalId))
           .select("id")
           .single();
 
-        if (error) {
-          // corrida com outra entrega do mesmo webhook (índice único) — não é falha
-          if (error.code === "23505") continue;
-          console.error("[intake] falha ao inserir lead:", error.message);
+        // 23505 = o external_id "wa:<telefone>" já pertence a um lead ENCERRADO
+        // (cliente antigo que voltou). Como não há lead ativo, ele merece um lead
+        // novo — reinsere com um sufixo único em vez de descartar o contato.
+        if (error?.code === "23505") {
+          ({ data: criado, error } = await db
+            .from("central_leads")
+            .insert(novoLead(`${lead.externalId}#${Date.now()}`))
+            .select("id")
+            .single());
+        }
+
+        if (error || !criado) {
+          console.error("[intake] falha ao inserir lead:", error?.message);
           continue;
         }
 

@@ -50,11 +50,36 @@ Fila ativa carregada no cliente é naturalmente limitada (leads encerrados saem)
 métricas/relatórios/ranking vêm por RPC (nunca baixa milhares de linhas). Índices cobrem
 filtro/ordenação/paginação. Zero query compartilhada com o Pipeline → sem impacto no CRM.
 
+## Entrada automática pela Meta (WhatsApp Cloud API) — IMPLEMENTADO
+
+`src/app/api/central-leads/intake/route.ts` — webhook público (sem login; a segurança
+é a assinatura da Meta, não sessão).
+
+- **GET** responde o handshake (`hub.mode`/`hub.verify_token`/`hub.challenge`).
+- **POST** valida `X-Hub-Signature-256` (HMAC-SHA256 do corpo CRU com o App Secret),
+  lê o evento `messages` e cria o lead com `status='novo'`, `prioridade='alta'`,
+  `origem='Meta Ads · Click-to-WhatsApp'` e o payload bruto em `wa_contato`.
+- **Origem do anúncio**: o objeto `referral` (só vem na 1ª mensagem de um clique em
+  anúncio) traz `source_id`, `headline`, `source_url` e `ctwa_clid` — é a prova
+  oficial de que a conversa nasceu de um anúncio Click-to-WhatsApp.
+- **Interesse automático**: `detectarInteresse()` preenche `produto` a partir da
+  resposta (menu 1–4 ou palavra-chave), lendo texto digitado **ou** botão tocado
+  (`interactive.button_reply`/`list_reply`/`button.text`). Se o interesse só chega
+  numa mensagem posterior, o produto é preenchido por `update` + evento de auditoria.
+- **Dedupe**: lead ATIVO é buscado por `telefone`. Cliente cujo lead já foi encerrado
+  (perdido/convertido) e volta a chamar gera um lead NOVO — o `external_id` ganha
+  sufixo `#<timestamp>` para não colidir com o índice único.
+- **Idempotência**: a Meta reenvia webhooks; cada evento guarda o `wamid` em
+  `campo='wamid'`/`valor_novo` e reentrega é ignorada.
+- **Aviso**: admin/coordenador recebem `notificacoes` (que a Central já escuta em
+  tempo real) com nome + interesse.
+- **Env**: `META_VERIFY_TOKEN`, `META_APP_SECRET`, `LB_ORG_ID`.
+- **Status**: `GET /api/central-leads/status` (só admin) alimenta o cartão
+  "Conexão com a Meta" em Configurações → Integrações. Devolve apenas booleanos —
+  nenhum segredo trafega.
+
 ## Como estender no futuro (sem refazer o módulo)
 
-- **Cloud API Oficial da Meta**: criar rota `/api/central-leads/intake` (webhook) que faz
-  `insert` em `central_leads` com `status='novo'`, `origem`, `external_id` (dedupe pelo
-  índice único) e `wa_contato`. Nada mais muda — o lead cai na fila do admin.
 - **Distribuição inteligente** (rodízio / menor volume / melhor desempenho / online):
   `centralLeadsApi.distribuir(ids, vendedorId)` já é o ponto único; criar uma função que
   ESCOLHE `vendedorId` (a estratégia) e chama `distribuir`. "Online" precisa de presença
