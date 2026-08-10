@@ -1,7 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ImagePlus, LayoutDashboard, RefreshCw, Trash2, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  ImagePlus,
+  LayoutDashboard,
+  MessageCircle,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { readFileAsDataUrl, settings, useBoolSetting, useImageSetting, type ImageSettingKey } from "@/lib/settings";
 import { setAutoRefresh, useAutoRefresh } from "@/lib/refresh";
 import { dashboardConfigApi, useDashboardConfig } from "@/lib/store";
@@ -328,6 +338,155 @@ function ExibirParceiraCard() {
   );
 }
 
+type MetaStatus = {
+  config: { verifyToken: boolean; appSecret: boolean; orgId: boolean };
+  pronto: boolean;
+  callbackUrl: string;
+  totalRecebidos: number;
+  ultimo: {
+    nome: string;
+    telefone: string | null;
+    produto: string | null;
+    origem: string | null;
+    recebidoEm: string;
+  } | null;
+};
+
+/** Linha de checagem do cartão de conexão (fora do render — componente estável). */
+function ChecagemItem({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className="flex items-center gap-2 text-xs">
+      {ok ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--color-success,#22c55e)]" />
+      ) : (
+        <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--color-warn,#f59e0b)]" />
+      )}
+      <span className={ok ? "text-[var(--color-text-dim)]" : "font-medium"}>{label}</span>
+    </li>
+  );
+}
+
+/** Conexão com a Meta: mostra se o webhook está configurado e o último lead que chegou. */
+function ConexaoMetaCard() {
+  const [status, setStatus] = useState<MetaStatus | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const r = await fetch("/api/central-leads/status");
+      if (!r.ok) throw new Error(r.status === 403 ? "Só administradores" : "Falha ao consultar");
+      setStatus(await r.json());
+      setErro(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao consultar");
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  // dispara fora do corpo do efeito (React 19 reclama de setState síncrono em effect)
+  useEffect(() => {
+    const id = setTimeout(() => void carregar(), 0);
+    return () => clearTimeout(id);
+  }, [carregar]);
+
+  const Item = ChecagemItem;
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+            <MessageCircle className="h-5 w-5" />
+          </span>
+          <div>
+            <CardTitle>Conexão com a Meta (WhatsApp)</CardTitle>
+            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+              Leads que chegam pelo WhatsApp caem direto na Central de Leads, com o interesse já
+              identificado.
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" onClick={() => void carregar()} disabled={carregando}>
+          <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {erro ? (
+        <p className="mt-4 text-xs text-[var(--color-text-dim)]">{erro}</p>
+      ) : !status ? (
+        <p className="mt-4 text-xs text-[var(--color-text-dim)]">Consultando…</p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+              status.pronto
+                ? "bg-[var(--color-success,#22c55e)]/12 text-[var(--color-success,#22c55e)]"
+                : "bg-[var(--color-warn,#f59e0b)]/12 text-[var(--color-warn,#f59e0b)]"
+            }`}
+          >
+            {status.pronto ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+            {status.pronto ? "Pronto para receber" : "Falta configuração"}
+          </div>
+
+          <ul className="space-y-1.5">
+            <Item ok={status.config.verifyToken} label="Token de verificação configurado" />
+            <Item ok={status.config.appSecret} label="Chave secreta do app (App Secret) configurada" />
+            <Item ok={status.config.orgId} label="Empresa vinculada" />
+          </ul>
+
+          <div>
+            <Label>URL de callback (cole na Meta)</Label>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 px-2.5 py-1.5 text-[11px]">
+                {status.callbackUrl}
+              </code>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void navigator.clipboard.writeText(status.callbackUrl);
+                  notify.success("URL copiada");
+                }}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
+            {status.ultimo ? (
+              <>
+                <p className="text-xs text-[var(--color-text-dim)]">
+                  Último lead recebido ({status.totalRecebidos} no total)
+                </p>
+                <p className="mt-1 text-sm font-medium">
+                  {status.ultimo.nome}
+                  {status.ultimo.produto ? (
+                    <span className="ml-2 rounded-full bg-[var(--color-brand)]/12 px-2 py-0.5 text-[11px] font-semibold text-[var(--color-brand)]">
+                      {status.ultimo.produto}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-0.5 text-xs text-[var(--color-text-dim)]">
+                  {status.ultimo.telefone} ·{" "}
+                  {new Date(status.ultimo.recebidoEm).toLocaleString("pt-BR")}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-[var(--color-text-dim)]">
+                Nenhum lead recebido pelo WhatsApp ainda. Assim que o primeiro cliente chamar, ele
+                aparece aqui e na Central de Leads.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function ConfiguracoesPage() {
   return (
     <div className="space-y-6">
@@ -343,6 +502,13 @@ export default function ConfiguracoesPage() {
           Dados em tempo real
         </h2>
         <AutoRefreshCard />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+          Integrações
+        </h2>
+        <ConexaoMetaCard />
       </section>
 
       <section className="space-y-4">

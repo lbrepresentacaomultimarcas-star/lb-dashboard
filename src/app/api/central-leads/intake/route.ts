@@ -78,13 +78,32 @@ export async function POST(req: NextRequest) {
         // já existe lead ATIVO desse telefone? então só registra a nova mensagem
         const { data: existente } = await db
           .from("central_leads")
-          .select("id")
+          .select("id, produto")
           .eq("org_id", orgId)
           .eq("external_id", lead.externalId)
           .is("encerrado_em", null)
           .maybeSingle();
 
         if (existente) {
+          // Caso real: o cliente responde o interesse ("1", "carro"…) NUMA MENSAGEM
+          // SEGUINTE, quando o lead já existe. Se ainda não temos o produto e a
+          // mensagem revela o interesse, preenchemos agora.
+          if (lead.produto && !existente.produto) {
+            await db
+              .from("central_leads")
+              .update({ produto: lead.produto, atualizado_em: new Date().toISOString() })
+              .eq("id", existente.id);
+            await db.from("central_leads_eventos").insert({
+              org_id: orgId,
+              central_lead_id: existente.id,
+              tipo: "editado",
+              campo: "produto",
+              valor_anterior: null,
+              valor_novo: lead.produto,
+              detalhe: `Interesse identificado automaticamente pela resposta do cliente: ${lead.produto}`,
+              autor_nome: "Meta · Click-to-WhatsApp",
+            });
+          }
           await db.from("central_leads_eventos").insert({
             org_id: orgId,
             central_lead_id: existente.id,
@@ -101,6 +120,7 @@ export async function POST(req: NextRequest) {
             org_id: orgId,
             nome: lead.nome,
             telefone: lead.telefone,
+            produto: lead.produto,
             origem: lead.origem,
             observacoes: lead.observacoes,
             status: "novo",
@@ -193,12 +213,52 @@ type WebhookBody = {
 type LeadExtraido = {
   nome: string;
   telefone: string;
+  produto?: string;
   origem: string;
   observacoes?: string;
   anuncio?: string;
   externalId: string;
   payload: unknown;
 };
+
+/**
+ * IDENTIFICAÇÃO AUTOMÁTICA DO INTERESSE.
+ *
+ * Lê a resposta do cliente e devolve o produto, casando com o menu enviado no
+ * WhatsApp (1 Carro · 2 Moto · 3 Imóvel · 4 Investimento). Os rótulos seguem o
+ * vocabulário que o CRM já usa em LEAD_TIPO_INFO.
+ *
+ * O número só conta quando a mensagem é praticamente só o número ("1", "opção 2"),
+ * pra não confundir com "quero 2 motos" ou um valor tipo "3.000".
+ */
+function detectarInteresse(texto: string | undefined): string | undefined {
+  if (!texto) return undefined;
+
+  const t = texto
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "") // tira acentos
+    .toLowerCase()
+    .trim();
+
+  // 1) resposta numérica do menu (mensagem curta, essencialmente só o número)
+  const soNumero = t.match(/^(?:opcao\s*|op\.?\s*|n[uº]?\s*)?([1-4])[\s.)\]-]*$/);
+  if (soNumero) {
+    return { "1": "Carro", "2": "Moto", "3": "Imóvel", "4": "Investimento" }[soNumero[1]];
+  }
+
+  // 2) por palavra-chave (ordem importa: mais específico primeiro)
+  const regras: [RegExp, string][] = [
+    [/\b(caminhao|caminhoes|carreta|truck)\b/, "Caminhão"],
+    [/\b(moto|motos|motocicleta|motoca|scooter)\b/, "Moto"],
+    [/\b(carro|carros|automovel|veiculo|veiculos)\b/, "Carro"],
+    [/\b(imovel|imoveis|casa|apartamento|apto|terreno|lote|chacara|sitio)\b/, "Imóvel"],
+    [/\b(investimento|investir|invest|aplicacao|renda)\b/, "Investimento"],
+    [/\b(maquina|maquinas|maquinario|trator|equipamento)\b/, "Maquinário"],
+  ];
+  for (const [re, produto] of regras) if (re.test(t)) return produto;
+
+  return undefined;
+}
 
 /** Percorre o payload e monta os leads das mensagens RECEBIDAS. */
 function extrairLeads(body: WebhookBody): LeadExtraido[] {
@@ -234,6 +294,7 @@ function extrairLeads(body: WebhookBody): LeadExtraido[] {
         out.push({
           nome,
           telefone,
+          produto: detectarInteresse(msg.type === "text" ? msg.text?.body : undefined),
           origem: veioDeAnuncio ? "Meta Ads · Click-to-WhatsApp" : "WhatsApp",
           observacoes: partes.join("\n") || undefined,
           anuncio: anuncio ?? undefined,
