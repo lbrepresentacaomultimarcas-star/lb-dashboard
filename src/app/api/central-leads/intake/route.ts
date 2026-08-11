@@ -246,16 +246,38 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ba, bb);
 }
 
-/** Confere o X-Hub-Signature-256 (HMAC-SHA256 do corpo cru com o App Secret). */
+/**
+ * Confere o X-Hub-Signature-256 (HMAC-SHA256 do corpo cru com o App Secret).
+ *
+ * O `.trim()` é proposital: copiar/colar a chave no painel da Vercel costuma
+ * arrastar espaço ou quebra de linha invisível — e isso sozinho faz TODA
+ * assinatura falhar.
+ *
+ * Quando a assinatura não bate, logamos um diagnóstico SEM expor a chave:
+ * só o tamanho dela (o App Secret da Meta tem 32 caracteres hexadecimais).
+ * Tamanho diferente de 32 = chave errada/incompleta.
+ */
 function assinaturaValida(raw: string, header: string | null): boolean {
-  const secret = process.env.META_APP_SECRET;
+  const secret = process.env.META_APP_SECRET?.trim();
   if (!secret) {
     console.error("[intake] META_APP_SECRET não configurado no ambiente");
     return false;
   }
-  if (!header?.startsWith("sha256=")) return false;
+  if (!header?.startsWith("sha256=")) {
+    console.error("[intake] requisição sem cabeçalho x-hub-signature-256");
+    return false;
+  }
   const esperado = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
-  return safeEqual(header, esperado);
+  const ok = safeEqual(header, esperado);
+  if (!ok) {
+    const hex32 = /^[0-9a-f]{32}$/i.test(secret);
+    console.error(
+      `[intake] assinatura não confere — diagnóstico: tamanho da chave=${secret.length} ` +
+        `(esperado 32) · formato hexadecimal=${hex32 ? "sim" : "NÃO"} · ` +
+        `${hex32 && secret.length === 32 ? "formato ok, mas o valor não corresponde ao app da Meta" : "a chave cadastrada está incorreta"}`,
+    );
+  }
+  return ok;
 }
 
 type Referral = {
