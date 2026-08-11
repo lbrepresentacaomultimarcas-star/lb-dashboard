@@ -105,6 +105,8 @@ const K_PERF_CONFIG = "lb:performance_config";
 const K_PERF_HIST = "lb:performance_historico";
 const K_TEMAS = "lb:temas";
 const K_SESSION = "lb:session";
+/** "Entrar como consultor" — sessionStorage (vale só nesta aba e some ao fechá-la). */
+const K_IMPERSONA = "lb:impersonando";
 
 // ============================================================
 // Estado em memória + observers
@@ -133,6 +135,14 @@ type State = {
   centralLeads: CentralLead[];
   notificacoes: Notificacao[];
   session: SessionUser | null;
+  /**
+   * "Entrar como consultor": guarda a sessão REAL do admin enquanto ele está
+   * visualizando o sistema como outra pessoa. `session` passa a ser a do
+   * consultor (papel/escopo), então TODAS as telas filtram sozinhas — e a
+   * sessão do Supabase (o login de verdade) continua intacta.
+   * null = ninguém está impersonando.
+   */
+  sessionAdmin: SessionUser | null;
   ready: boolean;
 };
 
@@ -156,6 +166,7 @@ const state: State = {
   centralLeads: [],
   notificacoes: [],
   session: null,
+  sessionAdmin: null,
   ready: false,
 };
 // força recompilação completa quando types/seed mudam
@@ -405,6 +416,9 @@ export function initStore(): Promise<void> {
       const { data: userData } = await sb.auth.getUser();
       if (userData.user) {
         state.session = await buildSession(userData.user);
+        // se o admin recarregou a página no meio de um "entrar como consultor",
+        // volta pro modo de visualização em vez de cair na conta dele sem avisar
+        restaurarImpersonacao();
         await Promise.all([
           reloadVendedores(),
           reloadVendas(),
@@ -880,9 +894,96 @@ export function useTemaAtivo(): Tema {
 export function useSession(): SessionUser | null {
   return useSyncExternalStore(subscribe, () => state.session, () => state.session);
 }
+/** Sessão REAL do admin enquanto ele visualiza como consultor (null = não está). */
+export function useImpersonacao(): SessionUser | null {
+  return useSyncExternalStore(subscribe, () => state.sessionAdmin, () => state.sessionAdmin);
+}
 export function useReady(): boolean {
   return useSyncExternalStore(subscribe, () => state.ready, () => false);
 }
+
+// ============================================================
+// API — "Entrar como consultor" (visualização com a visão dele)
+// ============================================================
+
+/** Lê a impersonação salva nesta aba (sessionStorage). */
+function impersonaSalva(): SessionUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(K_IMPERSONA);
+    return raw ? (JSON.parse(raw) as SessionUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reaplica a impersonação depois de um F5, sem perder o vínculo com o admin. */
+function restaurarImpersonacao() {
+  const alvo = impersonaSalva();
+  if (!alvo || !state.session) return;
+  // só reaplica se quem está logado de verdade é admin (segurança em profundidade)
+  if (state.session.papel !== "admin") {
+    try {
+      window.sessionStorage.removeItem(K_IMPERSONA);
+    } catch {
+      /* ignora */
+    }
+    return;
+  }
+  state.sessionAdmin = state.session;
+  state.session = alvo;
+}
+
+export const impersonacaoApi = {
+  /**
+   * Passa a ver o sistema como o consultor. NÃO mexe na sessão do Supabase:
+   * o login continua sendo o do admin — o que muda é o papel/escopo que o app
+   * usa para montar as telas. A ação é validada e auditada no servidor.
+   */
+  async entrar(profileId: string): Promise<void> {
+    const r = await fetch("/api/admin/acesso", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ acao: "impersonar", profileId }),
+    });
+    const json = (await r.json()) as { sessao?: SessionUser; error?: string };
+    if (!r.ok || !json.sessao) throw new Error(json.error ?? "Não foi possível entrar como o consultor");
+
+    state.sessionAdmin = state.session;
+    state.session = json.sessao;
+    try {
+      window.sessionStorage.setItem(K_IMPERSONA, JSON.stringify(json.sessao));
+    } catch {
+      /* segue mesmo sem persistir */
+    }
+    notify();
+  },
+
+  /** Volta imediatamente para a conta de administrador. */
+  async sair(): Promise<void> {
+    const alvoId = state.session?.id;
+    state.session = state.sessionAdmin ?? state.session;
+    state.sessionAdmin = null;
+    try {
+      window.sessionStorage.removeItem(K_IMPERSONA);
+    } catch {
+      /* ignora */
+    }
+    notify();
+    // auditoria depois de já ter voltado — a volta nunca pode depender da rede
+    if (alvoId) {
+      try {
+        await fetch("/api/admin/acesso", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ acao: "encerrar-impersonacao", profileId: alvoId }),
+        });
+      } catch {
+        /* ignora */
+      }
+    }
+  },
+};
 
 // ============================================================
 // API — vendedores
@@ -1859,6 +1960,13 @@ export const sessionApi = {
   },
   async signOut() {
     const email = state.session?.email;
+    // sair do sistema encerra também qualquer "entrar como consultor" em aberto
+    state.sessionAdmin = null;
+    try {
+      window.sessionStorage.removeItem(K_IMPERSONA);
+    } catch {
+      /* ignora */
+    }
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
       await sb.auth.signOut();

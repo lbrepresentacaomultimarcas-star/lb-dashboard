@@ -12,6 +12,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Avatar } from "@/components/avatar";
 import { AvatarUploader } from "@/components/avatar-uploader";
 import { PremiumStage } from "@/components/premium-stage";
+import { AcessoConsultor } from "@/components/acesso-consultor";
 
 type FormState = {
   nome: string;
@@ -317,6 +318,11 @@ export default function VendedoresPage() {
             />
             Vendedor ativo
           </label>
+
+          {/* Gerenciamento de credenciais — só na EDIÇÃO e só para admin
+              (o próprio componente se esconde de quem não é admin). */}
+          {editing ? <AcessoConsultor vendedorId={editing.id} vendedorNome={editing.nome} /> : null}
+
           {erro && (
             <p className="rounded-md bg-[var(--color-danger)]/15 px-3 py-2 text-xs text-[var(--color-danger)]">
               {erro}
