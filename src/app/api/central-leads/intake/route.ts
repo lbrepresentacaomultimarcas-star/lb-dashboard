@@ -156,10 +156,38 @@ export async function POST(req: NextRequest) {
           .select("id")
           .single();
 
-        // 23505 = o external_id "wa:<telefone>" já pertence a um lead ENCERRADO
-        // (cliente antigo que voltou). Como não há lead ativo, ele merece um lead
-        // novo — reinsere com um sufixo único em vez de descartar o contato.
+        // 23505 = já existe lead com esse external_id. Duas situações bem diferentes:
+        //
+        //  (a) CORRIDA: duas entregas do mesmo webhook chegaram juntas e a outra
+        //      acabou de criar o lead. Nesse caso NÃO pode virar lead novo —
+        //      reconsultamos e tratamos como mensagem da conversa existente.
+        //  (b) CLIENTE QUE VOLTOU: o external_id pertence a um lead ENCERRADO
+        //      (perdido/convertido). Aí sim merece um lead novo, com sufixo único.
         if (error?.code === "23505") {
+          const { data: agora } = await db
+            .from("central_leads")
+            .select("id")
+            .eq("org_id", orgId)
+            .eq("telefone", lead.telefone)
+            .is("encerrado_em", null)
+            .order("recebido_em", { ascending: false })
+            .limit(1);
+
+          if (agora?.[0]) {
+            // (a) corrida — só registra a mensagem no lead que venceu
+            await db.from("central_leads_eventos").insert({
+              org_id: orgId,
+              central_lead_id: agora[0].id,
+              tipo: "observacao",
+              campo: lead.mensagemId ? "wamid" : null,
+              valor_novo: lead.mensagemId ?? null,
+              detalhe: "Nova mensagem no WhatsApp.",
+              autor_nome: "Meta · Click-to-WhatsApp",
+            });
+            continue;
+          }
+
+          // (b) cliente antigo que voltou
           ({ data: criado, error } = await db
             .from("central_leads")
             .insert(novoLead(`${lead.externalId}#${Date.now()}`))
