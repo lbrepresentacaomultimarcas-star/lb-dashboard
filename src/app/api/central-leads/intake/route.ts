@@ -64,7 +64,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = JSON.parse(raw) as WebhookBody;
-    const novos = extrairLeads(body);
+    // A Meta manda TODOS os webhooks do app para a mesma URL. Separamos aqui:
+    //   object "whatsapp_business_account" → mensagem de WhatsApp (Click-to-WhatsApp)
+    //   object "page" + campo "leadgen"    → formulário instantâneo (Lead Ads)
+    // Os dois caminhos devolvem o MESMO formato, então todo o resto (dedupe,
+    // gravação, aviso ao gestor) é reaproveitado sem duplicar nada.
+    const novos =
+      body.object === "page" ? await extrairLeadsAds(body) : extrairLeads(body);
 
     if (novos.length > 0) {
       const db = supabaseAdmin();
@@ -98,7 +104,7 @@ export async function POST(req: NextRequest) {
             .from("central_leads_eventos")
             .select("id")
             .eq("org_id", orgId)
-            .eq("campo", "wamid")
+            .eq("campo", lead.idCampo ?? "wamid")
             .eq("valor_novo", lead.mensagemId)
             .limit(1)
             .maybeSingle();
@@ -122,17 +128,17 @@ export async function POST(req: NextRequest) {
               valor_anterior: null,
               valor_novo: lead.produto,
               detalhe: `Interesse identificado automaticamente pela resposta do cliente: ${lead.produto}`,
-              autor_nome: "Meta · Click-to-WhatsApp",
+              autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
             });
           }
           await db.from("central_leads_eventos").insert({
             org_id: orgId,
             central_lead_id: existente.id,
             tipo: "observacao",
-            campo: lead.mensagemId ? "wamid" : null,
+            campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
             valor_novo: lead.mensagemId ?? null,
-            detalhe: `Nova mensagem no WhatsApp${lead.anuncio ? ` (anúncio: ${lead.anuncio})` : ""}.`,
-            autor_nome: "Meta · Click-to-WhatsApp",
+            detalhe: `Novo contato via ${lead.origem}${lead.anuncio ? ` (anúncio: ${lead.anuncio})` : ""}.`,
+            autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
           });
           continue;
         }
@@ -179,10 +185,10 @@ export async function POST(req: NextRequest) {
               org_id: orgId,
               central_lead_id: agora[0].id,
               tipo: "observacao",
-              campo: lead.mensagemId ? "wamid" : null,
+              campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
               valor_novo: lead.mensagemId ?? null,
-              detalhe: "Nova mensagem no WhatsApp.",
-              autor_nome: "Meta · Click-to-WhatsApp",
+              detalhe: `Novo contato via ${lead.origem}.`,
+              autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
             });
             continue;
           }
@@ -204,12 +210,12 @@ export async function POST(req: NextRequest) {
           org_id: orgId,
           central_lead_id: criado.id,
           tipo: "criado",
-          campo: lead.mensagemId ? "wamid" : null,
+          campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
           valor_novo: lead.mensagemId ?? null,
           detalhe: lead.anuncio
-            ? `Lead recebido do anúncio Click-to-WhatsApp: ${lead.anuncio}`
-            : "Lead recebido pelo WhatsApp",
-          autor_nome: "Meta · Click-to-WhatsApp",
+            ? `Lead recebido do anúncio: ${lead.anuncio}`
+            : `Lead recebido via ${lead.origem}`,
+          autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
         });
 
         // avisa quem distribui — a Central já escuta `notificacoes` em tempo real,
@@ -369,9 +375,17 @@ type WebhookBody = {
     changes?: {
       field?: string;
       value?: {
+        /* WhatsApp */
         contacts?: Contato[];
         messages?: Mensagem[];
         metadata?: { phone_number_id?: string; display_phone_number?: string };
+        /* Lead Ads (formulário instantâneo) */
+        leadgen_id?: string;
+        page_id?: string;
+        form_id?: string;
+        ad_id?: string;
+        adgroup_id?: string;
+        created_time?: number;
       };
     }[];
   }[];
@@ -384,8 +398,10 @@ type LeadExtraido = {
   origem: string;
   observacoes?: string;
   anuncio?: string;
-  /** wamid — usado pra não processar 2x a mesma mensagem (a Meta reenvia). */
+  /** wamid / leadgen_id — usado pra não processar 2x o mesmo evento (a Meta reenvia). */
   mensagemId?: string;
+  /** rótulo do id acima na auditoria: "wamid" (WhatsApp) ou "leadgen" (formulário). */
+  idCampo?: string;
   externalId: string;
   payload: unknown;
 };
@@ -427,6 +443,162 @@ function detectarInteresse(texto: string | undefined): string | undefined {
   for (const [re, produto] of regras) if (re.test(t)) return produto;
 
   return undefined;
+}
+
+/* ============================================================
+   LEAD ADS — formulário instantâneo (object "page", campo "leadgen")
+   ============================================================
+   O webhook manda só o ID do lead. Os dados ficam na Graph API e são buscados
+   com o token da PÁGINA (META_PAGE_TOKEN). Sem esse token não há como ler o
+   formulário — por isso o erro é explícito no log.                          */
+
+type CampoFormulario = { name?: string; values?: string[] };
+type LeadDaMeta = {
+  id?: string;
+  created_time?: string;
+  field_data?: CampoFormulario[];
+  ad_id?: string;
+  ad_name?: string;
+  adset_name?: string;
+  campaign_name?: string;
+  form_id?: string;
+  /** "fb" | "ig" — de onde o cliente preencheu. */
+  platform?: string;
+  error?: { message?: string };
+};
+
+const GRAPH = () => process.env.META_GRAPH_VERSION?.trim() || "v26.0";
+/** Base da Graph API. Só muda em teste automatizado; em produção fica a da Meta. */
+const GRAPH_BASE = () => process.env.META_GRAPH_BASE?.trim() || "https://graph.facebook.com";
+
+/** Busca os dados do formulário. Tenta os campos ricos; se a versão da API não
+ *  suportar algum, refaz com o conjunto mínimo garantido. */
+async function buscarLeadNaMeta(leadgenId: string, token: string): Promise<LeadDaMeta | null> {
+  const pedir = async (campos: string) => {
+    const url =
+      `${GRAPH_BASE()}/${GRAPH()}/${encodeURIComponent(leadgenId)}` +
+      `?fields=${campos}&access_token=${encodeURIComponent(token)}`;
+    const r = await fetch(url, { cache: "no-store" });
+    return (await r.json()) as LeadDaMeta;
+  };
+
+  try {
+    const rico = await pedir(
+      "field_data,created_time,ad_id,ad_name,adset_name,campaign_name,form_id,platform",
+    );
+    if (!rico.error) return rico;
+
+    const minimo = await pedir("field_data,created_time,ad_id,form_id");
+    if (!minimo.error) return minimo;
+
+    console.error(`[intake] Graph recusou o lead ${leadgenId}: ${minimo.error.message}`);
+    return null;
+  } catch (err) {
+    console.error("[intake] falha de rede ao buscar o lead na Meta:", err);
+    return null;
+  }
+}
+
+/** Normaliza o nome do campo do formulário (sem acento, minúsculo). */
+const chave = (s: string | undefined) =>
+  (s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+/** Converte o field_data da Meta nos campos do CRM. */
+function mapearFormulario(campos: CampoFormulario[]) {
+  const val = (...nomes: string[]) => {
+    for (const c of campos) {
+      const k = chave(c.name);
+      if (nomes.some((n) => k === n)) return c.values?.[0]?.trim() || undefined;
+    }
+    return undefined;
+  };
+
+  const nome =
+    val("full_name", "nome", "nome_completo") ||
+    [val("first_name", "primeiro_nome"), val("last_name", "sobrenome")].filter(Boolean).join(" ").trim() ||
+    undefined;
+
+  const telefone = val("phone_number", "telefone", "celular", "whatsapp");
+  const email = val("email", "e_mail");
+
+  // interesse: primeiro um campo que fale de interesse/produto; senão, deduz do texto
+  let interesse: string | undefined;
+  for (const c of campos) {
+    const k = chave(c.name);
+    if (k.includes("interesse") || k.includes("produto") || k.includes("procura")) {
+      interesse = c.values?.[0]?.trim() || undefined;
+      break;
+    }
+  }
+  const produto =
+    detectarInteresse(interesse) ?? // "Carro", "Moto"… quando a resposta casa
+    interesse ?? // resposta livre do formulário, preservada como veio
+    detectarInteresse(campos.map((c) => c.values?.join(" ") ?? "").join(" "));
+
+  return { nome, telefone, email, produto, interesseBruto: interesse };
+}
+
+/** Monta os leads a partir do webhook `leadgen`. */
+async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
+  const token = process.env.META_PAGE_TOKEN?.trim();
+  if (!token) {
+    console.error("[intake] META_PAGE_TOKEN não configurado — não dá para ler o formulário");
+    return [];
+  }
+
+  const out: LeadExtraido[] = [];
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== "leadgen") continue;
+      const leadgenId = change.value?.leadgen_id;
+      if (!leadgenId) continue;
+
+      const meta = await buscarLeadNaMeta(leadgenId, token);
+      if (!meta) continue;
+
+      const campos = meta.field_data ?? [];
+      const m = mapearFormulario(campos);
+
+      // sem telefone o consultor não consegue atender — registra assim mesmo,
+      // com um identificador do próprio lead, para nada se perder.
+      const telefone = m.telefone ?? `form:${leadgenId}`;
+
+      const rede =
+        meta.platform === "ig" ? "Instagram" : meta.platform === "fb" ? "Facebook" : "Formulário";
+      const origem = `Meta Ads · ${rede}`;
+
+      const partes: string[] = [];
+      if (m.interesseBruto) partes.push(`Interesse informado: ${m.interesseBruto}`);
+      if (m.email) partes.push(`E-mail: ${m.email}`);
+      // demais respostas do formulário, para o consultor não perder nada
+      for (const c of campos) {
+        const k = chave(c.name);
+        if (["full_name", "first_name", "last_name", "phone_number", "email"].includes(k)) continue;
+        if (k.includes("interesse") || k.includes("produto") || k.includes("procura")) continue;
+        const v = c.values?.join(", ")?.trim();
+        if (v) partes.push(`${c.name}: ${v}`);
+      }
+      if (meta.campaign_name) partes.push(`Campanha: ${meta.campaign_name}`);
+      if (meta.adset_name) partes.push(`Conjunto: ${meta.adset_name}`);
+      if (meta.ad_name) partes.push(`Anúncio: ${meta.ad_name}`);
+      if (meta.ad_id) partes.push(`ID do anúncio: ${meta.ad_id}`);
+      if (!m.telefone) partes.push("⚠️ O formulário não trouxe telefone.");
+
+      out.push({
+        nome: m.nome ?? "Lead do formulário",
+        telefone,
+        produto: m.produto,
+        origem,
+        observacoes: partes.join("\n") || undefined,
+        anuncio: meta.ad_name ?? meta.campaign_name ?? undefined,
+        mensagemId: leadgenId,
+        idCampo: "leadgen",
+        externalId: `lead:${leadgenId}`,
+        payload: { lead: meta, webhook: change.value, recebido_em: new Date().toISOString() },
+      });
+    }
+  }
+  return out;
 }
 
 /** Percorre o payload e monta os leads das mensagens RECEBIDAS. */
