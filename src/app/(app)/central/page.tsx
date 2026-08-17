@@ -99,19 +99,50 @@ function PrioridadeBadge({ p }: { p: Prioridade }) {
 
 type ImportRow = { nome: string; telefone?: string; produto?: string; origem?: string; prioridade?: Prioridade };
 
-/** Mapeia uma linha (objeto do xlsx) → ImportRow por nome de coluna. */
+/** Nome de coluna sem acento/pontuação, em minúsculo — o CSV da Meta vem com
+ *  cabeçalhos como "full_name", "phone_number" e a pergunta que você escreveu. */
+const chaveCol = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+/**
+ * Mapeia uma linha (objeto do xlsx/csv) → ImportRow.
+ *
+ * Entende tanto o formato "à mão" (nome/telefone/produto/origem) quanto o
+ * **CSV do formulário instantâneo da Meta**, que traz full_name, phone_number,
+ * email, a pergunta de interesse escrita por você e as colunas de campanha.
+ * Assim o arquivo baixado do Gerenciador de Leads entra direto, sem renomear
+ * coluna nenhuma.
+ */
 function mapObjRow(o: Record<string, unknown>): ImportRow {
-  const get = (...keys: string[]) => {
-    for (const k of Object.keys(o)) {
-      if (keys.includes(k.trim().toLowerCase())) return String(o[k] ?? "").trim();
-    }
-    return "";
-  };
+  const entradas = Object.keys(o).map((k) => [chaveCol(k), String(o[k] ?? "").trim()] as const);
+  const val = (...keys: string[]) => entradas.find(([k]) => keys.includes(k))?.[1] || "";
+  /** primeira coluna cujo nome CONTÉM algum dos termos (p/ perguntas livres) */
+  const valContem = (...termos: string[]) =>
+    entradas.find(([k, v]) => v && termos.some((t) => k.includes(t)))?.[1] || "";
+
+  const nome =
+    val("nome", "cliente", "name", "full_name", "nome_completo") ||
+    [val("first_name", "primeiro_nome"), val("last_name", "sobrenome")].filter(Boolean).join(" ").trim();
+
+  // origem: se a Meta informar a rede/campanha, monta uma origem legível
+  const plataforma = val("platform", "plataforma");
+  const campanha = val("campaign_name", "campanha");
+  const anuncio = val("ad_name", "anuncio");
+  const rede = plataforma === "ig" ? "Instagram" : plataforma === "fb" ? "Facebook" : "";
+  const origemMeta = rede || campanha || anuncio ? `Meta Ads${rede ? ` · ${rede}` : ""}` : "";
+
   return {
-    nome: get("nome", "cliente", "name"),
-    telefone: get("telefone", "fone", "celular", "whatsapp", "phone"),
-    produto: get("produto", "interesse", "produto de interesse"),
-    origem: get("origem", "fonte", "source"),
+    nome,
+    telefone: val("telefone", "fone", "celular", "whatsapp", "phone", "phone_number", "numero_de_telefone"),
+    produto:
+      val("produto", "interesse", "produto_de_interesse") ||
+      valContem("interesse", "produto", "procura"),
+    origem: val("origem", "fonte", "source") || origemMeta,
   };
 }
 
