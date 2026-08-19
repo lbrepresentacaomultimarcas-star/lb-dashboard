@@ -1,4 +1,4 @@
-import type { AuditLog, CentralLead, CentralLeadEvento, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, Meta, NivelRecuperacao, Notificacao, Papel, PerformanceSnapshot, Producao, Profile, Venda, Vendedor } from "../types";
+import type { AuditLog, CanalTentativa, CentralLead, CentralLeadEvento, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, MensagemPronta, Meta, NivelRecuperacao, Notificacao, Papel, PerformanceSnapshot, Producao, Profile, ResultadoTentativa, Tentativa, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
 import type { ConfigPerformance } from "../performance";
 import type { EstiloTema, StatusTema, Tema } from "../temas";
@@ -131,6 +131,11 @@ export type DbLead = {
   perdido_em?: string | null;
   recuperado_em?: string | null;
   recuperacao_removido_em?: string | null;
+  // Etapa "Não responde" (colunas aditivas — podem não existir antes da migration)
+  nao_responde_desde?: string | null;
+  tentativas_count?: number | null;
+  ultima_tentativa_em?: string | null;
+  ultima_tentativa_acao?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -152,6 +157,10 @@ export const leadFromDb = (r: DbLead): Lead => ({
   perdidoEm: r.perdido_em ?? undefined,
   recuperadoEm: r.recuperado_em ?? undefined,
   recuperacaoRemovidoEm: r.recuperacao_removido_em ?? undefined,
+  naoRespondeDesde: r.nao_responde_desde ?? undefined,
+  tentativas: r.tentativas_count ?? 0,
+  ultimaTentativaEm: r.ultima_tentativa_em ?? undefined,
+  ultimaTentativaAcao: r.ultima_tentativa_acao ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
@@ -171,6 +180,9 @@ export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
   if (l.perdidoEm !== undefined) out.perdido_em = l.perdidoEm || null;
   if (l.recuperadoEm !== undefined) out.recuperado_em = l.recuperadoEm || null;
   if (l.recuperacaoRemovidoEm !== undefined) out.recuperacao_removido_em = l.recuperacaoRemovidoEm || null;
+  if (l.naoRespondeDesde !== undefined) out.nao_responde_desde = l.naoRespondeDesde || null;
+  // tentativas_count / ultima_tentativa_* são mantidos pelo GATILHO do banco
+  // a cada insert em lead_tentativas — o app nunca escreve neles.
   return out;
 };
 
@@ -670,5 +682,88 @@ export const temaToDb = (t: Partial<Tema>): Partial<DbTema> => {
   if (t.estilo !== undefined) out.estilo = t.estilo;
   if (t.dataInicio !== undefined) out.data_inicio = t.dataInicio || null;
   if (t.dataFim !== undefined) out.data_fim = t.dataFim || null;
+  return out;
+};
+
+// ============================================================
+// Tentativas de recuperação + Mensagens Prontas
+// ============================================================
+export type DbTentativa = {
+  id: string;
+  lead_id: string;
+  vendedor_id: string | null;
+  usuario_email: string | null;
+  canal: CanalTentativa;
+  acao: string;
+  mensagem_id: string | null;
+  mensagem_titulo: string | null;
+  categoria: string | null;
+  resultado: ResultadoTentativa;
+  observacao: string | null;
+  automatica: boolean | null;
+  criado_em: string;
+};
+
+export const tentativaFromDb = (r: DbTentativa): Tentativa => ({
+  id: r.id,
+  leadId: r.lead_id,
+  vendedorId: r.vendedor_id ?? undefined,
+  usuarioEmail: r.usuario_email ?? undefined,
+  canal: r.canal,
+  acao: r.acao,
+  mensagemId: r.mensagem_id ?? undefined,
+  mensagemTitulo: r.mensagem_titulo ?? undefined,
+  categoria: r.categoria ?? undefined,
+  resultado: r.resultado,
+  observacao: r.observacao ?? undefined,
+  automatica: r.automatica ?? false,
+  criadoEm: r.criado_em,
+});
+
+export const tentativaToDb = (t: Partial<Tentativa>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  if (t.leadId !== undefined) out.lead_id = t.leadId;
+  if (t.vendedorId !== undefined) out.vendedor_id = t.vendedorId || null;
+  if (t.usuarioEmail !== undefined) out.usuario_email = t.usuarioEmail || null;
+  if (t.canal !== undefined) out.canal = t.canal;
+  if (t.acao !== undefined) out.acao = t.acao;
+  if (t.mensagemId !== undefined) out.mensagem_id = t.mensagemId || null;
+  if (t.mensagemTitulo !== undefined) out.mensagem_titulo = t.mensagemTitulo || null;
+  if (t.categoria !== undefined) out.categoria = t.categoria || null;
+  if (t.resultado !== undefined) out.resultado = t.resultado;
+  if (t.observacao !== undefined) out.observacao = t.observacao || null;
+  if (t.automatica !== undefined) out.automatica = t.automatica;
+  return out;
+};
+
+export type DbMensagemPronta = {
+  id: string;
+  titulo: string;
+  categoria: string;
+  texto: string;
+  ordem: number | null;
+  ativo: boolean | null;
+  criado_em?: string | null;
+  atualizado_em?: string | null;
+};
+
+export const mensagemFromDb = (r: DbMensagemPronta): MensagemPronta => ({
+  id: r.id,
+  titulo: r.titulo,
+  categoria: r.categoria,
+  texto: r.texto,
+  ordem: r.ordem ?? 0,
+  ativo: r.ativo ?? true,
+  criadoEm: r.criado_em ?? undefined,
+  atualizadoEm: r.atualizado_em ?? undefined,
+});
+
+export const mensagemToDb = (m: Partial<MensagemPronta>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  if (m.titulo !== undefined) out.titulo = m.titulo;
+  if (m.categoria !== undefined) out.categoria = m.categoria;
+  if (m.texto !== undefined) out.texto = m.texto;
+  if (m.ordem !== undefined) out.ordem = m.ordem;
+  if (m.ativo !== undefined) out.ativo = m.ativo;
   return out;
 };

@@ -44,6 +44,7 @@ export type Oportunidade = {
 export const LIMITE_DIAS: Record<LeadStatus, number | null> = {
   oportunidade: 5,
   primeiro_contato: 3,
+  nao_responde: 3, // silêncio de 3+ dias já pede uma nova tentativa
   reuniao_agendada: 3,
   reuniao: 4, // "Fazer e passar proposta"
   acompanhamento: 7,
@@ -58,6 +59,7 @@ const ETAPA_PRIORIDADE: Record<LeadStatus, number> = {
   reuniao_agendada: 3, // Reunião agendada
   primeiro_contato: 4, // Primeiro contato
   oportunidade: 5, // Oportunidade
+  nao_responde: 5.5, // Não responde (entra antes dos perdidos)
   perdido: 6, // Perdidos (recuperação)
   fechamento: 99, // não entra na Central
 };

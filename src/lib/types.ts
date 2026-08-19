@@ -37,6 +37,7 @@ export type Cliente = {
 export type LeadStatus =
   | "oportunidade"
   | "primeiro_contato"
+  | "nao_responde"
   | "reuniao_agendada"
   | "reuniao"
   | "acompanhamento"
@@ -92,6 +93,15 @@ export type Lead = {
   recuperadoEm?: string;
   /** Momento em que foi removido da Central de Recuperação (banco). null = ainda no banco. */
   recuperacaoRemovidoEm?: string;
+  // ---- Etapa "Não responde" (todos opcionais/aditivos) ----
+  /** Momento em que o lead ENTROU na etapa "Não responde". */
+  naoRespondeDesde?: string;
+  /** Quantas tentativas de recuperação já foram registradas. */
+  tentativas?: number;
+  /** Data/hora da última tentativa registrada. */
+  ultimaTentativaEm?: string;
+  /** Resumo da última ação feita (ex.: "WhatsApp · Última tentativa"). */
+  ultimaTentativaAcao?: string;
 };
 
 export type AuditLog = {
@@ -208,6 +218,7 @@ export const LEAD_STATUS_INFO: Record<
 > = {
   oportunidade: { label: "Oportunidade", tone: "brand" },
   primeiro_contato: { label: "Primeiro contato", tone: "neutral" },
+  nao_responde: { label: "Não responde", tone: "warn" },
   reuniao_agendada: { label: "Reunião agendada", tone: "warn" },
   reuniao: { label: "Fazer e passar proposta", tone: "warn" },
   acompanhamento: { label: "Acompanhamento p/ fechar", tone: "warn" },
@@ -223,6 +234,7 @@ export const LEAD_STATUS_INFO: Record<
 export const STATUS_ORDER: LeadStatus[] = [
   "oportunidade",
   "primeiro_contato",
+  "nao_responde",
   "reuniao",
   "reuniao_agendada",
   "acompanhamento",
@@ -396,3 +408,161 @@ export const DASHBOARD_CONFIG_PADRAO: DashboardConfig = {
   metaReunioes: 5,
   metaVendas: 1,
 };
+
+// ============================================================
+// Recuperação na etapa "Não responde" — tentativas + mensagens prontas
+// Módulo ADITIVO: nada aqui interfere no funil, no Perdido ou na
+// Central de Recuperação (que continua tratando só os leads perdidos).
+// ============================================================
+
+export type CanalTentativa = "whatsapp" | "ligacao" | "presencial" | "email" | "outro";
+
+export const CANAL_INFO: Record<CanalTentativa, { label: string }> = {
+  whatsapp: { label: "WhatsApp" },
+  ligacao: { label: "Ligação" },
+  presencial: { label: "Presencial" },
+  email: { label: "E-mail" },
+  outro: { label: "Outro" },
+};
+
+export type ResultadoTentativa =
+  | "sem_resposta"
+  | "respondeu"
+  | "agendou"
+  | "nao_quer"
+  | "outro";
+
+export const RESULTADO_INFO: Record<
+  ResultadoTentativa,
+  { label: string; tone: "neutral" | "success" | "warn" | "danger" }
+> = {
+  sem_resposta: { label: "Sem resposta", tone: "neutral" },
+  respondeu: { label: "Respondeu", tone: "success" },
+  agendou: { label: "Agendou", tone: "success" },
+  nao_quer: { label: "Não tem interesse", tone: "danger" },
+  outro: { label: "Outro", tone: "warn" },
+};
+
+/** Uma tentativa de recuperação registrada no histórico do lead. */
+export type Tentativa = {
+  id: string;
+  leadId: string;
+  vendedorId?: string;
+  usuarioEmail?: string;
+  canal: CanalTentativa;
+  /** Resumo do que foi feito. */
+  acao: string;
+  mensagemId?: string;
+  mensagemTitulo?: string;
+  categoria?: CategoriaMensagem | string;
+  resultado: ResultadoTentativa;
+  observacao?: string;
+  /** true = registrada pelo próprio sistema (ex.: ao enviar pelo WhatsApp). */
+  automatica?: boolean;
+  criadoEm: string;
+};
+
+/** Categorias de argumento da biblioteca de mensagens. */
+export type CategoriaMensagem =
+  | "chamar_atencao"
+  | "quebra_objecao"
+  | "curiosidade"
+  | "urgencia"
+  | "nova_abordagem"
+  | "visualizou"
+  | "parou_responder"
+  | "ultima_tentativa"
+  | "reativacao";
+
+export const CATEGORIA_MENSAGEM_INFO: Record<
+  CategoriaMensagem,
+  { label: string; descricao: string; cor: string; emoji: string }
+> = {
+  chamar_atencao: {
+    label: "Chamar atenção",
+    descricao: "Reabre a conversa de forma leve e direta.",
+    cor: "#38bdf8",
+    emoji: "👋",
+  },
+  quebra_objecao: {
+    label: "Quebra de objeção",
+    descricao: "Desarma o que está travando a decisão.",
+    cor: "#a78bfa",
+    emoji: "🧩",
+  },
+  curiosidade: {
+    label: "Criar curiosidade",
+    descricao: "Dá um motivo novo para o cliente querer responder.",
+    cor: "#f472b6",
+    emoji: "✨",
+  },
+  urgencia: {
+    label: "Criar urgência",
+    descricao: "Mostra que existe um prazo real.",
+    cor: "#fb923c",
+    emoji: "⏳",
+  },
+  nova_abordagem: {
+    label: "Nova abordagem",
+    descricao: "Recomeça a conversa por outro ângulo.",
+    cor: "#34d399",
+    emoji: "🔄",
+  },
+  visualizou: {
+    label: "Visualizou e não respondeu",
+    descricao: "Para quem leu a mensagem e ficou em silêncio.",
+    cor: "#22d3ee",
+    emoji: "👀",
+  },
+  parou_responder: {
+    label: "Parou de responder",
+    descricao: "Para quem conversava e sumiu no meio.",
+    cor: "#facc15",
+    emoji: "🔇",
+  },
+  ultima_tentativa: {
+    label: "Última tentativa",
+    descricao: "Encerramento educado — costuma provocar resposta.",
+    cor: "#f87171",
+    emoji: "🚪",
+  },
+  reativacao: {
+    label: "Reativação",
+    descricao: "Retoma um contato antigo com um motivo novo.",
+    cor: "#c084fc",
+    emoji: "♻️",
+  },
+};
+
+/** Ordem em que as categorias aparecem para o consultor. */
+export const CATEGORIA_ORDEM: CategoriaMensagem[] = [
+  "chamar_atencao",
+  "visualizou",
+  "parou_responder",
+  "quebra_objecao",
+  "curiosidade",
+  "urgencia",
+  "nova_abordagem",
+  "reativacao",
+  "ultima_tentativa",
+];
+
+/** Modelo de mensagem gerenciado pelo admin (sem precisar de código). */
+export type MensagemPronta = {
+  id: string;
+  titulo: string;
+  categoria: CategoriaMensagem | string;
+  texto: string;
+  ordem: number;
+  ativo: boolean;
+  criadoEm?: string;
+  atualizadoEm?: string;
+};
+
+/** Variáveis que o sistema troca automaticamente no texto da mensagem. */
+export const VARIAVEIS_MENSAGEM = [
+  { chave: "{{nome}}", descricao: "Primeiro nome do cliente" },
+  { chave: "{{consultor}}", descricao: "Nome do consultor responsável" },
+  { chave: "{{produto}}", descricao: "Tipo do negócio (Imóvel, Carro…)" },
+  { chave: "{{empresa}}", descricao: "Nome da empresa" },
+] as const;

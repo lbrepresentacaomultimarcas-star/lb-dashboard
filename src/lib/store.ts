@@ -52,6 +52,12 @@ import {
   type DbTema,
   type DbVenda,
   type DbVendedor,
+  mensagemFromDb,
+  mensagemToDb,
+  tentativaFromDb,
+  tentativaToDb,
+  type DbMensagemPronta,
+  type DbTentativa,
 } from "./repo/mappers";
 import type {
   AuditLog,
@@ -65,6 +71,7 @@ import type {
   Feriado,
   Lead,
   LeadStatus,
+  MensagemPronta,
   Meta,
   NivelRecuperacao,
   Notificacao,
@@ -72,6 +79,7 @@ import type {
   Prioridade,
   Profile,
   SessionUser,
+  Tentativa,
   Venda,
   Vendedor,
 } from "./types";
@@ -104,6 +112,8 @@ const K_CONFIG_PROD = "lb:config_producao";
 const K_PERF_CONFIG = "lb:performance_config";
 const K_PERF_HIST = "lb:performance_historico";
 const K_TEMAS = "lb:temas";
+const K_MENSAGENS = "lb:mensagens_prontas";
+const K_TENTATIVAS = "lb:tentativas";
 const K_SESSION = "lb:session";
 /** "Entrar como consultor" — sessionStorage (vale só nesta aba e some ao fechá-la). */
 const K_IMPERSONA = "lb:impersonando";
@@ -124,6 +134,8 @@ type State = {
   performanceHistorico: PerformanceSnapshot[];
   temas: Tema[];
   temaAtivo: Tema;
+  /** Biblioteca de Mensagens Prontas da etapa "Não responde" (admin gerencia). */
+  mensagensProntas: MensagemPronta[];
   audit: AuditLog[];
   /** Contemplações oficiais (Resultados LB) — mesma mecânica dos demais. */
   resultados: Contemplacao[];
@@ -158,6 +170,7 @@ const state: State = {
   performanceConfig: CONFIG_PERFORMANCE_PADRAO,
   performanceHistorico: [],
   temas: [],
+  mensagensProntas: [],
   temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
   resultados: [],
@@ -431,6 +444,7 @@ export function initStore(): Promise<void> {
           reloadPerformanceConfig(),
           reloadPerformanceHistorico(),
           reloadTemas(),
+          reloadMensagensProntas(),
           reloadAudit(),
           reloadResultados(),
           reloadRoster(),
@@ -692,6 +706,21 @@ async function reloadTemas() {
   }
 }
 
+async function reloadMensagensProntas() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb
+    .from("mensagens_prontas")
+    .select("*")
+    .order("categoria", { ascending: true })
+    .order("ordem", { ascending: true });
+  // a tabela é nova: antes da migration o erro é esperado e simplesmente
+  // deixa a biblioteca vazia — nenhuma tela quebra por causa disso.
+  if (!error && data) {
+    state.mensagensProntas = (data as DbMensagemPronta[]).map(mensagemFromDb);
+    notify();
+  }
+}
+
 /**
  * Re-busca todos os datasets do store em paralelo. Usado pelo botão
  * "Atualizar Dados" e pelo auto-refresh. Sem efeito em modo demo
@@ -711,6 +740,7 @@ export async function reloadAllData(): Promise<void> {
     reloadPerformanceConfig(),
     reloadPerformanceHistorico(),
     reloadTemas(),
+    reloadMensagensProntas(),
     reloadAudit(),
     reloadResultados(),
     reloadRoster(),
@@ -884,6 +914,13 @@ export function usePerformanceConfig(): ConfigPerformance {
 }
 export function usePerformanceHistorico(): PerformanceSnapshot[] {
   return useSyncExternalStore(subscribe, () => state.performanceHistorico, () => state.performanceHistorico);
+}
+export function useMensagensProntas(): MensagemPronta[] {
+  return useSyncExternalStore(
+    subscribe,
+    () => state.mensagensProntas,
+    () => state.mensagensProntas,
+  );
 }
 export function useTemas(): Tema[] {
   return useSyncExternalStore(subscribe, () => state.temas, () => state.temas);
@@ -1179,6 +1216,155 @@ export const leadsApi = {
     if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
     notify();
     void logAudit({ acao: "remover", entidade: "lead", entidadeId: id, detalhes: nome });
+  },
+};
+
+// ============================================================
+// API — Etapa "Não responde": tentativas + biblioteca de mensagens
+// Módulo ADITIVO. Não altera leadsApi, nem o funil, nem o "Perdido".
+// Os contadores do lead (tentativas / última tentativa) são mantidos pelo
+// GATILHO do banco a cada tentativa registrada — o app só insere a linha.
+// ============================================================
+export const tentativasApi = {
+  /** Histórico completo de tentativas de um lead (mais recente primeiro). */
+  async listar(leadId: string): Promise<Tentativa[]> {
+    if (!supabaseEnabled) {
+      return lsRead<Tentativa[]>(`${K_TENTATIVAS}:${leadId}`, []);
+    }
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from("lead_tentativas")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("criado_em", { ascending: false });
+    if (error) throw error;
+    return (data as DbTentativa[]).map(tentativaFromDb);
+  },
+
+  /** Registra uma tentativa (manual ou disparada pelo envio no WhatsApp). */
+  async registrar(
+    lead: Lead,
+    input: {
+      canal: Tentativa["canal"];
+      acao: string;
+      resultado?: Tentativa["resultado"];
+      observacao?: string;
+      mensagemId?: string;
+      mensagemTitulo?: string;
+      categoria?: string;
+      automatica?: boolean;
+    },
+  ): Promise<Tentativa> {
+    const base = {
+      leadId: lead.id,
+      vendedorId: lead.vendedorId,
+      usuarioEmail: state.session?.email,
+      canal: input.canal,
+      acao: input.acao,
+      resultado: input.resultado ?? "sem_resposta",
+      observacao: input.observacao,
+      mensagemId: input.mensagemId,
+      mensagemTitulo: input.mensagemTitulo,
+      categoria: input.categoria,
+      automatica: input.automatica ?? false,
+    } satisfies Omit<Tentativa, "id" | "criadoEm">;
+
+    let criada: Tentativa;
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from("lead_tentativas")
+        .insert(tentativaToDb(base))
+        .select()
+        .single();
+      if (error) throw error;
+      criada = tentativaFromDb(data as DbTentativa);
+    } else {
+      criada = { ...base, id: uid(), criadoEm: new Date().toISOString() };
+      const chave = `${K_TENTATIVAS}:${lead.id}`;
+      lsWrite(chave, [criada, ...lsRead<Tentativa[]>(chave, [])]);
+    }
+
+    // espelha os contadores no lead que já está em memória, para o card
+    // atualizar na hora (o banco já gravou pelo gatilho).
+    state.leads = state.leads.map((l) =>
+      l.id === lead.id
+        ? {
+            ...l,
+            tentativas: (l.tentativas ?? 0) + 1,
+            ultimaTentativaEm: criada.criadoEm,
+            ultimaTentativaAcao: criada.acao,
+          }
+        : l,
+    );
+    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    notify();
+
+    void logAudit({
+      acao: "tentativa",
+      entidade: "lead",
+      entidadeId: lead.id,
+      detalhes: `Recuperação: "${lead.nome}" · ${input.acao}`,
+    });
+    return criada;
+  },
+};
+
+export const mensagensProntasApi = {
+  async add(input: Omit<MensagemPronta, "id">): Promise<MensagemPronta> {
+    let criada: MensagemPronta;
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from("mensagens_prontas")
+        .insert(mensagemToDb(input))
+        .select()
+        .single();
+      if (error) throw error;
+      criada = mensagemFromDb(data as DbMensagemPronta);
+    } else {
+      criada = { ...input, id: uid() };
+    }
+    state.mensagensProntas = [...state.mensagensProntas, criada];
+    if (!supabaseEnabled) lsWrite(K_MENSAGENS, state.mensagensProntas);
+    notify();
+    void logAudit({ acao: "criar", entidade: "mensagem_pronta", detalhes: input.titulo });
+    return criada;
+  },
+
+  async update(id: string, patch: Partial<MensagemPronta>) {
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("mensagens_prontas")
+        .update({ ...mensagemToDb(patch), atualizado_em: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    }
+    state.mensagensProntas = state.mensagensProntas.map((m) =>
+      m.id === id ? { ...m, ...patch } : m,
+    );
+    if (!supabaseEnabled) lsWrite(K_MENSAGENS, state.mensagensProntas);
+    notify();
+    void logAudit({
+      acao: "editar",
+      entidade: "mensagem_pronta",
+      entidadeId: id,
+      detalhes: patch.ativo === undefined ? patch.titulo : patch.ativo ? "ativada" : "desativada",
+    });
+  },
+
+  async remove(id: string) {
+    const titulo = state.mensagensProntas.find((m) => m.id === id)?.titulo;
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from("mensagens_prontas").delete().eq("id", id);
+      if (error) throw error;
+    }
+    state.mensagensProntas = state.mensagensProntas.filter((m) => m.id !== id);
+    if (!supabaseEnabled) lsWrite(K_MENSAGENS, state.mensagensProntas);
+    notify();
+    void logAudit({ acao: "remover", entidade: "mensagem_pronta", entidadeId: id, detalhes: titulo });
   },
 };
 

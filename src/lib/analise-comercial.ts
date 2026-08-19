@@ -45,6 +45,7 @@ export type EtapaFunil = {
 /** Cor própria de cada etapa (identidade LB: azul → dourado → verde;
  *  vermelho reservado para perdidos/alertas). */
 export const CORES_ETAPA: Record<LeadStatus, string> = {
+  nao_responde: "#94a3b8",
   oportunidade: "#60a5fa",
   primeiro_contato: "#6366f1",
   reuniao: "#8b5cf6", // Fazer e passar proposta

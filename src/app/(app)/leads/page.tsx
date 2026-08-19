@@ -18,6 +18,7 @@ import {
   History,
   Home,
   MessageCircle,
+  MessageCircleOff,
   MoreVertical,
   Mountain,
   Pencil,
@@ -60,6 +61,7 @@ import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { TimelineLead } from "@/components/leads/timeline-lead";
+import { PainelNaoResponde } from "@/components/leads/nao-responde";
 
 type StageTone = {
   color: string;
@@ -68,6 +70,7 @@ type StageTone = {
 const STATUS_TONE: Record<LeadStatus, StageTone> = {
   oportunidade: { color: "#6366f1", icon: Sparkles },
   primeiro_contato: { color: "#0ea5e9", icon: Phone },
+  nao_responde: { color: "#94a3b8", icon: MessageCircleOff },
   reuniao_agendada: { color: "#06b6d4", icon: CalendarClock },
   reuniao: { color: "#f59e0b", icon: Users },
   acompanhamento: { color: "#f97316", icon: Activity },
@@ -295,6 +298,7 @@ export default function LeadsPage() {
     const grupos: Record<LeadStatus, Lead[]> = {
       oportunidade: [],
       primeiro_contato: [],
+      nao_responde: [],
       reuniao_agendada: [],
       reuniao: [],
       acompanhamento: [],
@@ -1027,6 +1031,11 @@ export default function LeadsPage() {
                                     </span>
                                   )}
                                 </div>
+
+                                {/* área de recuperação — só na etapa "Não responde" */}
+                                {l.status === "nao_responde" && (
+                                  <PainelNaoResponde lead={l} consultorNome={vendedor?.nome ?? ""} />
+                                )}
 
                                 {/* rodapé: ações + valor */}
                                 <div className="relative mt-2.5 flex items-center justify-between gap-2 border-t border-white/10 pt-2.5">
