@@ -145,11 +145,36 @@ begin
 end $rt$;
 
 -- 8) SEED — biblioteca inicial de mensagens ----------------------------------
---    Só entra se a org ainda não tem nenhuma mensagem cadastrada (não duplica
---    se você rodar o script de novo, e não sobrescreve o que você editar).
+--    ATENÇÃO: no SQL Editor não existe usuário logado, então current_org_id()
+--    vem VAZIO — por isso o dono (org_id) é descoberto a partir dos dados que
+--    já existem (vendedores → leads → profiles). Só insere se a empresa ainda
+--    não tem nenhuma mensagem: rodar de novo não duplica nem sobrescreve.
 --    Variáveis disponíveis: {{nome}} {{consultor}} {{produto}} {{empresa}}
-insert into public.mensagens_prontas (titulo, categoria, texto, ordem)
-select * from (values
+do $seed$
+declare v_org uuid;
+begin
+  select coalesce(
+    public.current_org_id(),
+    (select org_id from public.vendedores where org_id is not null
+      group by org_id order by count(*) desc limit 1),
+    (select org_id from public.leads where org_id is not null
+      group by org_id order by count(*) desc limit 1),
+    (select vendedor_id from public.profiles where vendedor_id is not null limit 1)
+  ) into v_org;
+
+  if v_org is null then
+    raise notice 'Nao consegui identificar a empresa (org_id): as tabelas foram criadas, mas as mensagens de exemplo NAO entraram. Cadastre-as em Administrativo > Mensagens Prontas.';
+    return;
+  end if;
+
+  if exists (select 1 from public.mensagens_prontas where org_id = v_org) then
+    raise notice 'A biblioteca ja tem mensagens — nada foi inserido.';
+    return;
+  end if;
+
+  insert into public.mensagens_prontas (org_id, titulo, categoria, texto, ordem)
+  select v_org, s.titulo, s.categoria, s.texto, s.ordem
+    from (values
   -- Chamar atenção
   ('Retomada direta','chamar_atencao',
    'Oi {{nome}}, aqui é o {{consultor}} da {{empresa}}. Passando rapidinho pra saber se você ainda tem interesse no {{produto}}. Posso te atualizar em 1 minuto?', 1),
@@ -199,10 +224,10 @@ select * from (values
    'Oi {{nome}}! Lembrei de você: surgiu uma condição nova no {{produto}}. Vale a pena dar uma olhada?', 1),
   ('Cliente antigo','reativacao',
    '{{nome}}, faz um tempo que conversamos. Mudou alguma coisa aí? Se hoje fizer sentido, eu refaço a sua simulação com os valores atuais.', 2)
-) as s(titulo, categoria, texto, ordem)
-where not exists (
-  select 1 from public.mensagens_prontas where org_id = public.current_org_id()
-);
+) as s(titulo, categoria, texto, ordem);
+
+  raise notice 'Biblioteca criada com % mensagens.', (select count(*) from public.mensagens_prontas where org_id = v_org);
+end $seed$;
 
 -- ============================================================================
 -- VERIFICAÇÃO (opcional)
