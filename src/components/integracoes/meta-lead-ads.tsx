@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Copy,
   ExternalLink,
   FileText,
   Link2,
@@ -63,6 +64,8 @@ type Status = {
   formularios: Formulario[];
   appsNaPagina: { id: string; nome: string | null; campos: string[] }[] | null;
   appIdDoCrm: string | null;
+  webhookUrl: string;
+  redirectUri: string;
   leadsRecebidos: number;
   ultimoLead: { nome: string; telefone: string; recebido_em: string } | null;
 };
@@ -81,6 +84,34 @@ const ESCOPO_LABEL: Record<string, string> = {
 
 function dataBR(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+}
+
+function LinhaCopiavel({ rotulo, valor }: { rotulo: string; valor: string }) {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+        {rotulo}
+      </p>
+      <div className="mt-1 flex items-center gap-1.5">
+        <code className="min-w-0 flex-1 truncate rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 font-mono text-[11px]">
+          {valor}
+        </code>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(valor);
+            setCopiado(true);
+            notify.success("Copiado");
+          }}
+          className="shrink-0 rounded-md border border-[var(--color-border)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
+          aria-label={`Copiar ${rotulo}`}
+        >
+          {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Passo({
@@ -316,6 +347,25 @@ export function MetaLeadAdsCard() {
               </div>
             )}
           </Passo>
+
+          {!conectado && (
+            <details className="rounded-xl border border-[var(--color-border)] p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-[var(--color-text-dim)]">
+                Primeira vez? Abra aqui os dados para cadastrar no app da Meta
+              </summary>
+              <div className="mt-3 space-y-2.5">
+                <p className="text-[11px] text-[var(--color-text-dim)]">
+                  No <strong>Meta Developers</strong>, dentro do app{" "}
+                  {s.appIdDoCrm ? <code className="font-mono">{s.appIdDoCrm}</code> : "do LB CRM"},
+                  adicione o produto <strong>Login do Facebook</strong> e cole a URL abaixo em
+                  &quot;URIs de redirecionamento do OAuth válidos&quot;. É a única configuração
+                  manual — depois dela nunca mais.
+                </p>
+                <LinhaCopiavel rotulo="URI de redirecionamento do OAuth" valor={s.redirectUri} />
+                <LinhaCopiavel rotulo="URL do webhook (já cadastrada)" valor={s.webhookUrl} />
+              </div>
+            </details>
+          )}
 
           {/* PASSO 2 — escolher a Página */}
           <Passo n={2} titulo="Escolher a Página do Facebook" feito={temPagina} ativo={conectado && !temPagina}>
