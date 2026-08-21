@@ -1,0 +1,302 @@
+import "server-only";
+
+import crypto from "node:crypto";
+
+/**
+ * Conversa com a Graph API da Meta.
+ *
+ * Só o servidor usa este arquivo. Nenhuma função devolve token para a tela —
+ * quem guarda os tokens é o banco (cifrado) e quem os usa é o backend.
+ *
+ * Compartilha as mesmas variáveis de ambiente do webhook que já existe
+ * (META_GRAPH_VERSION / META_GRAPH_BASE), para versão e host serem únicos.
+ */
+
+export const GRAPH_VERSION = () => process.env.META_GRAPH_VERSION?.trim() || "v26.0";
+export const GRAPH_BASE = () => process.env.META_GRAPH_BASE?.trim() || "https://graph.facebook.com";
+const g = (caminho: string) => `${GRAPH_BASE()}/${GRAPH_VERSION()}${caminho}`;
+
+/** Permissões pedidas na autorização. Cada uma tem um motivo — nada a mais. */
+export const ESCOPOS = [
+  "pages_show_list", // listar as Páginas que você administra
+  "pages_read_engagement", // ler nome/categoria/foto da Página
+  "pages_manage_metadata", // inscrever o LB CRM nos leads da Página
+  "leads_retrieval", // ler os dados do formulário preenchido
+  "business_management", // identificar o portfólio/Business
+] as const;
+
+export function appId(): string {
+  const v = process.env.META_APP_ID?.trim();
+  if (!v) throw new Error("META_APP_ID não configurado no ambiente.");
+  return v;
+}
+
+function appSecret(): string {
+  const v = process.env.META_APP_SECRET?.trim();
+  if (!v) throw new Error("META_APP_SECRET não configurado no ambiente.");
+  return v;
+}
+
+/** true quando dá para tentar conectar (usado pela tela de status). */
+export function credenciaisPresentes(): { appId: boolean; appSecret: boolean } {
+  return {
+    appId: !!process.env.META_APP_ID?.trim(),
+    appSecret: !!process.env.META_APP_SECRET?.trim(),
+  };
+}
+
+/**
+ * Prova de que a chamada vem mesmo do nosso app. A Meta exige quando a opção
+ * "Exigir chave secreta do app" está ligada — e é boa prática sempre enviar.
+ */
+function appsecretProof(token: string): string {
+  return crypto.createHmac("sha256", appSecret()).update(token).digest("hex");
+}
+
+export class ErroMeta extends Error {
+  constructor(
+    message: string,
+    readonly detalhe?: { code?: number; subcode?: number; type?: string },
+  ) {
+    super(message);
+    this.name = "ErroMeta";
+  }
+}
+
+type RespostaErro = {
+  error?: { message?: string; code?: number; error_subcode?: number; type?: string };
+};
+
+/** Chamada autenticada. Lança ErroMeta com a mensagem que a própria Meta deu. */
+async function chamar<T>(
+  caminho: string,
+  opts: { token: string; metodo?: "GET" | "POST" | "DELETE"; params?: Record<string, string> },
+): Promise<T> {
+  const url = new URL(g(caminho));
+  url.searchParams.set("access_token", opts.token);
+  url.searchParams.set("appsecret_proof", appsecretProof(opts.token));
+  for (const [k, v] of Object.entries(opts.params ?? {})) url.searchParams.set(k, v);
+
+  const r = await fetch(url, { method: opts.metodo ?? "GET", cache: "no-store" });
+  const json = (await r.json().catch(() => ({}))) as T & RespostaErro;
+
+  if (!r.ok || json.error) {
+    const e = json.error;
+    throw new ErroMeta(e?.message ?? `A Meta recusou a chamada (HTTP ${r.status}).`, {
+      code: e?.code,
+      subcode: e?.error_subcode,
+      type: e?.type,
+    });
+  }
+  return json as T;
+}
+
+/* --------------------------------- OAuth --------------------------------- */
+
+/** URL da tela oficial de autorização da Meta. */
+export function urlAutorizacao(redirectUri: string, state: string): string {
+  const u = new URL(`https://www.facebook.com/${GRAPH_VERSION()}/dialog/oauth`);
+  u.searchParams.set("client_id", appId());
+  u.searchParams.set("redirect_uri", redirectUri);
+  u.searchParams.set("state", state);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", ESCOPOS.join(","));
+  return u.toString();
+}
+
+/** Troca o `code` da autorização por um token de usuário (curta duração). */
+export async function trocarCodePorToken(code: string, redirectUri: string): Promise<string> {
+  const u = new URL(g("/oauth/access_token"));
+  u.searchParams.set("client_id", appId());
+  u.searchParams.set("client_secret", appSecret());
+  u.searchParams.set("redirect_uri", redirectUri);
+  u.searchParams.set("code", code);
+
+  const r = await fetch(u, { cache: "no-store" });
+  const json = (await r.json().catch(() => ({}))) as { access_token?: string } & RespostaErro;
+  if (!r.ok || json.error || !json.access_token) {
+    throw new ErroMeta(json.error?.message ?? "Não consegui concluir a autorização.", {
+      code: json.error?.code,
+      subcode: json.error?.error_subcode,
+    });
+  }
+  return json.access_token;
+}
+
+/** Converte o token curto (≈2h) num de longa duração (≈60 dias). */
+export async function tokenLongaDuracao(
+  tokenCurto: string,
+): Promise<{ token: string; expiraEm: string | null }> {
+  const u = new URL(g("/oauth/access_token"));
+  u.searchParams.set("grant_type", "fb_exchange_token");
+  u.searchParams.set("client_id", appId());
+  u.searchParams.set("client_secret", appSecret());
+  u.searchParams.set("fb_exchange_token", tokenCurto);
+
+  const r = await fetch(u, { cache: "no-store" });
+  const json = (await r.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+  } & RespostaErro;
+  if (!r.ok || json.error || !json.access_token) {
+    throw new ErroMeta(json.error?.message ?? "Não consegui renovar a autorização.");
+  }
+  return {
+    token: json.access_token,
+    expiraEm: json.expires_in
+      ? new Date(Date.now() + json.expires_in * 1000).toISOString()
+      : null,
+  };
+}
+
+/** Permissões efetivamente concedidas + validade — para a tela mostrar a verdade. */
+export async function inspecionarToken(token: string): Promise<{
+  userId?: string;
+  escopos: string[];
+  expiraEm: string | null;
+  valido: boolean;
+}> {
+  const u = new URL(g("/debug_token"));
+  u.searchParams.set("input_token", token);
+  u.searchParams.set("access_token", `${appId()}|${appSecret()}`);
+
+  const r = await fetch(u, { cache: "no-store" });
+  const json = (await r.json().catch(() => ({}))) as {
+    data?: { user_id?: string; scopes?: string[]; expires_at?: number; is_valid?: boolean };
+  };
+  const d = json.data ?? {};
+  return {
+    userId: d.user_id,
+    escopos: d.scopes ?? [],
+    expiraEm: d.expires_at ? new Date(d.expires_at * 1000).toISOString() : null,
+    valido: d.is_valid !== false,
+  };
+}
+
+/** Retira a autorização do app na conta da Meta (usado ao desconectar). */
+export async function revogarAutorizacao(token: string): Promise<void> {
+  await chamar("/me/permissions", { token, metodo: "DELETE" });
+}
+
+/* ------------------------------ conta / perfil ---------------------------- */
+
+export async function perfil(token: string): Promise<{ id: string; name?: string }> {
+  return chamar("/me", { token, params: { fields: "id,name" } });
+}
+
+export async function primeiroNegocio(
+  token: string,
+): Promise<{ id: string; name?: string } | null> {
+  try {
+    const r = await chamar<{ data?: { id: string; name?: string }[] }>("/me/businesses", {
+      token,
+      params: { fields: "id,name", limit: "1" },
+    });
+    return r.data?.[0] ?? null;
+  } catch {
+    // business_management pode não ter sido concedida — não é impeditivo
+    return null;
+  }
+}
+
+/* --------------------------------- Páginas -------------------------------- */
+
+export type PaginaMeta = {
+  id: string;
+  name: string;
+  category?: string;
+  access_token?: string;
+  picture?: { data?: { url?: string } };
+  tasks?: string[];
+};
+
+export async function listarPaginas(token: string): Promise<PaginaMeta[]> {
+  const r = await chamar<{ data?: PaginaMeta[] }>("/me/accounts", {
+    token,
+    params: { fields: "id,name,category,access_token,picture{url},tasks", limit: "100" },
+  });
+  return r.data ?? [];
+}
+
+/** Inscreve o LB CRM nos leads da Página. É o passo que dispensa o Meta Developers. */
+export async function assinarLeadgen(pageId: string, pageToken: string): Promise<void> {
+  await chamar(`/${pageId}/subscribed_apps`, {
+    token: pageToken,
+    metodo: "POST",
+    params: { subscribed_fields: "leadgen" },
+  });
+}
+
+export async function desassinarLeadgen(pageId: string, pageToken: string): Promise<void> {
+  await chamar(`/${pageId}/subscribed_apps`, { token: pageToken, metodo: "DELETE" });
+}
+
+/**
+ * Quais aplicativos estão recebendo os leads desta Página.
+ * É assim que o CRM mostra um app antigo ainda grudado na Página.
+ */
+export async function appsInscritos(
+  pageId: string,
+  pageToken: string,
+): Promise<{ id: string; name?: string; campos: string[] }[]> {
+  const r = await chamar<{
+    data?: { id: string; name?: string; subscribed_fields?: string[] }[];
+  }>(`/${pageId}/subscribed_apps`, {
+    token: pageToken,
+    params: { fields: "id,name,subscribed_fields" },
+  });
+  return (r.data ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    campos: a.subscribed_fields ?? [],
+  }));
+}
+
+/* ------------------------------- formulários ------------------------------ */
+
+export type FormularioMeta = {
+  id: string;
+  name: string;
+  status?: string;
+  leads_count?: number;
+  created_time?: string;
+};
+
+export async function listarFormularios(
+  pageId: string,
+  pageToken: string,
+): Promise<FormularioMeta[]> {
+  const r = await chamar<{ data?: FormularioMeta[] }>(`/${pageId}/leadgen_forms`, {
+    token: pageToken,
+    params: { fields: "id,name,status,leads_count,created_time", limit: "200" },
+  });
+  return r.data ?? [];
+}
+
+export type LeadDaMeta = {
+  id: string;
+  created_time?: string;
+  field_data?: { name?: string; values?: string[] }[];
+  ad_id?: string;
+  ad_name?: string;
+  adset_name?: string;
+  campaign_name?: string;
+  form_id?: string;
+  platform?: string;
+};
+
+/** Últimos leads de um formulário — base do botão "Testar agora". */
+export async function ultimosLeads(
+  formId: string,
+  pageToken: string,
+  limite = 1,
+): Promise<LeadDaMeta[]> {
+  const r = await chamar<{ data?: LeadDaMeta[] }>(`/${formId}/leads`, {
+    token: pageToken,
+    params: {
+      fields: "id,created_time,field_data,ad_id,ad_name,adset_name,campaign_name,form_id,platform",
+      limit: String(limite),
+    },
+  });
+  return r.data ?? [];
+}

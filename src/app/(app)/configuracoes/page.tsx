@@ -17,6 +17,7 @@ import { setAutoRefresh, useAutoRefresh } from "@/lib/refresh";
 import { dashboardConfigApi, useDashboardConfig } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { MetaLeadAdsCard } from "@/components/integracoes/meta-lead-ads";
 import { Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 
@@ -530,6 +531,7 @@ export default function ConfiguracoesPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
           Integrações
         </h2>
+        <MetaLeadAdsCard />
         <ConexaoMetaCard />
       </section>
 

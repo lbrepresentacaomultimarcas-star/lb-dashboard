@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { formularioLiberado, tokenDaPaginaPorId } from "@/lib/server/meta-conexao";
 
 /**
  * PORTA DE ENTRADA DA META → CENTRAL DE LEADS (Click-to-WhatsApp).
@@ -372,6 +373,8 @@ type Contato = { wa_id?: string; profile?: { name?: string } };
 type WebhookBody = {
   object?: string;
   entry?: {
+    /** id da Página (Lead Ads) ou da conta do WhatsApp. */
+    id?: string;
     changes?: {
       field?: string;
       value?: {
@@ -449,8 +452,9 @@ function detectarInteresse(texto: string | undefined): string | undefined {
    LEAD ADS — formulário instantâneo (object "page", campo "leadgen")
    ============================================================
    O webhook manda só o ID do lead. Os dados ficam na Graph API e são buscados
-   com o token da PÁGINA (META_PAGE_TOKEN). Sem esse token não há como ler o
-   formulário — por isso o erro é explícito no log.                          */
+   com o token da PÁGINA, que vem da conexão feita em Configurações →
+   Integrações (guardado cifrado). Sem conexão, cai no META_PAGE_TOKEN do
+   ambiente — o modo manual antigo continua valendo.                         */
 
 type CampoFormulario = { name?: string; values?: string[] };
 type LeadDaMeta = {
@@ -540,18 +544,34 @@ function mapearFormulario(campos: CampoFormulario[]) {
 
 /** Monta os leads a partir do webhook `leadgen`. */
 async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
-  const token = process.env.META_PAGE_TOKEN?.trim();
-  if (!token) {
-    console.error("[intake] META_PAGE_TOKEN não configurado — não dá para ler o formulário");
-    return [];
-  }
-
   const out: LeadExtraido[] = [];
   for (const entry of body.entry ?? []) {
+    // O token da Página vem da conexão feita em Configurações → Integrações.
+    // Se ainda não houver conexão, cai no META_PAGE_TOKEN do ambiente — assim a
+    // configuração manual que já funciona continua funcionando.
+    const pageId = entry.id;
+    const daConexao = pageId ? await tokenDaPaginaPorId(pageId) : null;
+    const token = daConexao?.token ?? process.env.META_PAGE_TOKEN?.trim();
+    if (!token) {
+      console.error(
+        `[intake] sem acesso à Página ${pageId ?? "?"} — conecte a Meta em Configurações → Integrações`,
+      );
+      continue;
+    }
+
     for (const change of entry.changes ?? []) {
       if (change.field !== "leadgen") continue;
       const leadgenId = change.value?.leadgen_id;
       if (!leadgenId) continue;
+
+      // O admin escolhe QUAIS formulários entregam leads. Formulário desmarcado
+      // é ignorado aqui; formulário desconhecido passa (melhor sobrar que faltar).
+      const formId = change.value?.form_id;
+      const orgDaPagina = daConexao?.orgId ?? process.env.LB_ORG_ID;
+      if (orgDaPagina && !(await formularioLiberado(orgDaPagina, formId))) {
+        console.log(`[intake] formulário ${formId} está desmarcado — lead ignorado`);
+        continue;
+      }
 
       const meta = await buscarLeadNaMeta(leadgenId, token);
       if (!meta) continue;
