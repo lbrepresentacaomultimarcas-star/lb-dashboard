@@ -152,7 +152,8 @@ export async function POST(req: NextRequest) {
           origem: lead.origem,
           observacoes: lead.observacoes,
           status: "novo",
-          prioridade: "alta", // veio de anúncio pago: responder rápido
+          // prazo informado no formulário manda; sem prazo, anúncio pago = "alta"
+          prioridade: lead.prioridade ?? "alta",
           external_id: externalId,
           wa_contato: lead.payload,
         });
@@ -407,7 +408,56 @@ type LeadExtraido = {
   idCampo?: string;
   externalId: string;
   payload: unknown;
+  /** Etiqueta de urgência derivada do prazo informado no formulário.
+   *  Ausente = mantém o padrão de anúncio pago ("alta"). */
+  prioridade?: "urgente" | "alta" | "normal" | "baixa";
 };
+
+/**
+ * PRAZO DE COMPRA → ETIQUETA DE PRIORIDADE.
+ *
+ * Reusa o sistema de etiquetas que a Central de Leads JÁ tem (Urgente/Alta/
+ * Normal/Baixa, colorido na fila) em vez de inventar outro. O texto exato da
+ * resposta é preservado na primeira linha das observações, então o consultor vê
+ * a diferença entre "1 a 3 meses" e "3 a 6 meses" mesmo os dois entrando como
+ * Normal.
+ */
+type Prazo = { etiqueta: string; prioridade: "urgente" | "alta" | "normal" | "baixa" };
+
+/** true quando a pergunta é sobre prazo/intenção de compra. */
+function ehCampoPrazo(k: string): boolean {
+  return (
+    k.includes("quando") ||
+    k.includes("prazo") ||
+    k.includes("pretende") ||
+    k.includes("intencao")
+  );
+}
+
+function detectarPrazo(campos: CampoFormulario[]): Prazo | undefined {
+  let resposta: string | undefined;
+  for (const c of campos) {
+    if (ehCampoPrazo(chave(c.name))) {
+      resposta = c.values?.[0]?.trim();
+      break;
+    }
+  }
+  if (!resposta) return undefined;
+
+  const t = resposta.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const regras: [RegExp, Prazo][] = [
+    [/quanto antes|\bagora\b|imediat|urgente/, { etiqueta: "🔥 QUENTE", prioridade: "urgente" }],
+    [/30\s*dias|proximo\s*mes/, { etiqueta: "🟢 PRÓXIMO", prioridade: "alta" }],
+    [/1\s*a\s*3|um a tres/, { etiqueta: "🟡 MORNO", prioridade: "normal" }],
+    [/3\s*a\s*6|tres a seis/, { etiqueta: "🔵 FUTURO", prioridade: "normal" }],
+    [/pesquisan|pesquisa|so olhando|sem previsao/, { etiqueta: "⚪ PESQUISA", prioridade: "baixa" }],
+  ];
+  for (const [re, p] of regras) {
+    if (re.test(t)) return { etiqueta: `${p.etiqueta} — ${resposta}`, prioridade: p.prioridade };
+  }
+  // resposta que não casa com nenhuma regra: preserva o texto, mantém o padrão
+  return { etiqueta: `⏱️ PRAZO — ${resposta}`, prioridade: "alta" };
+}
 
 /**
  * IDENTIFICAÇÃO AUTOMÁTICA DO INTERESSE.
@@ -587,7 +637,11 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         meta.platform === "ig" ? "Instagram" : meta.platform === "fb" ? "Facebook" : "Formulário";
       const origem = `Meta Ads · ${rede}`;
 
+      // etiqueta de prazo primeiro: é a informação que decide quem ligar antes
+      const prazo = detectarPrazo(campos);
+
       const partes: string[] = [];
+      if (prazo) partes.push(prazo.etiqueta);
       if (m.interesseBruto) partes.push(`Interesse informado: ${m.interesseBruto}`);
       if (m.email) partes.push(`E-mail: ${m.email}`);
       // demais respostas do formulário, para o consultor não perder nada
@@ -595,6 +649,7 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         const k = chave(c.name);
         if (["full_name", "first_name", "last_name", "phone_number", "email"].includes(k)) continue;
         if (k.includes("interesse") || k.includes("produto") || k.includes("procura")) continue;
+        if (ehCampoPrazo(k)) continue; // já virou a etiqueta lá em cima
         const v = c.values?.join(", ")?.trim();
         if (v) partes.push(`${c.name}: ${v}`);
       }
@@ -613,6 +668,7 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         anuncio: meta.ad_name ?? meta.campaign_name ?? undefined,
         mensagemId: leadgenId,
         idCampo: "leadgen",
+        prioridade: prazo?.prioridade,
         externalId: `lead:${leadgenId}`,
         payload: { lead: meta, webhook: change.value, recebido_em: new Date().toISOString() },
       });
