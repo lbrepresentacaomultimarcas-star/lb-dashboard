@@ -93,15 +93,40 @@ async function chamar<T>(
 
 /* --------------------------------- OAuth --------------------------------- */
 
-/** URL da tela oficial de autorização da Meta. */
+/**
+ * URL da tela oficial de autorização da Meta.
+ *
+ * A Meta tem DOIS produtos de login e eles pedem parâmetros diferentes:
+ *
+ *  · "Login do Facebook" (clássico) — as permissões vão na URL, em `scope`.
+ *  · "Login do Facebook para Empresas" — as permissões ficam numa
+ *    *configuração* criada no painel do app, e a URL manda só o `config_id`.
+ *
+ * Cadastrando META_LOGIN_CONFIG_ID no ambiente, o sistema usa o segundo modo.
+ * Sem essa variável, segue no modo clássico. Assim os dois funcionam sem
+ * precisar mexer no código de novo.
+ */
 export function urlAutorizacao(redirectUri: string, state: string): string {
   const u = new URL(`https://www.facebook.com/${GRAPH_VERSION()}/dialog/oauth`);
   u.searchParams.set("client_id", appId());
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("state", state);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", ESCOPOS.join(","));
+
+  const configId = process.env.META_LOGIN_CONFIG_ID?.trim();
+  if (configId) {
+    u.searchParams.set("config_id", configId);
+    // sem isto o Login para Empresas devolve token em vez de código
+    u.searchParams.set("override_default_response_type", "true");
+  } else {
+    u.searchParams.set("scope", ESCOPOS.join(","));
+  }
   return u.toString();
+}
+
+/** Qual modo de login está configurado (para a tela explicar o que falta). */
+export function modoLogin(): "empresas" | "classico" {
+  return process.env.META_LOGIN_CONFIG_ID?.trim() ? "empresas" : "classico";
 }
 
 /** Troca o `code` da autorização por um token de usuário (curta duração). */
