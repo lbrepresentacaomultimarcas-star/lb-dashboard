@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/admin-guard";
-import { ErroMeta, listarFormularios } from "@/lib/server/meta-api";
+import { ErroMeta, listarFormularios, ultimosLeads } from "@/lib/server/meta-api";
 import {
   definirFormulariosAtivos,
   formulariosDaOrg,
@@ -59,9 +59,57 @@ export async function POST(req: NextRequest) {
   if (guard instanceof Response) return guard;
   const { orgId } = guard;
 
-  const body = (await req.json().catch(() => ({}))) as { pageId?: string; ativos?: string[] };
+  const body = (await req.json().catch(() => ({}))) as {
+    pageId?: string;
+    ativos?: string[];
+    /** Cadastro MANUAL: quando a Meta recusa listar os formulários (falta a
+     *  permissão pages_manage_ads), o admin informa o ID do formulário na mão.
+     *  O ID aparece no Gerenciador de Anúncios, na lista de formulários. */
+    adicionarFormId?: string;
+    adicionarNome?: string;
+  };
   const pagina = await paginaAtual(orgId, body.pageId);
   if (!pagina) return Response.json({ error: "Escolha uma Página primeiro." }, { status: 400 });
+
+  const manualId = body.adicionarFormId?.trim();
+  if (manualId) {
+    if (!/^\d{6,}$/.test(manualId)) {
+      return Response.json(
+        { error: "O ID do formulário é só números (copie do Gerenciador de Anúncios)." },
+        { status: 400 },
+      );
+    }
+    // confere na Meta antes de cadastrar: se não der para ler os leads desse
+    // formulário, avisa agora em vez de falhar silenciosamente depois.
+    const token = await tokenDaPagina(orgId, pagina.pageId);
+    if (token) {
+      try {
+        await ultimosLeads(manualId, token, 1);
+      } catch (e) {
+        return Response.json(
+          {
+            error:
+              e instanceof ErroMeta
+                ? `A Meta recusou esse formulário: ${e.message}`
+                : "Não consegui validar esse formulário na Meta.",
+          },
+          { status: 502 },
+        );
+      }
+    }
+    await guardarFormularios(orgId, pagina.pageId, [
+      { formId: manualId, nome: body.adicionarNome?.trim() || `Formulário ${manualId}`, status: "ACTIVE" },
+    ]);
+    await definirFormulariosAtivos(orgId, pagina.pageId, [
+      ...(await formulariosDaOrg(orgId, pagina.pageId)).filter((f) => f.ativo).map((f) => f.formId),
+      manualId,
+    ]);
+    return Response.json({
+      ok: true,
+      adicionado: manualId,
+      formularios: await formulariosDaOrg(orgId, pagina.pageId),
+    });
+  }
 
   const ativos = Array.isArray(body.ativos) ? body.ativos.filter((s) => typeof s === "string") : [];
   await definirFormulariosAtivos(orgId, pagina.pageId, ativos);

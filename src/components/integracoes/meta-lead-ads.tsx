@@ -159,6 +159,8 @@ export function MetaLeadAdsCard() {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [teste, setTeste] = useState<Teste | null>(null);
   const [marcados, setMarcados] = useState<string[] | null>(null);
+  const [formIdManual, setFormIdManual] = useState("");
+  const [sync, setSync] = useState<string | null>(null);
 
   /**
    * `deMeta = false` → lê só o que já está guardado (abertura da tela, rápido).
@@ -257,6 +259,35 @@ export function MetaLeadAdsCard() {
     });
     if (!r) return;
     notify.success(`${r.ativos} formulário${r.ativos === 1 ? "" : "s"} recebendo leads`);
+    await carregar();
+  }
+
+  async function adicionarFormularioManual() {
+    if (!s?.pagina) return;
+    const r = await acao<{ ok: boolean; adicionado: string }>(
+      "addform",
+      "/api/integracoes/meta/formularios",
+      { pageId: s.pagina.pageId, adicionarFormId: formIdManual.trim() },
+    );
+    if (!r) return;
+    notify.success("Formulário cadastrado e ativado");
+    setFormIdManual("");
+    await carregar();
+  }
+
+  async function buscarAgora() {
+    setSync(null);
+    const r = await acao<{
+      ok: boolean; formulariosLidos: number; leadsVistos: number;
+      entregues: number; falhas: number; detalhes: string[];
+    }>("sync", "/api/integracoes/meta/sincronizar");
+    if (!r) return;
+    setSync(
+      r.leadsVistos === 0
+        ? "Nenhum lead novo na Meta ainda."
+        : `${r.leadsVistos} lead(s) lido(s) · ${r.entregues} entregue(s) na Central` +
+          (r.falhas ? ` · ${r.falhas} falha(s): ${r.detalhes.join(" | ")}` : ""),
+    );
     await carregar();
   }
 
@@ -441,10 +472,18 @@ export function MetaLeadAdsCard() {
             {!temPagina ? (
               <p className="text-xs text-[var(--color-text-dim)]">Escolha a Página primeiro.</p>
             ) : s.formularios.length === 0 ? (
-              <p className="text-xs text-[var(--color-text-dim)]">
-                Essa Página ainda não tem formulário instantâneo. Crie o anúncio com formulário no
-                Gerenciador de Anúncios e clique em atualizar aqui.
-              </p>
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--color-text-dim)]">
+                  A Meta não devolveu a lista de formulários desta Página. Isso costuma ser falta da
+                  permissão <code className="font-mono">pages_manage_ads</code> — e não impede nada:
+                  informe o <strong>ID do formulário</strong> aqui embaixo que o sistema busca os
+                  leads direto.
+                </p>
+                <p className="text-[11px] text-[var(--color-text-dim)]">
+                  O ID aparece no Gerenciador de Anúncios → Formulários instantâneos, na coluna de
+                  identificação do formulário (só números).
+                </p>
+              </div>
             ) : (
               <div className="space-y-2">
                 {s.formularios.map((f) => {
@@ -484,6 +523,31 @@ export function MetaLeadAdsCard() {
                 </Button>
               </div>
             )}
+
+            {temPagina && (
+              <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+                  Cadastrar formulário pelo ID
+                </p>
+                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={formIdManual}
+                    onChange={(e) => setFormIdManual(e.target.value.replace(/\D/g, ""))}
+                    placeholder="ex.: 1234567890123456"
+                    inputMode="numeric"
+                    className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-sm outline-none focus:border-[var(--color-brand)]"
+                  />
+                  <Button
+                    variant="secondary"
+                    disabled={ocupado === "addform" || formIdManual.trim().length < 6}
+                    onClick={() => void adicionarFormularioManual()}
+                  >
+                    {ocupado === "addform" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    Cadastrar
+                  </Button>
+                </div>
+              </div>
+            )}
           </Passo>
 
           {/* PASSO 4 — testar */}
@@ -492,10 +556,26 @@ export function MetaLeadAdsCard() {
               <p className="text-xs text-[var(--color-text-dim)]">Marque ao menos um formulário.</p>
             ) : (
               <div className="space-y-2">
-                <Button disabled={ocupado === "teste"} onClick={() => void testar()}>
-                  {ocupado === "teste" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Testar agora
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={ocupado === "teste"} onClick={() => void testar()}>
+                    {ocupado === "teste" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Testar agora
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={ocupado === "sync"}
+                    onClick={() => void buscarAgora()}
+                    title="Procura leads novos na Meta e traz para a Central"
+                  >
+                    {ocupado === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Buscar leads agora
+                  </Button>
+                </div>
+                {sync && (
+                  <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2.5 text-[11px]">
+                    {sync}
+                  </p>
+                )}
                 {teste && (
                   <div
                     className="rounded-lg border p-3 text-xs"
@@ -511,8 +591,8 @@ export function MetaLeadAdsCard() {
                   </div>
                 )}
                 <p className="text-[11px] text-[var(--color-text-dim)]">
-                  O teste usa o lead mais recente do formulário e faz o caminho completo, igual a
-                  um lead de verdade.
+                  O sistema busca leads novos na Meta sozinho, a cada 5 minutos. Os botões acima
+                  servem para conferir na hora, sem esperar.
                 </p>
               </div>
             )}

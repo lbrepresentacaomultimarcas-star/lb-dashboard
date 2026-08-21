@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/integracoes/meta/sincronizar",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
