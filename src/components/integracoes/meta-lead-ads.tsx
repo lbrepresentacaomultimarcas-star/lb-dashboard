@@ -160,9 +160,22 @@ export function MetaLeadAdsCard() {
   const [teste, setTeste] = useState<Teste | null>(null);
   const [marcados, setMarcados] = useState<string[] | null>(null);
 
-  const carregar = useCallback(async () => {
+  /**
+   * `deMeta = false` → lê só o que já está guardado (abertura da tela, rápido).
+   * `deMeta = true`  → vai até a Meta antes, para trazer Página ou formulário
+   *                    criado depois da última visita. É o que o botão 🔄 faz.
+   */
+  const carregar = useCallback(async (deMeta = false) => {
     setCarregando(true);
     try {
+      if (deMeta) {
+        // falhar aqui não pode derrubar a tela: se a Meta não responder,
+        // ainda mostramos o que está guardado.
+        await Promise.allSettled([
+          fetch("/api/integracoes/meta/paginas"),
+          fetch("/api/integracoes/meta/formularios"),
+        ]);
+      }
       const r = await fetch("/api/integracoes/meta/status");
       if (!r.ok) throw new Error(r.status === 403 ? "Só administradores" : "Falha ao consultar");
       const json = (await r.json()) as Status;
@@ -286,7 +299,12 @@ export function MetaLeadAdsCard() {
             </p>
           </div>
         </div>
-        <Button variant="ghost" onClick={() => void carregar()} disabled={carregando}>
+        <Button
+          variant="ghost"
+          onClick={() => void carregar(true)}
+          disabled={carregando}
+          title="Buscar na Meta Páginas e formulários novos"
+        >
           <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
         </Button>
       </div>
