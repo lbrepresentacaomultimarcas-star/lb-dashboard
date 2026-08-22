@@ -591,7 +591,8 @@ export function MetaLeadAdsCard() {
                   </div>
                 )}
                 <p className="text-[11px] text-[var(--color-text-dim)]">
-                  O sistema busca leads novos na Meta sozinho, a cada 5 minutos. Os botões acima
+                  O sistema busca leads novos na Meta sozinho: a cada 3 minutos enquanto você
+                  está com o CRM aberto, e uma varredura completa todo dia às 6h. Os botões acima
                   servem para conferir na hora, sem esperar.
                 </p>
               </div>
