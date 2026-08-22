@@ -311,6 +311,13 @@ export type CentralLead = {
   externalId?: string;
   criadoEm: string;
   atualizadoEm?: string;
+  // ---- histórico mensal / limpeza (aditivos) ----
+  /** Exclusão LÓGICA: some da fila, continua no banco. */
+  excluidoEm?: string;
+  excluidoPor?: string;
+  excluidoMotivo?: string;
+  /** Veio da ferramenta de teste da Meta — não conta em métrica nenhuma. */
+  teste?: boolean;
 };
 
 /** Evento da timeline/auditoria de um lead da Central. */

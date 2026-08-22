@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
   PhoneCall,
   Plus,
   Search,
+  Trash2,
   Send,
   Upload,
   UserRound,
@@ -157,6 +158,12 @@ export default function CentralLeadsPage() {
   const vendedoresAtivos = useMemo(() => vendedores.filter((v) => v.ativo), [vendedores]);
 
   const [busca, setBusca] = useState("");
+  /** "" = fila atual (comportamento de sempre). "AAAA-MM" = histórico do mês. */
+  const [mesRef, setMesRef] = useState("");
+  const [leadsDoMes, setLeadsDoMes] = useState<CentralLead[] | null>(null);
+  const [carregandoMes, setCarregandoMes] = useState(false);
+  const [soTestes, setSoTestes] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [fPrioridade, setFPrioridade] = useState<Prioridade | "todas">("todas");
   const [fStatus, setFStatus] = useState<CentralLeadStatus | "todos">("todos");
 
@@ -182,11 +189,61 @@ export default function CentralLeadsPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /** Últimos 24 meses para o seletor, do mais recente para o mais antigo. */
+  const mesesDisponiveis = useMemo(() => {
+    const hoje = new Date();
+    return Array.from({ length: 24 }, (_, i) => {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+      return { ym, label: label.charAt(0).toUpperCase() + label.slice(1) };
+    });
+  }, []);
+
+  const periodoLabel = useMemo(() => {
+    if (!mesRef) return "Fila atual";
+    return mesesDisponiveis.find((m) => m.ym === mesRef)?.label ?? mesRef;
+  }, [mesRef, mesesDisponiveis]);
+
+  // busca o mês escolhido no banco (inclui encerrados, que não ficam na fila)
+  useEffect(() => {
+    let vivo = true;
+    // tudo dentro do timeout: o React 19 não aceita setState solto no efeito
+    const id = setTimeout(() => {
+      if (!vivo) return;
+      if (!mesRef) {
+        setLeadsDoMes(null);
+        setCarregandoMes(false);
+        return;
+      }
+      setCarregandoMes(true);
+      const [ano, mes] = mesRef.split("-").map(Number);
+      const de = new Date(ano, mes - 1, 1).toISOString();
+      const ate = new Date(ano, mes, 1).toISOString();
+      void centralLeadsApi
+        .doPeriodo(de, ate)
+        .then((r) => {
+          if (vivo) setLeadsDoMes(r);
+        })
+        .finally(() => {
+          if (vivo) setCarregandoMes(false);
+        });
+    }, 0);
+    return () => {
+      vivo = false;
+      clearTimeout(id);
+    };
+  }, [mesRef]);
+
+  /** Fonte da lista: fila atual OU o mês escolhido. */
+  const base = useMemo(() => (mesRef ? (leadsDoMes ?? []) : leads), [mesRef, leadsDoMes, leads]);
+
   const naoDistribuidos = useMemo(() => leads.filter((l) => l.status === "novo"), [leads]);
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return leads
+    return base
+      .filter((l) => (soTestes ? l.teste === true : true))
       .filter((l) => (fPrioridade === "todas" ? true : l.prioridade === fPrioridade))
       .filter((l) => (fStatus === "todos" ? true : l.status === fStatus))
       .filter((l) => {
@@ -204,13 +261,53 @@ export default function CentralLeadsPage() {
         if (pa !== 0) return pa;
         return new Date(b.recebidoEm).getTime() - new Date(a.recebidoEm).getTime();
       });
-  }, [leads, busca, fPrioridade, fStatus, vendedores]);
+  }, [base, busca, fPrioridade, fStatus, soTestes, vendedores]);
 
   const kpis = useMemo(() => {
     const aguardando = leads.filter((l) => l.status === "aguardando").length;
     const aguardResp = leads.filter((l) => l.status === "aguardando_resposta").length;
     return { aguardando, aguardResp, novos: naoDistribuidos.length };
   }, [leads, naoDistribuidos]);
+
+  async function excluir(l: CentralLead) {
+    if (
+      !confirm(
+        `Remover "${l.nome}" da Central?
+
+O lead sai da fila e das métricas, mas continua guardado no banco — dá para auditar depois.`,
+      )
+    )
+      return;
+    setExcluindo(true);
+    try {
+      await centralLeadsApi.excluir([l.id], { motivo: l.teste ? "Lead de teste" : "Removido pelo admin" });
+      if (mesRef) setLeadsDoMes((v) => (v ?? []).filter((x) => x.id !== l.id));
+      notify.success("Lead removido da Central");
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não consegui remover");
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
+  async function excluirSelecionados() {
+    const ids = [...sel];
+    if (!confirm(`Remover ${ids.length} lead(s) da Central?
+
+Eles saem da fila e das métricas, mas continuam guardados no banco.`))
+      return;
+    setExcluindo(true);
+    try {
+      const n = await centralLeadsApi.excluir(ids, { motivo: "Removidos pelo admin" });
+      if (mesRef) setLeadsDoMes((v) => (v ?? []).filter((x) => !ids.includes(x.id)));
+      setSel(new Set());
+      notify.success(`${n} lead(s) removido(s)`);
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não consegui remover");
+    } finally {
+      setExcluindo(false);
+    }
+  }
 
   async function run(id: string, fn: () => Promise<void>) {
     setBusy(id);
@@ -487,6 +584,53 @@ export default function CentralLeadsPage() {
             </option>
           ))}
         </select>
+        <select
+          value={mesRef}
+          onChange={(e) => setMesRef(e.target.value)}
+          title="Consultar os leads de um mês específico"
+          className="h-11 rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
+        >
+          <option value="">Fila atual</option>
+          {mesesDisponiveis.map((m, i) => (
+            <option key={m.ym} value={m.ym}>
+              {i === 0 ? `Este mês — ${m.label}` : i === 1 ? `Mês anterior — ${m.label}` : m.label}
+            </option>
+          ))}
+        </select>
+        {admin && (
+          <button
+            type="button"
+            onClick={() => setSoTestes((v) => !v)}
+            title="Mostrar apenas os leads de teste, para poder removê-los"
+            className="h-11 rounded-xl border px-3 text-sm transition-colors"
+            style={{
+              borderColor: soTestes ? "rgba(245,158,11,.6)" : "rgba(255,255,255,.12)",
+              background: soTestes ? "rgba(245,158,11,.15)" : "rgba(255,255,255,.04)",
+              color: soTestes ? "#fcd34d" : "rgba(255,255,255,.7)",
+            }}
+          >
+            {soTestes ? "Mostrando só testes" : "Só testes"}
+          </button>
+        )}
+      </div>
+
+      {/* período em foco + exclusão em massa */}
+      <div className="lb-fade-up flex flex-wrap items-center justify-between gap-2 text-xs">
+        <p className="text-white/60">
+          Exibindo: <strong className="text-white">{periodoLabel}</strong>
+          {carregandoMes ? " · buscando…" : ` · ${filtrados.length} lead(s)`}
+          {mesRef ? " · inclui encerrados do mês" : " · leads em andamento"}
+        </p>
+        {admin && sel.size > 0 && (
+          <button
+            type="button"
+            disabled={excluindo}
+            onClick={() => void excluirSelecionados()}
+            className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-1.5 font-semibold text-red-200 transition-colors hover:bg-red-400/20 disabled:opacity-60"
+          >
+            Excluir {sel.size} selecionado(s)
+          </button>
+        )}
       </div>
 
       {/* Cards */}
@@ -533,8 +677,31 @@ export default function CentralLeadsPage() {
                       />
                     )}
                     <PrioridadeBadge p={l.prioridade} />
+                    {l.teste && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                        style={{ background: "rgba(245,158,11,.18)", color: "#fcd34d" }}
+                        title="Veio da ferramenta de teste da Meta — não entra em métrica nenhuma"
+                      >
+                        Teste
+                      </span>
+                    )}
                   </div>
-                  <StatusBadge status={l.status} />
+                  <div className="flex items-center gap-1.5">
+                    <StatusBadge status={l.status} />
+                    {admin && (
+                      <button
+                        type="button"
+                        disabled={excluindo}
+                        onClick={() => void excluir(l)}
+                        title="Remover da Central (continua no banco)"
+                        aria-label={`Remover ${l.nome}`}
+                        className="rounded-md p-1 text-white/35 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="min-w-0">

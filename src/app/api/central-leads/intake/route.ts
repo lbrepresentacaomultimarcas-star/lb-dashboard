@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
           status: "novo",
           // prazo informado no formulário manda; sem prazo, anúncio pago = "alta"
           prioridade: lead.prioridade ?? "alta",
+          teste: lead.teste ?? false,
           external_id: externalId,
           wa_contato: lead.payload,
         });
@@ -411,7 +412,29 @@ type LeadExtraido = {
   /** Etiqueta de urgência derivada do prazo informado no formulário.
    *  Ausente = mantém o padrão de anúncio pago ("alta"). */
   prioridade?: "urgente" | "alta" | "normal" | "baixa";
+  /** Lead da ferramenta de teste da Meta — entra, mas fora das métricas. */
+  teste?: boolean;
 };
+
+/**
+ * O lead veio da FERRAMENTA DE TESTE da Meta?
+ *
+ * A ferramenta preenche os campos com texto genérico, tipo
+ * "<test lead: dummy data for full_name>". O lead entra normalmente (para
+ * provar que o caminho funciona), mas fica etiquetado como teste e não conta
+ * em métrica, ranking nem produtividade.
+ */
+function ehLeadDeTeste(campos: CampoFormulario[]): boolean {
+  const tudo = campos
+    .map((c) => c.values?.join(" ") ?? "")
+    .join(" ")
+    .toLowerCase();
+  return (
+    tudo.includes("test lead") ||
+    tudo.includes("dummy data") ||
+    /<\s*test/.test(tudo)
+  );
+}
 
 /**
  * PRAZO DE COMPRA → ETIQUETA DE PRIORIDADE.
@@ -669,6 +692,7 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         mensagemId: leadgenId,
         idCampo: "leadgen",
         prioridade: prazo?.prioridade,
+        teste: ehLeadDeTeste(campos),
         externalId: `lead:${leadgenId}`,
         payload: { lead: meta, webhook: change.value, recebido_em: new Date().toISOString() },
       });

@@ -359,6 +359,10 @@ export type DbCentralLead = {
   external_id: string | null;
   criado_em: string;
   atualizado_em: string | null;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+  excluido_motivo?: string | null;
+  teste?: boolean | null;
 };
 
 export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
@@ -384,6 +388,10 @@ export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
   externalId: r.external_id ?? undefined,
   criadoEm: r.criado_em,
   atualizadoEm: r.atualizado_em ?? undefined,
+  excluidoEm: r.excluido_em ?? undefined,
+  excluidoPor: r.excluido_por ?? undefined,
+  excluidoMotivo: r.excluido_motivo ?? undefined,
+  teste: r.teste ?? false,
 });
 
 export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead> => {

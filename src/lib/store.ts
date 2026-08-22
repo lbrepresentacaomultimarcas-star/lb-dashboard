@@ -529,6 +529,7 @@ async function reloadCentralLeads() {
     .from("central_leads")
     .select("*")
     .is("encerrado_em", null)
+    .is("excluido_em", null) // lead excluído sai da fila (continua no banco)
     .order("recebido_em", { ascending: false })
     .limit(1000);
   if (!error && data) {
@@ -1726,6 +1727,61 @@ export const centralLeadsApi = {
     const { data, error } = await sb.rpc("central_ranking", { p_from: from, p_to: to });
     if (error || !data) return [];
     return data as CentralRankingRow[];
+  },
+
+  /**
+   * Leads de um PERÍODO — inclusive os já encerrados (convertidos/perdidos),
+   * que não ficam na fila do dia a dia. É o que permite consultar meses
+   * passados sem mexer no carregamento normal da Central.
+   *
+   * O escopo por consultor continua valendo: quem filtra é a RLS do banco.
+   */
+  async doPeriodo(fromISO: string, toISO: string): Promise<CentralLead[]> {
+    if (!supabaseEnabled) {
+      return state.centralLeads.filter(
+        (l) => l.recebidoEm >= fromISO && l.recebidoEm < toISO && !l.excluidoEm,
+      );
+    }
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from("central_leads")
+      .select("*")
+      .gte("recebido_em", fromISO)
+      .lt("recebido_em", toISO)
+      .is("excluido_em", null)
+      .order("recebido_em", { ascending: false })
+      .limit(2000);
+    if (error || !data) return [];
+    return (data as DbCentralLead[]).map(centralLeadFromDb);
+  },
+
+  /**
+   * Exclusão LÓGICA (ou restauração). Passa pelo servidor porque só lá dá para
+   * garantir que quem executou é administrador — esconder o botão não garante.
+   * O lead continua no banco, com a timeline registrando quem removeu.
+   */
+  async excluir(ids: string[], opts?: { motivo?: string; restaurar?: boolean }): Promise<number> {
+    const r = await fetch("/api/central-leads/excluir", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids, motivo: opts?.motivo, restaurar: opts?.restaurar }),
+    });
+    const json = (await r.json()) as { afetados?: number; error?: string };
+    if (!r.ok) throw new Error(json.error ?? "Não consegui excluir.");
+
+    // some da fila na hora, sem esperar o próximo carregamento
+    if (!opts?.restaurar) {
+      state.centralLeads = state.centralLeads.filter((l) => !ids.includes(l.id));
+      notify();
+    } else {
+      await reloadCentralLeads();
+    }
+    void logAudit({
+      acao: opts?.restaurar ? "restaurar" : "remover",
+      entidade: "central_lead",
+      detalhes: `${json.afetados ?? ids.length} lead(s) da Central`,
+    });
+    return json.afetados ?? 0;
   },
 };
 
