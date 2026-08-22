@@ -55,13 +55,15 @@ export async function GET(req: NextRequest) {
     .from("central_leads")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
-    .like("origem", "Meta Ads%");
+    .like("origem", "Meta Ads%")
+    .is("excluido_em", null); // lead removido não conta
 
   const { data: ultimo } = await db
     .from("central_leads")
     .select("nome, telefone, produto, origem, recebido_em")
     .eq("org_id", orgId)
     .like("origem", "Meta Ads%")
+    .is("excluido_em", null)
     .order("recebido_em", { ascending: false })
     .limit(1)
     .maybeSingle();

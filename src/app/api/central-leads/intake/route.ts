@@ -92,6 +92,9 @@ export async function POST(req: NextRequest) {
           .eq("org_id", orgId)
           .eq("telefone", lead.telefone)
           .is("encerrado_em", null)
+          // lead EXCLUÍDO não pode bloquear lead novo: ele some da tela, então
+          // usar como "conversa em andamento" descartaria o lead novo em silêncio.
+          .is("excluido_em", null)
           .order("recebido_em", { ascending: false })
           .limit(1);
         const existente = ativos?.[0] ?? null;
@@ -180,6 +183,7 @@ export async function POST(req: NextRequest) {
             .eq("telefone", lead.telefone)
             .is("encerrado_em", null)
             .order("recebido_em", { ascending: false })
+            .is("excluido_em", null)
             .limit(1);
 
           if (agora?.[0]) {
