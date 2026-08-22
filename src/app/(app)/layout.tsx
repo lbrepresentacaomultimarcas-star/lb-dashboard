@@ -6,6 +6,7 @@ import { MobileDrawer } from "@/components/mobile-drawer";
 import { MobileNavProvider } from "@/components/mobile-nav-context";
 import { BrandBar } from "@/components/marca-dupla";
 import { ImpersonacaoBar } from "@/components/impersonacao-bar";
+import { SincronizacaoMeta } from "@/components/integracoes/sincronizacao-meta";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +17,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <BrandBar />
           {/* Só aparece durante "Entrar como consultor" */}
           <ImpersonacaoBar />
+          {/* busca leads da Meta enquanto o admin está com o sistema aberto */}
+          <SincronizacaoMeta />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">
