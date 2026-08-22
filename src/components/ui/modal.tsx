@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export function Modal({
@@ -28,7 +29,18 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  if (typeof document === "undefined") return null;
+
+  /**
+   * Desenhado FORA da árvore de quem chamou (portal para o <body>).
+   *
+   * Motivo: qualquer ancestral com `transform` (os cards do Pipeline têm a
+   * animação de flutuação lb-bob-sm) vira o bloco de referência de
+   * `position: fixed`. Sem o portal, o modal deixa de se posicionar pela tela
+   * e se posiciona pelo card — foi o que fazia a janela aparecer por cima dos
+   * outros leads da coluna.
+   */
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-md"
@@ -66,6 +78,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

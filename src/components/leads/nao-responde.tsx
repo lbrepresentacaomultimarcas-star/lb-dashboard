@@ -106,9 +106,22 @@ export function PainelNaoResponde({
 }) {
   const [abrirMensagens, setAbrirMensagens] = useState(false);
   const [abrirHistorico, setAbrirHistorico] = useState(false);
+  const biblioteca = useMensagensProntas();
 
   const tentativas = lead.tentativas ?? 0;
   const silencio = desde(lead.naoRespondeDesde ?? lead.atualizadoEm ?? lead.criadoEm);
+
+  /** Sugestão de abordagem — só a primeira linha aparece no card. */
+  const sugestao = useMemo(() => {
+    const ativas = biblioteca.filter((m) => m.ativo);
+    if (ativas.length === 0) return null;
+    const porOrdem = [...ativas].sort((a, b) => {
+      const ia = CATEGORIA_ORDEM.indexOf(a.categoria as CategoriaMensagem);
+      const ib = CATEGORIA_ORDEM.indexOf(b.categoria as CategoriaMensagem);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.ordem - b.ordem;
+    });
+    return aplicarVariaveis(porOrdem[0].texto, lead, consultorNome);
+  }, [biblioteca, lead, consultorNome]);
 
   return (
     <>
@@ -168,20 +181,30 @@ export function PainelNaoResponde({
           )}
         </dl>
 
+        {sugestao && (
+          <p
+            className="mt-2 overflow-hidden text-[10px] italic leading-snug text-white/45"
+            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+            title="Sugestão de abordagem — abra para ler e ajustar"
+          >
+            “{sugestao}”
+          </p>
+        )}
+
         <div className="mt-2.5 flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setAbrirMensagens(true)}
-            className="flex-1 rounded-lg border border-emerald-400/35 bg-emerald-400/12 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200 transition-colors hover:bg-emerald-400/22"
+            className="min-w-0 flex-1 truncate rounded-lg border border-emerald-400/35 bg-emerald-400/12 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200 transition-colors hover:bg-emerald-400/22"
           >
-            💬 Mensagens prontas
+            💬 Ver mensagem
           </button>
           <button
             type="button"
             onClick={() => setAbrirHistorico(true)}
             title="Histórico de recuperação"
             aria-label="Histórico de recuperação"
-            className="rounded-lg border border-white/12 bg-white/5 p-1.5 text-white/55 transition-colors hover:bg-white/12 hover:text-white"
+            className="shrink-0 rounded-lg border border-white/12 bg-white/5 p-1.5 text-white/55 transition-colors hover:bg-white/12 hover:text-white"
           >
             <History className="h-3.5 w-3.5" />
           </button>
@@ -295,6 +318,55 @@ export function ModalMensagensProntas({
       subtitle={`${lead.nome} · escolha o argumento, revise e envie`}
       icon={<MessageSquareText className="h-5 w-5" />}
     >
+      {/* contexto do lead — para decidir a abordagem sem sair da janela */}
+      <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{lead.nome}</p>
+            <p className="text-[11px] text-[var(--color-text-dim)]">
+              {lead.tipo ? LEAD_TIPO_INFO[lead.tipo].label : "Negócio"}
+              {lead.telefone ? ` · ${lead.telefone}` : ""}
+              {consultorNome ? ` · ${consultorNome}` : ""}
+            </p>
+          </div>
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{
+              background: (lead.tentativas ?? 0) === 0 ? "rgba(248,113,113,.16)" : "rgba(148,163,184,.18)",
+              color: (lead.tentativas ?? 0) === 0 ? "#fca5a5" : "#cbd5e1",
+            }}
+          >
+            {(lead.tentativas ?? 0) === 0
+              ? "Sem tentativa"
+              : `${lead.tentativas} tentativa${(lead.tentativas ?? 0) > 1 ? "s" : ""}`}
+          </span>
+        </div>
+        <dl className="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-2">
+          <div className="flex gap-1.5">
+            <dt className="text-[var(--color-text-dim)]">Sem resposta:</dt>
+            <dd className="font-medium">{desde(lead.naoRespondeDesde ?? lead.atualizadoEm ?? lead.criadoEm)}</dd>
+          </div>
+          <div className="flex min-w-0 gap-1.5">
+            <dt className="shrink-0 text-[var(--color-text-dim)]">Última ação:</dt>
+            <dd className="min-w-0 truncate font-medium">{lead.ultimaTentativaAcao ?? "—"}</dd>
+          </div>
+          {lead.ultimaTentativaEm && (
+            <div className="flex gap-1.5">
+              <dt className="text-[var(--color-text-dim)]">Quando:</dt>
+              <dd className="font-medium">{dataHora(lead.ultimaTentativaEm)}</dd>
+            </div>
+          )}
+          {lead.valorEstimado > 0 && (
+            <div className="flex gap-1.5">
+              <dt className="text-[var(--color-text-dim)]">Valor:</dt>
+              <dd className="font-medium tabular-nums">
+                {lead.valorEstimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
       {semBiblioteca ? (
         <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-4 text-sm text-[var(--color-text-dim)]">
           Nenhuma mensagem cadastrada ainda. O administrador cria a biblioteca em{" "}
