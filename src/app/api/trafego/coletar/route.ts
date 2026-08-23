@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "node:crypto";
 
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -46,10 +47,42 @@ function nomeDoNivel(l: LinhaInsight, nivel: string): string | null {
   return l.ad_name ?? null;
 }
 
-export async function GET(req: NextRequest) {
+/**
+ * Quem pode disparar a coleta.
+ *
+ * Dois caminhos: o admin logado (o botão da tela) e um segredo de máquina, para
+ * a coleta recorrente rodar sem ninguém logado. O segredo é comparado em tempo
+ * constante — comparar com === vaza o tamanho do acerto por diferença de tempo.
+ */
+async function autorizar(req: NextRequest): Promise<{ orgId: string } | Response> {
+  const segredo = process.env.TRAFEGO_SECRET?.trim();
+  const enviado = req.headers.get("x-trafego-secret")?.trim();
+  if (segredo && enviado) {
+    const a = Buffer.from(segredo);
+    const b = Buffer.from(enviado);
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+      // sem sessão não há org: usamos a única conexão ativa da instalação
+      const db = supabaseAdmin();
+      const { data } = await db.from("meta_conexoes").select("org_id").eq("status", "ativa");
+      const orgs = (data ?? []) as { org_id: string }[];
+      if (orgs.length !== 1) {
+        return Response.json(
+          { error: `Esperava 1 conexão ativa para deduzir a empresa, encontrei ${orgs.length}.` },
+          { status: 400 },
+        );
+      }
+      return { orgId: orgs[0].org_id };
+    }
+  }
   const guard = await requireAdmin(req);
   if (guard instanceof Response) return guard;
-  const { orgId } = guard;
+  return { orgId: guard.orgId };
+}
+
+export async function GET(req: NextRequest) {
+  const quem = await autorizar(req);
+  if (quem instanceof Response) return quem;
+  const { orgId } = quem;
 
   const conexao = await conexaoDaOrg(orgId);
   if (!conexao || conexao.status !== "ativa") {
