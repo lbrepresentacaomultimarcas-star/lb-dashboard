@@ -23,6 +23,7 @@ export const ESCOPOS = [
   "pages_manage_metadata", // inscrever o LB CRM nos leads da Página
   "leads_retrieval", // ler os dados do formulário preenchido
   "business_management", // identificar o portfólio/Business
+  "ads_read", // SOMENTE LEITURA de investimento e desempenho (Central de Trafego)
 ] as const;
 
 export function appId(): string {
@@ -113,7 +114,7 @@ export function urlAutorizacao(redirectUri: string, state: string): string {
   u.searchParams.set("state", state);
   u.searchParams.set("response_type", "code");
 
-  const configId = process.env.META_LOGIN_CONFIG_ID?.trim();
+  const configId = usarConfigId();
   if (configId) {
     u.searchParams.set("config_id", configId);
     // sem isto o Login para Empresas devolve token em vez de código
@@ -124,9 +125,23 @@ export function urlAutorizacao(redirectUri: string, state: string): string {
   return u.toString();
 }
 
+/**
+ * O config_id que deve ser usado — ou nada, para cair no modo clássico.
+ *
+ * META_LOGIN_CLASSICO=1 força o modo clássico SEM apagar o config_id. Existe
+ * porque a lista de permissões do "Login para Empresas" mora num painel da
+ * Meta, e no clássico ela mora aqui em ESCOPOS. Quando é preciso pedir uma
+ * permissão nova e o painel não coopera, essa chave resolve — e voltar atrás é
+ * só apagá-la, sem depender de recuperar um segredo que a Vercel não devolve.
+ */
+function usarConfigId(): string | undefined {
+  if (process.env.META_LOGIN_CLASSICO?.trim() === "1") return undefined;
+  return process.env.META_LOGIN_CONFIG_ID?.trim() || undefined;
+}
+
 /** Qual modo de login está configurado (para a tela explicar o que falta). */
 export function modoLogin(): "empresas" | "classico" {
-  return process.env.META_LOGIN_CONFIG_ID?.trim() ? "empresas" : "classico";
+  return usarConfigId() ? "empresas" : "classico";
 }
 
 /** Troca o `code` da autorização por um token de usuário (curta duração). */
@@ -324,4 +339,113 @@ export async function ultimosLeads(
     },
   });
   return r.data ?? [];
+}
+
+/* ------------------------------ Anúncios --------------------------------- */
+/*
+ * Camada de mídia da CENTRAL DE TRÁFEGO.
+ *
+ * Tudo aqui é SOMENTE LEITURA: `ads_read` deixa o CRM enxergar investimento e
+ * desempenho, e não deixa alterar nada. Mudar campanha exige `ads_management`,
+ * que é uma decisão separada — enquanto ela não existir, a Central recomenda e
+ * registra a autorização, mas quem executa é uma pessoa.
+ */
+
+export type ContaDeAnuncios = {
+  id: string; // act_XXXXXXXX
+  account_id?: string;
+  name?: string;
+  account_status?: number; // 1 = ativa, 2 = desativada, 3 = pendência...
+  currency?: string;
+};
+
+/** Contas de anúncios que este usuário administra. */
+export async function listarContasDeAnuncios(token: string): Promise<ContaDeAnuncios[]> {
+  const r = await chamar<{ data?: ContaDeAnuncios[] }>("/me/adaccounts", {
+    token,
+    params: { fields: "id,account_id,name,account_status,currency", limit: "100" },
+  });
+  return r.data ?? [];
+}
+
+export type NivelInsight = "account" | "campaign" | "adset" | "ad";
+
+export type LinhaInsight = {
+  date_start?: string;
+  date_stop?: string;
+  campaign_id?: string;
+  campaign_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+  ad_id?: string;
+  ad_name?: string;
+  spend?: string;
+  impressions?: string;
+  reach?: string;
+  clicks?: string;
+  inline_link_clicks?: string;
+  ctr?: string;
+  cpc?: string;
+  cpm?: string;
+  frequency?: string;
+  actions?: { action_type?: string; value?: string }[];
+};
+
+/**
+ * Desempenho dia a dia. `time_increment: 1` devolve UMA LINHA POR DIA — é
+ * exatamente o formato de trafego_snapshots, então o histórico se acumula sem
+ * precisar recalcular nada depois.
+ */
+export async function insightsDeAnuncios(
+  contaId: string,
+  token: string,
+  opts: { desde: string; ate: string; nivel: NivelInsight },
+): Promise<LinhaInsight[]> {
+  const campos = [
+    "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
+    "spend", "impressions", "reach", "clicks", "inline_link_clicks",
+    "ctr", "cpc", "cpm", "frequency", "actions",
+  ].join(",");
+
+  const todas: LinhaInsight[] = [];
+  let caminho: string | null = `/${contaId}/insights`;
+  let params: Record<string, string> | undefined = {
+    level: opts.nivel,
+    time_range: JSON.stringify({ since: opts.desde, until: opts.ate }),
+    time_increment: "1",
+    fields: campos,
+    limit: "500",
+  };
+
+  // a Meta pagina; sem seguir o cursor, período longo volta cortado em silêncio
+  for (let pagina = 0; pagina < 20 && caminho; pagina++) {
+    const r: { data?: LinhaInsight[]; paging?: { cursors?: { after?: string } } } =
+      await chamar(caminho, { token, params });
+    todas.push(...(r.data ?? []));
+    const after = r.paging?.cursors?.after;
+    if (!after || !(r.data ?? []).length) break;
+    params = { ...params, after };
+  }
+  return todas;
+}
+
+/** Quantos leads a Meta contou nesta linha. */
+export function leadsDaLinha(l: LinhaInsight): number {
+  const alvos = ["lead", "leadgen.other", "onsite_conversion.lead_grouped"];
+  let n = 0;
+  for (const a of l.actions ?? []) {
+    if (a.action_type && alvos.includes(a.action_type)) n += Number(a.value ?? 0);
+  }
+  return n;
+}
+
+/**
+ * A conexão atual tem permissão para ler anúncios?
+ *
+ * Existe para a tela poder dizer "aguardando permissão" em vez de mostrar zero
+ * — zero e "não sei" são coisas diferentes, e confundir as duas faria a Central
+ * recomendar em cima de dado que ela não tem.
+ */
+export function podeLerAnuncios(escopos: string[] | null | undefined): boolean {
+  return (escopos ?? []).includes("ads_read");
 }
