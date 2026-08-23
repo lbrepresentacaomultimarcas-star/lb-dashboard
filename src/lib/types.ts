@@ -245,13 +245,19 @@ export const STATUS_ORDER: LeadStatus[] = [
 // ============================================================
 // Central de Leads (intake/distribuição — módulo pré-Pipeline)
 // ============================================================
-export type Prioridade = "urgente" | "alta" | "normal" | "baixa";
+/**
+ * Cinco níveis. "urgentissima" existe porque o formulário separa "O quanto
+ * antes" de "Nos próximos 7 dias" — são intenções diferentes e o consultor
+ * precisa ver a diferença sem abrir a ficha.
+ */
+export type Prioridade = "urgentissima" | "urgente" | "alta" | "normal" | "baixa";
 
 export const PRIORIDADE_INFO: Record<Prioridade, { label: string; cor: string; ordem: number }> = {
-  urgente: { label: "Urgente", cor: "#ef4444", ordem: 0 },
-  alta: { label: "Alta", cor: "#f59e0b", ordem: 1 },
-  normal: { label: "Normal", cor: "#3b82f6", ordem: 2 },
-  baixa: { label: "Baixa", cor: "#64748b", ordem: 3 },
+  urgentissima: { label: "Urgentíssima", cor: "#dc2626", ordem: 0 },
+  urgente: { label: "Urgente", cor: "#ef4444", ordem: 1 },
+  alta: { label: "Alta", cor: "#f59e0b", ordem: 2 },
+  normal: { label: "Normal", cor: "#3b82f6", ordem: 3 },
+  baixa: { label: "Baixa", cor: "#64748b", ordem: 4 },
 };
 
 export type CentralLeadStatus =
@@ -327,6 +333,12 @@ export type CentralLead = {
   prazoInteresse?: string;
   /** Todas as perguntas e respostas do formulário, como vieram da Meta. */
   formulario?: { pergunta: string; resposta: string }[];
+  /** Tipo de imóvel, tipo de máquina, local da instalação — resposta literal. */
+  subproduto?: string;
+  /** Faixa de valor procurada (ou a conta de luz, no solar) — resposta literal. */
+  faixaCredito?: string;
+  /** Reservado para análise comercial futura. */
+  objetivo?: string;
 };
 
 /** Evento da timeline/auditoria de um lead da Central. */

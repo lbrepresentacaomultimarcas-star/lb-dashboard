@@ -159,6 +159,9 @@ export async function POST(req: NextRequest) {
           prioridade: lead.prioridade ?? "alta",
           // resposta do CLIENTE, guardada à parte da classificação do sistema
           prazo_interesse: lead.prazoInteresse ?? null,
+          subproduto: lead.subproduto ?? null,
+          faixa_credito: lead.faixaCredito ?? null,
+          objetivo: lead.objetivo ?? null,
           teste: lead.teste ?? false,
           external_id: externalId,
           wa_contato: lead.payload,
@@ -417,12 +420,39 @@ type LeadExtraido = {
   payload: unknown;
   /** Etiqueta de urgência derivada do prazo informado no formulário.
    *  Ausente = mantém o padrão de anúncio pago ("alta"). */
-  prioridade?: "urgente" | "alta" | "normal" | "baixa";
+  prioridade?: "urgentissima" | "urgente" | "alta" | "normal" | "baixa";
   /** Lead da ferramenta de teste da Meta — entra, mas fora das métricas. */
   teste?: boolean;
+  /** Sondagem — respostas literais, cada uma no seu campo. */
+  subproduto?: string;
+  faixaCredito?: string;
+  objetivo?: string;
   /** Resposta literal do cliente sobre quando pretende fechar. */
   prazoInteresse?: string;
 };
+
+/**
+ * Lê uma resposta procurando palavras-chave no TÍTULO da pergunta.
+ *
+ * É assim que o CRM entende formulários novos sem precisar de código novo: o
+ * título da pergunta carrega o significado. "Qual faixa de valor..." e "Quanto
+ * vem a sua conta de luz..." caem as duas em faixa de crédito; "Qual imóvel...",
+ * "Que tipo de máquina..." e "Onde você quer instalar..." caem em subproduto.
+ */
+function respostaPorTitulo(campos: CampoFormulario[], chaves: string[]): string | undefined {
+  for (const c of campos) {
+    const k = chave(c.name);
+    if (chaves.some((palavra) => k.includes(palavra))) {
+      const v = c.values?.[0]?.trim();
+      if (v) return v;
+    }
+  }
+  return undefined;
+}
+
+const CHAVES_FAIXA = ["faixa", "valor", "credito", "conta de luz", "quanto vem"];
+const CHAVES_SUBPRODUTO = ["qual imovel", "tipo de maquina", "que tipo", "onde voce quer", "onde instalar"];
+const CHAVES_OBJETIVO = ["objetivo", "finalidade", "para que"];
 
 /**
  * O lead veio da FERRAMENTA DE TESTE da Meta?
@@ -455,7 +485,7 @@ function ehLeadDeTeste(campos: CampoFormulario[]): boolean {
  */
 type Prazo = {
   etiqueta: string;
-  prioridade: "urgente" | "alta" | "normal" | "baixa";
+  prioridade: "urgentissima" | "urgente" | "alta" | "normal" | "baixa";
   /** Texto EXATO que o cliente escolheu — nunca traduzido nem classificado. */
   resposta: string;
 };
@@ -483,11 +513,14 @@ function detectarPrazo(campos: CampoFormulario[]): Prazo | undefined {
   const t = resposta.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   // as regras não carregam `resposta`: ela vem do que o cliente escreveu
   const regras: [RegExp, Omit<Prazo, "resposta">][] = [
-    [/quanto antes|\bagora\b|imediat|urgente/, { etiqueta: "🔥 QUENTE", prioridade: "urgente" }],
-    [/30\s*dias|proximo\s*mes/, { etiqueta: "🟢 PRÓXIMO", prioridade: "alta" }],
-    [/1\s*a\s*3|um a tres/, { etiqueta: "🟡 MORNO", prioridade: "normal" }],
-    [/3\s*a\s*6|tres a seis/, { etiqueta: "🔵 FUTURO", prioridade: "normal" }],
-    [/pesquisan|pesquisa|so olhando|sem previsao/, { etiqueta: "⚪ PESQUISA", prioridade: "baixa" }],
+    // "7 dias" vem ANTES de "30 dias": as duas contêm "dias" e a primeira que casa vence
+    [/quanto antes|\bagora\b|imediat/, { etiqueta: "🔥 URGENTÍSSIMA", prioridade: "urgentissima" }],
+    [/\b7\s*dias|sete dias|proxima semana/, { etiqueta: "🔴 URGENTE", prioridade: "urgente" }],
+    [/30\s*dias|proximo\s*mes/, { etiqueta: "🟠 ALTA", prioridade: "alta" }],
+    [/1\s*a\s*3|um a tres/, { etiqueta: "🟡 ACOMPANHAMENTO", prioridade: "normal" }],
+    // o formulário antigo pode continuar no ar durante a troca
+    [/3\s*a\s*6|tres a seis/, { etiqueta: "🔵 ACOMPANHAMENTO", prioridade: "normal" }],
+    [/pesquisan|pesquisa|so olhando|sem previsao/, { etiqueta: "🔎 NUTRIÇÃO", prioridade: "baixa" }],
   ];
   for (const [re, p] of regras) {
     if (re.test(t))
@@ -708,6 +741,9 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         idCampo: "leadgen",
         prioridade: prazo?.prioridade,
         prazoInteresse: prazo?.resposta,
+        subproduto: respostaPorTitulo(campos, CHAVES_SUBPRODUTO),
+        faixaCredito: respostaPorTitulo(campos, CHAVES_FAIXA),
+        objetivo: respostaPorTitulo(campos, CHAVES_OBJETIVO),
         teste: ehLeadDeTeste(campos),
         externalId: `lead:${leadgenId}`,
         payload: { lead: meta, webhook: change.value, recebido_em: new Date().toISOString() },

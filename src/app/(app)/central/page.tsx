@@ -281,6 +281,8 @@ export default function CentralLeadsPage() {
           l.nome.toLowerCase().includes(q) ||
           (l.telefone ?? "").toLowerCase().includes(q) ||
           (l.produto ?? "").toLowerCase().includes(q) ||
+          (l.subproduto ?? "").toLowerCase().includes(q) ||
+          (l.faixaCredito ?? "").toLowerCase().includes(q) ||
           (l.origem ?? "").toLowerCase().includes(q) ||
           (vendedores.find((v) => v.id === l.vendedorId)?.nome ?? "").toLowerCase().includes(q)
         );
@@ -735,7 +737,17 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
 
                 <div className="min-w-0">
                   <p className="truncate text-base font-bold text-white">{l.nome}</p>
-                  {l.produto && <p className="truncate text-xs text-white/60">{l.produto}</p>}
+                  {(l.produto || l.subproduto) && (
+                    <p className="truncate text-xs text-white/60">
+                      {[l.produto, l.subproduto].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {l.faixaCredito && (
+                    <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] font-semibold text-white/85">
+                      <span aria-hidden>💰</span>
+                      <span className="min-w-0 truncate">{l.faixaCredito}</span>
+                    </p>
+                  )}
                 </div>
 
                 {l.prazoInteresse && (
@@ -1103,6 +1115,9 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   ["Consultor", nomeVend(timelineDe.vendedorId)],
                   ["Status", CENTRAL_STATUS_INFO[timelineDe.status].label],
                   ["Prioridade (CRM)", PRIORIDADE_INFO[timelineDe.prioridade].label],
+                  ["Subproduto", timelineDe.subproduto],
+                  ["Faixa de crédito", timelineDe.faixaCredito],
+                  ["Objetivo", timelineDe.objetivo],
                   ["Prazo (cliente)", timelineDe.prazoInteresse],
                 ].map(([rot, val]) =>
                   val ? (

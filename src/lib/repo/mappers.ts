@@ -364,6 +364,9 @@ export type DbCentralLead = {
   excluido_motivo?: string | null;
   teste?: boolean | null;
   prazo_interesse?: string | null;
+  subproduto?: string | null;
+  faixa_credito?: string | null;
+  objetivo?: string | null;
   wa_contato?: unknown;
 };
 
@@ -395,6 +398,9 @@ export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
   excluidoMotivo: r.excluido_motivo ?? undefined,
   teste: r.teste ?? false,
   prazoInteresse: r.prazo_interesse ?? undefined,
+  subproduto: r.subproduto ?? undefined,
+  faixaCredito: r.faixa_credito ?? undefined,
+  objetivo: r.objetivo ?? undefined,
   formulario: respostasDoFormulario(r.wa_contato),
 });
 
@@ -425,6 +431,9 @@ export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead>
   if (c.observacoes !== undefined) out.observacoes = c.observacoes || null;
   if (c.prioridade !== undefined) out.prioridade = c.prioridade;
   if (c.prazoInteresse !== undefined) out.prazo_interesse = c.prazoInteresse || null;
+  if (c.subproduto !== undefined) out.subproduto = c.subproduto || null;
+  if (c.faixaCredito !== undefined) out.faixa_credito = c.faixaCredito || null;
+  if (c.objetivo !== undefined) out.objetivo = c.objetivo || null;
   if (c.vendedorId !== undefined) out.vendedor_id = c.vendedorId || null;
   if (c.distribuidoPor !== undefined) out.distribuido_por = c.distribuidoPor || null;
   if (c.status !== undefined) out.status = c.status;
