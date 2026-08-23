@@ -165,6 +165,7 @@ export async function POST(req: NextRequest) {
           prazo_interesse: lead.prazoInteresse ?? null,
           subproduto: lead.subproduto ?? null,
           faixa_credito: lead.faixaCredito ?? null,
+          cidade: lead.cidade ?? null,
           objetivo: lead.objetivo ?? null,
           teste: lead.teste ?? false,
           external_id: externalId,
@@ -430,6 +431,7 @@ type LeadExtraido = {
   /** Sondagem — respostas literais, cada uma no seu campo. */
   subproduto?: string;
   faixaCredito?: string;
+  cidade?: string;
   objetivo?: string;
   /** Resposta literal do cliente sobre quando pretende fechar. */
   prazoInteresse?: string;
@@ -457,6 +459,9 @@ function respostaPorTitulo(campos: CampoFormulario[], chaves: string[]): string 
 const CHAVES_FAIXA = ["faixa", "valor", "credito", "conta de luz", "quanto vem"];
 const CHAVES_SUBPRODUTO = ["qual imovel", "tipo de maquina", "que tipo", "onde voce quer", "onde instalar"];
 const CHAVES_OBJETIVO = ["objetivo", "finalidade", "para que"];
+/** A Meta nao entrega cidade no Brasil (o recorte dela para no estado),
+ *  entao a cidade so existe se o formulario perguntar. */
+const CHAVES_CIDADE = ["cidade", "municipio", "onde voce mora"];
 
 /** A pergunta fala do PRODUTO? "Qual faixa de valor você procura?" também tem
  *  "procura", mas é faixa de crédito — e responder "R$ 60 a 80 mil" não é
@@ -795,6 +800,7 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         prazoInteresse: prazo?.resposta,
         subproduto: respostaPorTitulo(campos, CHAVES_SUBPRODUTO),
         faixaCredito: respostaPorTitulo(campos, CHAVES_FAIXA),
+        cidade: respostaPorTitulo(campos, CHAVES_CIDADE),
         objetivo: respostaPorTitulo(campos, CHAVES_OBJETIVO),
         teste: ehLeadDeTeste(campos),
         externalId: `lead:${leadgenId}`,
