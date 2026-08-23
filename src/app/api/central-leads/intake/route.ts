@@ -445,10 +445,10 @@ type LeadExtraido = {
  */
 function respostaPorTitulo(campos: CampoFormulario[], chaves: string[]): string | undefined {
   for (const c of campos) {
-    const k = chave(c.name);
+    const k = titulo(c.name);
     if (chaves.some((palavra) => k.includes(palavra))) {
       const v = c.values?.[0]?.trim();
-      if (v) return v;
+      if (v) return textoDaResposta(v);
     }
   }
   return undefined;
@@ -515,12 +515,14 @@ function ehCampoPrazo(k: string): boolean {
 function detectarPrazo(campos: CampoFormulario[]): Prazo | undefined {
   let resposta: string | undefined;
   for (const c of campos) {
-    if (ehCampoPrazo(chave(c.name))) {
+    if (ehCampoPrazo(titulo(c.name))) {
       resposta = c.values?.[0]?.trim();
       break;
     }
   }
   if (!resposta) return undefined;
+  // a Meta manda "nos_proximos_7_dias"; sem desfazer isso, nenhuma regra casa
+  resposta = textoDaResposta(resposta);
 
   const t = resposta.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   // as regras não carregam `resposta`: ela vem do que o cliente escreveu
@@ -640,6 +642,41 @@ async function buscarLeadNaMeta(leadgenId: string, token: string): Promise<LeadD
 const chave = (s: string | undefined) =>
   (s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
+/**
+ * TÍTULO da pergunta como frase.
+ *
+ * A Meta não devolve o título como você escreveu: ela normaliza. "Qual imóvel
+ * você procura?" chega como "qual_imóvel_você_procura?". Sem trocar o "_" por
+ * espaço, uma palavra-chave de duas palavras ("qual imovel", "conta de luz")
+ * nunca casaria — e o campo ficaria vazio em silêncio.
+ */
+const titulo = (s: string | undefined) => chave(s).replace(/_/g, " ").replace(/\s+/g, " ").trim();
+
+/** Campos de contato, nos dois idiomas: o formulário em pt_BR manda
+ *  "nome_completo"/"telefone"; o antigo, em inglês, "full_name"/"phone_number". */
+const CAMPOS_DE_CONTATO = [
+  "full name", "first name", "last name", "phone number", "email",
+  "nome completo", "telefone", "e mail", "inbox url",
+];
+
+/**
+ * RESPOSTA de múltipla escolha em texto de gente.
+ *
+ * A Meta também normaliza a opção escolhida: "Agora / o quanto antes" chega
+ * como "agora_/_o_quanto_antes". Isso quebrava duas coisas ao mesmo tempo — as
+ * regras de prazo não casavam (viravam todas "alta") e o consultor lia
+ * "ate_r$_40_mil" na tela.
+ */
+function textoDaResposta(v: string): string {
+  const t = v
+    .replace(/_/g, " ")
+    .replace(/\s*\/\s*/g, " / ")
+    .replace(/r\$\s*/gi, "R$ ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return t.replace(/\p{L}/u, (c) => c.toUpperCase());
+}
+
 /** Converte o field_data da Meta nos campos do CRM. */
 function mapearFormulario(campos: CampoFormulario[]) {
   const val = (...nomes: string[]) => {
@@ -661,9 +698,10 @@ function mapearFormulario(campos: CampoFormulario[]) {
   // interesse: primeiro um campo que fale de interesse/produto; senão, deduz do texto
   let interesse: string | undefined;
   for (const c of campos) {
-    const k = chave(c.name);
+    const k = titulo(c.name);
     if (ehCampoInteresse(k)) {
-      interesse = c.values?.[0]?.trim() || undefined;
+      interesse = c.values?.[0]?.trim();
+      interesse = interesse ? textoDaResposta(interesse) : undefined;
       break;
     }
   }
@@ -729,11 +767,11 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
       if (m.email) partes.push(`E-mail: ${m.email}`);
       // demais respostas do formulário, para o consultor não perder nada
       for (const c of campos) {
-        const k = chave(c.name);
-        if (["full_name", "first_name", "last_name", "phone_number", "email"].includes(k)) continue;
+        const k = titulo(c.name);
+        if (CAMPOS_DE_CONTATO.includes(k)) continue;
         if (k.includes("interesse") || k.includes("produto") || k.includes("procura")) continue;
         if (ehCampoPrazo(k)) continue; // já virou a etiqueta lá em cima
-        const v = c.values?.join(", ")?.trim();
+        const v = c.values?.map(textoDaResposta).join(", ")?.trim();
         if (v) partes.push(`${c.name}: ${v}`);
       }
       if (meta.campaign_name) partes.push(`Campanha: ${meta.campaign_name}`);
