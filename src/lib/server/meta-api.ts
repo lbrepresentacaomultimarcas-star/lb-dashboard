@@ -24,6 +24,7 @@ export const ESCOPOS = [
   "leads_retrieval", // ler os dados do formulário preenchido
   "business_management", // identificar o portfólio/Business
   "ads_read", // SOMENTE LEITURA de investimento e desempenho (Central de Trafego)
+  "pages_manage_ads", // listar os formulários da Página (a tela de Integrações depende dela)
 ] as const;
 
 export function appId(): string {
