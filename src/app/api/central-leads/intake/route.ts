@@ -157,6 +157,8 @@ export async function POST(req: NextRequest) {
           status: "novo",
           // prazo informado no formulário manda; sem prazo, anúncio pago = "alta"
           prioridade: lead.prioridade ?? "alta",
+          // resposta do CLIENTE, guardada à parte da classificação do sistema
+          prazo_interesse: lead.prazoInteresse ?? null,
           teste: lead.teste ?? false,
           external_id: externalId,
           wa_contato: lead.payload,
@@ -418,6 +420,8 @@ type LeadExtraido = {
   prioridade?: "urgente" | "alta" | "normal" | "baixa";
   /** Lead da ferramenta de teste da Meta — entra, mas fora das métricas. */
   teste?: boolean;
+  /** Resposta literal do cliente sobre quando pretende fechar. */
+  prazoInteresse?: string;
 };
 
 /**
@@ -449,7 +453,12 @@ function ehLeadDeTeste(campos: CampoFormulario[]): boolean {
  * a diferença entre "1 a 3 meses" e "3 a 6 meses" mesmo os dois entrando como
  * Normal.
  */
-type Prazo = { etiqueta: string; prioridade: "urgente" | "alta" | "normal" | "baixa" };
+type Prazo = {
+  etiqueta: string;
+  prioridade: "urgente" | "alta" | "normal" | "baixa";
+  /** Texto EXATO que o cliente escolheu — nunca traduzido nem classificado. */
+  resposta: string;
+};
 
 /** true quando a pergunta é sobre prazo/intenção de compra. */
 function ehCampoPrazo(k: string): boolean {
@@ -472,7 +481,8 @@ function detectarPrazo(campos: CampoFormulario[]): Prazo | undefined {
   if (!resposta) return undefined;
 
   const t = resposta.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const regras: [RegExp, Prazo][] = [
+  // as regras não carregam `resposta`: ela vem do que o cliente escreveu
+  const regras: [RegExp, Omit<Prazo, "resposta">][] = [
     [/quanto antes|\bagora\b|imediat|urgente/, { etiqueta: "🔥 QUENTE", prioridade: "urgente" }],
     [/30\s*dias|proximo\s*mes/, { etiqueta: "🟢 PRÓXIMO", prioridade: "alta" }],
     [/1\s*a\s*3|um a tres/, { etiqueta: "🟡 MORNO", prioridade: "normal" }],
@@ -480,10 +490,11 @@ function detectarPrazo(campos: CampoFormulario[]): Prazo | undefined {
     [/pesquisan|pesquisa|so olhando|sem previsao/, { etiqueta: "⚪ PESQUISA", prioridade: "baixa" }],
   ];
   for (const [re, p] of regras) {
-    if (re.test(t)) return { etiqueta: `${p.etiqueta} — ${resposta}`, prioridade: p.prioridade };
+    if (re.test(t))
+      return { etiqueta: `${p.etiqueta} — ${resposta}`, prioridade: p.prioridade, resposta };
   }
   // resposta que não casa com nenhuma regra: preserva o texto, mantém o padrão
-  return { etiqueta: `⏱️ PRAZO — ${resposta}`, prioridade: "alta" };
+  return { etiqueta: `⏱️ PRAZO — ${resposta}`, prioridade: "alta", resposta };
 }
 
 /**
@@ -696,6 +707,7 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
         mensagemId: leadgenId,
         idCampo: "leadgen",
         prioridade: prazo?.prioridade,
+        prazoInteresse: prazo?.resposta,
         teste: ehLeadDeTeste(campos),
         externalId: `lead:${leadgenId}`,
         payload: { lead: meta, webhook: change.value, recebido_em: new Date().toISOString() },

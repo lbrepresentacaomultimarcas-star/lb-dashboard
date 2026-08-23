@@ -5,8 +5,8 @@ import {
   Ban,
   CheckCircle2,
   Clock,
+  FileText,
   FileSpreadsheet,
-  History,
   Inbox,
   MessageCircle,
   Phone,
@@ -86,6 +86,35 @@ function StatusBadge({ status }: { status: CentralLeadStatus }) {
     </span>
   );
 }
+/**
+ * Prazo declarado PELO CLIENTE — não confundir com prioridade.
+ * Prioridade é classificação do CRM; isto é o que a pessoa respondeu.
+ * O texto sai como veio; a cor é só leitura rápida.
+ */
+function PrazoBadge({ prazo }: { prazo: string }) {
+  const t = prazo
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+  const cor = /quanto antes|agora|imediat/.test(t)
+    ? { bg: "rgba(239,68,68,.16)", fg: "#fca5a5" }
+    : /30\s*dias|proximo\s*mes/.test(t)
+      ? { bg: "rgba(245,158,11,.16)", fg: "#fcd34d" }
+      : /pesquisan|pesquisa|sem previsao/.test(t)
+        ? { bg: "rgba(148,163,184,.18)", fg: "#cbd5e1" }
+        : { bg: "rgba(59,130,246,.16)", fg: "#93c5fd" };
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold"
+      style={{ background: cor.bg, color: cor.fg }}
+      title={`Prazo informado pelo cliente: ${prazo}`}
+    >
+      <Clock className="h-3 w-3 shrink-0" />
+      <span className="min-w-0 truncate">{prazo}</span>
+    </span>
+  );
+}
+
 function PrioridadeBadge({ p }: { p: Prioridade }) {
   const info = PRIORIDADE_INFO[p];
   return (
@@ -709,6 +738,15 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   {l.produto && <p className="truncate text-xs text-white/60">{l.produto}</p>}
                 </div>
 
+                {l.prazoInteresse && (
+                  <div className="min-w-0">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                      Quer fechar
+                    </p>
+                    <PrazoBadge prazo={l.prazoInteresse} />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-white/70">
                   <span className="flex items-center gap-1.5">
                     <Phone className="h-3.5 w-3.5 text-white/40" />
@@ -751,10 +789,10 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   )}
                   <button
                     onClick={() => abrirTimeline(l)}
-                    title="Histórico"
+                    title="Ficha completa — respostas do formulário e histórico"
                     className="grid h-8 w-9 shrink-0 place-items-center rounded-lg border border-white/12 bg-white/[0.04] text-white/70 transition-colors hover:bg-white/[0.08]"
                   >
-                    <History className="h-3.5 w-3.5" />
+                    <FileText className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
@@ -1045,7 +1083,77 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
       </Modal>
 
       {/* Modal timeline */}
-      <Modal open={!!timelineDe} onClose={() => setTimelineDe(null)} title="Histórico do lead" subtitle={timelineDe?.nome} icon={<History className="h-5 w-5" />}>
+      <Modal
+        open={!!timelineDe}
+        onClose={() => setTimelineDe(null)}
+        title="Ficha do lead"
+        subtitle={timelineDe?.nome}
+        icon={<FileText className="h-5 w-5" />}
+      >
+        {/* identificação */}
+        {timelineDe && (
+          <div className="mb-4 space-y-3">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
+              <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2">
+                {[
+                  ["Produto", timelineDe.produto],
+                  ["Telefone", timelineDe.telefone],
+                  ["Origem", timelineDe.origem],
+                  ["Entrou em", `${fmtData(timelineDe.recebidoEm)} · ${fmtHora(timelineDe.recebidoEm)}`],
+                  ["Consultor", nomeVend(timelineDe.vendedorId)],
+                  ["Status", CENTRAL_STATUS_INFO[timelineDe.status].label],
+                  ["Prioridade (CRM)", PRIORIDADE_INFO[timelineDe.prioridade].label],
+                  ["Prazo (cliente)", timelineDe.prazoInteresse],
+                ].map(([rot, val]) =>
+                  val ? (
+                    <div key={rot as string} className="flex min-w-0 gap-1.5">
+                      <dt className="shrink-0 text-[var(--color-text-dim)]">{rot}:</dt>
+                      <dd className="min-w-0 break-words font-medium">{val}</dd>
+                    </div>
+                  ) : null,
+                )}
+              </dl>
+            </div>
+
+            {/* Informações do formulário — respostas originais, sem interpretação */}
+            <section>
+              <h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
+                Informações do formulário
+              </h4>
+              {timelineDe.formulario && timelineDe.formulario.length > 0 ? (
+                <dl className="space-y-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
+                  {timelineDe.formulario.map((c, i) => (
+                    <div key={`${c.pergunta}-${i}`} className="min-w-0">
+                      <dt className="break-words text-[11px] text-[var(--color-text-dim)]">{c.pergunta}</dt>
+                      <dd className="break-words text-sm font-medium">{c.resposta}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="rounded-xl border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-dim)]">
+                  Este lead não veio de formulário da Meta — não há respostas para mostrar.
+                  {timelineDe.observacoes ? " O que foi informado está nas observações abaixo." : ""}
+                </p>
+              )}
+            </section>
+
+            {timelineDe.observacoes && (
+              <section>
+                <h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
+                  Observações
+                </h4>
+                <p className="whitespace-pre-wrap break-words rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3 text-xs leading-relaxed">
+                  {timelineDe.observacoes}
+                </p>
+              </section>
+            )}
+
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
+              Histórico da negociação
+            </h4>
+          </div>
+        )}
+
         {eventos === null ? (
           <p className="py-6 text-center text-sm text-white/45">Carregando…</p>
         ) : eventos.length === 0 ? (

@@ -318,6 +318,15 @@ export type CentralLead = {
   excluidoMotivo?: string;
   /** Veio da ferramenta de teste da Meta — não conta em métrica nenhuma. */
   teste?: boolean;
+  /**
+   * Resposta LITERAL do cliente sobre quando pretende fechar
+   * ("Agora / o quanto antes", "De 1 a 3 meses"…).
+   * Diferente de `prioridade`: esta é classificação do CRM, aquela é a
+   * declaração do cliente. As duas coexistem e nenhuma sobrescreve a outra.
+   */
+  prazoInteresse?: string;
+  /** Todas as perguntas e respostas do formulário, como vieram da Meta. */
+  formulario?: { pergunta: string; resposta: string }[];
 };
 
 /** Evento da timeline/auditoria de um lead da Central. */

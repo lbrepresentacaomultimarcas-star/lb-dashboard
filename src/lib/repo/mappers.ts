@@ -363,6 +363,8 @@ export type DbCentralLead = {
   excluido_por?: string | null;
   excluido_motivo?: string | null;
   teste?: boolean | null;
+  prazo_interesse?: string | null;
+  wa_contato?: unknown;
 };
 
 export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
@@ -392,7 +394,27 @@ export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
   excluidoPor: r.excluido_por ?? undefined,
   excluidoMotivo: r.excluido_motivo ?? undefined,
   teste: r.teste ?? false,
+  prazoInteresse: r.prazo_interesse ?? undefined,
+  formulario: respostasDoFormulario(r.wa_contato),
 });
+
+/**
+ * Extrai as perguntas e respostas do payload cru que a Meta entregou.
+ * Nada é interpretado nem traduzido: sai como o cliente respondeu.
+ */
+function respostasDoFormulario(
+  bruto: unknown,
+): { pergunta: string; resposta: string }[] | undefined {
+  const campos = (bruto as { lead?: { field_data?: { name?: string; values?: string[] }[] } })
+    ?.lead?.field_data;
+  if (!Array.isArray(campos) || campos.length === 0) return undefined;
+  return campos
+    .map((c) => ({
+      pergunta: (c.name ?? "").trim(),
+      resposta: (c.values ?? []).join(", ").trim(),
+    }))
+    .filter((c) => c.pergunta && c.resposta);
+}
 
 export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead> => {
   const out: Partial<DbCentralLead> = {};
@@ -402,6 +424,7 @@ export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead>
   if (c.origem !== undefined) out.origem = c.origem || null;
   if (c.observacoes !== undefined) out.observacoes = c.observacoes || null;
   if (c.prioridade !== undefined) out.prioridade = c.prioridade;
+  if (c.prazoInteresse !== undefined) out.prazo_interesse = c.prazoInteresse || null;
   if (c.vendedorId !== undefined) out.vendedor_id = c.vendedorId || null;
   if (c.distribuidoPor !== undefined) out.distribuido_por = c.distribuidoPor || null;
   if (c.status !== undefined) out.status = c.status;
