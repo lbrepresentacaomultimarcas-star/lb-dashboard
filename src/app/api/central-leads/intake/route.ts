@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { formularioLiberado, tokenDaPaginaPorId } from "@/lib/server/meta-conexao";
+import {
+  formularioLiberado,
+  produtoDoFormulario,
+  tokenDaPaginaPorId,
+} from "@/lib/server/meta-conexao";
 
 /**
  * PORTA DE ENTRADA DA META → CENTRAL DE LEADS (Click-to-WhatsApp).
@@ -454,6 +458,14 @@ const CHAVES_FAIXA = ["faixa", "valor", "credito", "conta de luz", "quanto vem"]
 const CHAVES_SUBPRODUTO = ["qual imovel", "tipo de maquina", "que tipo", "onde voce quer", "onde instalar"];
 const CHAVES_OBJETIVO = ["objetivo", "finalidade", "para que"];
 
+/** A pergunta fala do PRODUTO? "Qual faixa de valor você procura?" também tem
+ *  "procura", mas é faixa de crédito — e responder "R$ 60 a 80 mil" não é
+ *  um produto. */
+const ehCampoInteresse = (k: string) =>
+  k.includes("interesse") ||
+  k.includes("produto") ||
+  (k.includes("procura") && !CHAVES_FAIXA.some((palavra) => k.includes(palavra)));
+
 /**
  * O lead veio da FERRAMENTA DE TESTE da Meta?
  *
@@ -650,7 +662,7 @@ function mapearFormulario(campos: CampoFormulario[]) {
   let interesse: string | undefined;
   for (const c of campos) {
     const k = chave(c.name);
-    if (k.includes("interesse") || k.includes("produto") || k.includes("procura")) {
+    if (ehCampoInteresse(k)) {
       interesse = c.values?.[0]?.trim() || undefined;
       break;
     }
@@ -733,7 +745,9 @@ async function extrairLeadsAds(body: WebhookBody): Promise<LeadExtraido[]> {
       out.push({
         nome: m.nome ?? "Lead do formulário",
         telefone,
-        produto: m.produto,
+        // o formulário manda: é ele que diz o produto. As respostas só entram
+        // como reserva, para o formulário antigo continuar funcionando.
+        produto: (await produtoDoFormulario(orgDaPagina, formId)) ?? m.produto,
         origem,
         observacoes: partes.join("\n") || undefined,
         anuncio: meta.ad_name ?? meta.campaign_name ?? undefined,

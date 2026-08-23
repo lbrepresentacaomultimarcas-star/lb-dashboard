@@ -362,6 +362,48 @@ export async function formularioLiberado(orgId: string, formId?: string): Promis
   return (data as { ativo: boolean }).ativo;
 }
 
+/**
+ * "LB | Crédito para Carros" -> "Carro".
+ *
+ * Com um formulário por produto, o produto deixou de ser pergunta: ele É o
+ * formulário. O nome cadastrado em `meta_formularios` é a fonte certa — as
+ * respostas não servem, porque "R$ 60 a 80 mil" não diz que é carro e, no
+ * solar, "Minha casa" diria imóvel.
+ *
+ * Ordem: do mais específico para o mais genérico.
+ */
+export function produtoPeloNome(nome: string): string | undefined {
+  const t = nome.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const regras: [RegExp, string][] = [
+    [/solar|fotovoltaic/, "Energia Solar"],
+    [/maquina|maquinario|trator|implemento/, "Maquinário"],
+    [/caminhao|caminhoes|carreta|truck/, "Caminhão"],
+    [/moto/, "Moto"],
+    [/carro|automovel|veiculo/, "Carro"],
+    [/imobiliar|imovel|imoveis|casa|apartamento|terreno/, "Imóvel"],
+    [/investiment/, "Investimento"],
+  ];
+  for (const [re, p] of regras) if (re.test(t)) return p;
+  return undefined;
+}
+
+/** Produto do lead a partir do formulário que ele preencheu. */
+export async function produtoDoFormulario(
+  orgId: string | undefined,
+  formId?: string,
+): Promise<string | undefined> {
+  if (!orgId || !formId) return undefined;
+  const db = supabaseAdmin();
+  const { data } = await db
+    .from("meta_formularios")
+    .select("nome")
+    .eq("org_id", orgId)
+    .eq("form_id", formId)
+    .maybeSingle();
+  const nome = (data as { nome?: string } | null)?.nome;
+  return nome ? produtoPeloNome(nome) : undefined;
+}
+
 export async function registrarLeadRecebido(orgId: string, formId?: string): Promise<void> {
   if (!formId) return;
   const db = supabaseAdmin();
