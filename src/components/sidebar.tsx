@@ -13,6 +13,7 @@ import {
   History,
   Inbox,
   Landmark,
+  Megaphone,
   LayoutDashboard,
   Lightbulb,
   MessageSquareText,
@@ -63,6 +64,7 @@ const NAV: (NavItem | NavGroup)[] = [
   { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
+  { href: "/trafego", label: "Central de Tráfego", icon: Megaphone, minimo: "admin" },
   {
     label: "Gameficação",
     icon: Trophy,
