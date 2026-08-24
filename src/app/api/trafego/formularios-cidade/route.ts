@@ -48,6 +48,30 @@ function limparPergunta(q: PerguntaFormulario): PerguntaFormulario {
   return limpa;
 }
 
+/**
+ * Mesmo problema do lado dos objetos compostos: a leitura devolve `id` e a foto
+ * de capa como objeto (`cover_photo`), mas a criação quer só o identificador
+ * dela (`cover_photo_id`). Sem essa tradução, o formulário novo nasceria sem a
+ * capa — e a capa foi trabalho aprovado.
+ */
+function limparCartao(c?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!c) return undefined;
+  const fora = new Set(["id", "cover_photo"]);
+  const limpo: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(c)) if (!fora.has(k) && v != null) limpo[k] = v;
+  const foto = c.cover_photo as { id?: string } | undefined;
+  if (foto?.id) limpo.cover_photo_id = foto.id;
+  return limpo;
+}
+
+/** Objetos que só precisam perder o identificador do formulário antigo. */
+function semId(o?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!o) return undefined;
+  const limpo: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) if (k !== "id" && v != null) limpo[k] = v;
+  return limpo;
+}
+
 const PREFIXO = "LB | ";
 const SUFIXO = " · com cidade";
 
@@ -128,9 +152,9 @@ export async function POST(req: NextRequest) {
         name: nomeNovo,
         locale: def.locale,
         questions: novas,
-        context_card: def.context_card,
-        thank_you_page: def.thank_you_page,
-        privacy_policy: def.privacy_policy,
+        context_card: limparCartao(def.context_card),
+        thank_you_page: semId(def.thank_you_page),
+        privacy_policy: semId(def.privacy_policy),
         follow_up_action_url: def.follow_up_action_url,
         block_display_for_non_targeted_viewer: def.block_display_for_non_targeted_viewer,
       });
