@@ -148,17 +148,46 @@ export async function POST(req: NextRequest) {
           ];
       const novas = ordenadas.map(limparPergunta);
 
-      const id = await criarFormulario(pageId, token, {
-        name: nomeNovo,
-        locale: def.locale,
-        questions: novas,
-        context_card: limparCartao(def.context_card),
-        thank_you_page: semId(def.thank_you_page),
-        privacy_policy: semId(def.privacy_policy),
-        follow_up_action_url: def.follow_up_action_url,
-        block_display_for_non_targeted_viewer: def.block_display_for_non_targeted_viewer,
-      });
-      criados.push({ origem: f.nome, novo: nomeNovo, form_id: id, situacao: "criado" });
+      /*
+       * A Meta recusa campos do payload um a um e nem sempre diz qual. Em vez de
+       * adivinhar mais uma rodada, tentamos do mais completo ao mais simples e
+       * ficamos com o primeiro que passa: um formulário com a cidade e sem capa
+       * vale mais que nenhum formulário. O relatório diz o que foi perdido.
+       */
+      const base = { name: nomeNovo, locale: def.locale, questions: novas };
+      const tentativas: { rotulo: string; corpo: Parameters<typeof criarFormulario>[2] }[] = [
+        {
+          rotulo: "completo",
+          corpo: {
+            ...base,
+            context_card: limparCartao(def.context_card),
+            thank_you_page: semId(def.thank_you_page),
+            follow_up_action_url: def.follow_up_action_url,
+            block_display_for_non_targeted_viewer: def.block_display_for_non_targeted_viewer,
+          },
+        },
+        {
+          rotulo: "sem_capa",
+          corpo: { ...base, thank_you_page: semId(def.thank_you_page), follow_up_action_url: def.follow_up_action_url },
+        },
+        { rotulo: "sem_tela_final", corpo: { ...base, follow_up_action_url: def.follow_up_action_url } },
+        { rotulo: "minimo", corpo: base },
+      ];
+
+      let id: string | null = null;
+      let comoFoi = "";
+      let ultimoErro = "";
+      for (const t of tentativas) {
+        try {
+          id = await criarFormulario(pageId, token, t.corpo);
+          comoFoi = t.rotulo;
+          break;
+        } catch (e) {
+          ultimoErro = e instanceof ErroMeta ? e.message : e instanceof Error ? e.message : String(e);
+        }
+      }
+      if (!id) throw new ErroMeta(ultimoErro || "A Meta recusou todas as tentativas.");
+      criados.push({ origem: f.nome, novo: nomeNovo, form_id: id, situacao: comoFoi });
       await guardarFormularios(orgId, pageId, [{ formId: id, nome: nomeNovo, status: "ACTIVE" }]);
     } catch (e) {
       falhas.push({
