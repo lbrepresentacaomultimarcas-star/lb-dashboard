@@ -364,6 +364,7 @@ export type DbCentralLead = {
   excluido_motivo?: string | null;
   teste?: boolean | null;
   prazo_interesse?: string | null;
+  cidade?: string | null;
   subproduto?: string | null;
   faixa_credito?: string | null;
   objetivo?: string | null;
@@ -398,6 +399,7 @@ export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
   excluidoMotivo: r.excluido_motivo ?? undefined,
   teste: r.teste ?? false,
   prazoInteresse: r.prazo_interesse ?? undefined,
+  cidade: r.cidade ?? undefined,
   subproduto: r.subproduto ?? undefined,
   faixaCredito: r.faixa_credito ?? undefined,
   objetivo: r.objetivo ?? undefined,
@@ -431,6 +433,7 @@ export const centralLeadToDb = (c: Partial<CentralLead>): Partial<DbCentralLead>
   if (c.observacoes !== undefined) out.observacoes = c.observacoes || null;
   if (c.prioridade !== undefined) out.prioridade = c.prioridade;
   if (c.prazoInteresse !== undefined) out.prazo_interesse = c.prazoInteresse || null;
+  if (c.cidade !== undefined) out.cidade = c.cidade || null;
   if (c.subproduto !== undefined) out.subproduto = c.subproduto || null;
   if (c.faixaCredito !== undefined) out.faixa_credito = c.faixaCredito || null;
   if (c.objetivo !== undefined) out.objetivo = c.objetivo || null;

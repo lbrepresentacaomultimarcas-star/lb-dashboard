@@ -118,11 +118,14 @@ function Achado({
 export default function CentralDeTrafego() {
   const [dias, setDias] = useState(30);
   const [dados, setDados] = useState<Panorama | null>(null);
-  const [carregando, setCarregando] = useState(true);
   const [coletando, setColetando] = useState(false);
+  /** Qual período já está na tela. Enquanto for diferente do escolhido, está
+   *  carregando — derivar evita marcar "carregando" com setState dentro do
+   *  efeito, que o React 19 (com razão) recusa. */
+  const [periodoNaTela, setPeriodoNaTela] = useState<number | null>(null);
+  const carregando = periodoNaTela !== dias;
 
   const carregar = useCallback(async (d: number) => {
-    setCarregando(true);
     try {
       const r = await fetch(`/api/trafego/panorama?dias=${d}`, { cache: "no-store" });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Falha ao carregar.");
@@ -130,13 +133,23 @@ export default function CentralDeTrafego() {
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Não consegui carregar o panorama.");
     } finally {
-      setCarregando(false);
+      setPeriodoNaTela(d);
     }
   }, []);
 
   useEffect(() => {
-    void carregar(dias);
-  }, [dias, carregar]);
+    let vivo = true;
+    void (async () => {
+      const r = await fetch(`/api/trafego/panorama?dias=${dias}`, { cache: "no-store" }).catch(() => null);
+      if (!vivo) return;
+      if (r?.ok) setDados(await r.json());
+      else notify.error("Não consegui carregar o panorama.");
+      if (vivo) setPeriodoNaTela(dias);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [dias]);
 
   const analisarAgora = async () => {
     setColetando(true);

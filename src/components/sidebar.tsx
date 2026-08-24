@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { supabaseEnabled } from "@/lib/supabase/client";
 import { Logo } from "@/components/logo";
 import { useSession } from "@/lib/store";
+import { usePendentes } from "@/lib/use-pendentes";
 import { temPermissao } from "@/lib/permissions";
 import type { Papel } from "@/lib/types";
 
@@ -107,9 +108,29 @@ const NAV: (NavItem | NavGroup)[] = [
   { href: "/configuracoes", label: "Configurações", icon: Settings, minimo: "admin" },
 ];
 
+/** Hoje só a fila da Central cobra. Fica em função para o dia em que outra
+ *  tela também precisar de número — o lugar de decidir é um só. */
+const HREF_COM_CONTADOR = "/central";
+function badgeDoItem(href: string, pendentes: number) {
+  return href === HREF_COM_CONTADOR ? pendentes : 0;
+}
+
 function isGroupActive(group: NavGroup, pathname: string) {
   return group.items.some(
     (it) => pathname === it.href || pathname.startsWith(it.href + "/"),
+  );
+}
+
+/** Bolinha de cobrança: só existe quando há o que fazer. */
+function Contador({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span
+      className="ml-auto grid min-w-[20px] place-items-center rounded-full px-1.5 text-[10px] font-bold leading-5 text-white tabular-nums"
+      style={{ background: "var(--color-danger)" }}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
   );
 }
 
@@ -117,10 +138,12 @@ function Item({
   item,
   pathname,
   indent = false,
+  badge = 0,
 }: {
   item: NavItem;
   pathname: string;
   indent?: boolean;
+  badge?: number;
 }) {
   const Icon = item.icon;
   const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -137,11 +160,12 @@ function Item({
     >
       <Icon className="h-4 w-4" />
       {item.label}
+      <Contador n={badge} />
     </Link>
   );
 }
 
-function Group({ group, pathname }: { group: NavGroup; pathname: string }) {
+function Group({ group, pathname, badge = 0 }: { group: NavGroup; pathname: string; badge?: number }) {
   const active = isGroupActive(group, pathname);
   const [open, setOpen] = useState(active);
   const Icon = group.icon;
@@ -159,6 +183,8 @@ function Group({ group, pathname }: { group: NavGroup; pathname: string }) {
       >
         <Icon className="h-4 w-4" />
         <span className="flex-1 text-left">{group.label}</span>
+        {/* fechado, o número fica no grupo; aberto, ele aparece no item certo */}
+        {!open && <Contador n={badge} />}
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 transition-transform",
@@ -169,7 +195,7 @@ function Group({ group, pathname }: { group: NavGroup; pathname: string }) {
       {open && (
         <div className="mt-1 space-y-1">
           {group.items.map((it) => (
-            <Item key={it.href} item={it} pathname={pathname} indent />
+            <Item key={it.href} item={it} pathname={pathname} indent badge={badgeDoItem(it.href, badge)} />
           ))}
         </div>
       )}
@@ -180,6 +206,7 @@ function Group({ group, pathname }: { group: NavGroup; pathname: string }) {
 export function Sidebar() {
   const pathname = usePathname();
   const session = useSession();
+  const pendentes = usePendentes();
 
   // Filtra NAV pelo papel: itens com `minimo` definido só aparecem se permissão suficiente
   const navVisivel: (NavItem | NavGroup)[] = [];
@@ -210,9 +237,14 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {navVisivel.map((entry, i) =>
           "items" in entry ? (
-            <Group key={`g-${i}`} group={entry} pathname={pathname} />
+            <Group
+              key={`g-${i}`}
+              group={entry}
+              pathname={pathname}
+              badge={entry.items.some((it) => it.href === HREF_COM_CONTADOR) ? pendentes : 0}
+            />
           ) : (
-            <Item key={entry.href} item={entry} pathname={pathname} />
+            <Item key={entry.href} item={entry} pathname={pathname} badge={badgeDoItem(entry.href, pendentes)} />
           ),
         )}
       </nav>

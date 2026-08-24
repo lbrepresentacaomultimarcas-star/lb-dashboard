@@ -40,6 +40,7 @@ import { notify } from "@/lib/notify";
 import { PremiumStage } from "@/components/premium-stage";
 import { Dropdown, DropdownItem } from "@/components/ui/dropdown";
 import { Modal } from "@/components/ui/modal";
+import { contarFaixas, naFaixa, resumoPorConsultor, type FaixaCentral } from "@/lib/pendencias";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
@@ -259,7 +260,8 @@ export default function CentralLeadsPage() {
    * enviei e para quem". Só separa o que a tela mostra — não mexe em status,
    * distribuição nem em nada do fluxo.
    */
-  const [aba, setAba] = useState<"novos" | "enviados">("novos");
+  // "todos" só existe para o consultor, que nunca vê lead sem dono.
+  const [aba, setAba] = useState<FaixaCentral | "todos">(admin ? "novos" : "todos");
   /** "" = todos os consultores. Só vale na aba ENVIADOS. */
   const [fConsultor, setFConsultor] = useState("");
   /** Lead em redistribuição — null quando o modal está fechado. */
@@ -348,10 +350,10 @@ export default function CentralLeadsPage() {
       .filter((l) => (soTestes ? l.teste === true : true))
       .filter((l) => (fPrioridade === "todas" ? true : l.prioridade === fPrioridade))
       .filter((l) => (fStatus === "todos" ? true : l.status === fStatus))
-      // lead com status "novo" é o que ainda não foi para nenhum consultor
-      .filter((l) => (!admin ? true : aba === "novos" ? l.status === "novo" : l.status !== "novo"))
-      // barra de consultores: só faz sentido sobre os que já foram enviados
-      .filter((l) => (!admin || aba !== "enviados" || !fConsultor ? true : l.vendedorId === fConsultor))
+      // as faixas moram em lib/pendencias — um só lugar decide o que é o quê
+      .filter((l) => (aba === "todos" ? true : naFaixa(l, aba)))
+      // barra de consultores: não faz sentido sobre quem ainda não tem dono
+      .filter((l) => (!admin || aba === "novos" || !fConsultor ? true : l.vendedorId === fConsultor))
       .filter((l) => {
         if (!q) return true;
         return (
@@ -377,21 +379,29 @@ export default function CentralLeadsPage() {
    * número mudaria conforme a busca e deixaria de responder "quanto cada um tem".
    */
   const porConsultor = useMemo(() => {
-    const enviados = base
+    const daFaixa = base
       .filter((l) => (soTestes ? l.teste === true : true))
-      .filter((l) => l.status !== "novo");
+      .filter((l) => (aba === "todos" ? true : naFaixa(l, aba)));
     const mapa = new Map<string, number>();
-    for (const l of enviados) {
+    for (const l of daFaixa) {
       const k = l.vendedorId ?? "";
       mapa.set(k, (mapa.get(k) ?? 0) + 1);
     }
     const lista = [...mapa.entries()]
       .map(([id, total]) => ({ id, nome: id ? nomeVend(id) : "Sem consultor", total }))
       .sort((a, b) => b.total - a.total);
-    return { total: enviados.length, lista };
+    return { total: daFaixa.length, lista };
     // nomeVend depende de `vendedores`, que já está nas dependências
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, soTestes, vendedores]);
+  }, [base, soTestes, vendedores, aba]);
+
+  /** Situação completa de cada consultor — o que o gestor precisa para bater o
+   *  olho e saber quem está com fila parada. Ignora a aba de propósito: a
+   *  pergunta "como está o Willyan" não muda porque a aba mudou. */
+  const situacaoConsultor = useMemo(
+    () => resumoPorConsultor(base.filter((l) => (soTestes ? l.teste === true : true))),
+    [base, soTestes],
+  );
 
   const MOTIVOS_REDIST = ["Consultor faltou", "Ausência", "Folga", "Reorganização", "Outro"];
 
@@ -417,14 +427,32 @@ export default function CentralLeadsPage() {
     }
   }
 
-  /** Contadores das abas — seguem a mesma fonte e o mesmo filtro de teste. */
-  const contagemAbas = useMemo(() => {
-    const arr = base.filter((l) => (soTestes ? l.teste === true : true));
-    return {
-      novos: arr.filter((l) => l.status === "novo").length,
-      enviados: arr.filter((l) => l.status !== "novo").length,
-    };
-  }, [base, soTestes]);
+  /** Contadores das abas — mesma fonte e mesmo filtro de teste da lista. */
+  const contagemAbas = useMemo(
+    () => contarFaixas(base.filter((l) => (soTestes ? l.teste === true : true))),
+    [base, soTestes],
+  );
+
+  /** As abas que fazem sentido para quem está olhando. O consultor nunca vê
+   *  lead sem dono, então "NOVOS" e "ENVIADOS" não dizem nada para ele. */
+  const abas = useMemo(
+    () =>
+      admin
+        ? ([
+            { id: "novos", rotulo: "NOVOS", cor: "#2563FF" },
+            { id: "enviados", rotulo: "ENVIADOS", cor: "#10B981" },
+            { id: "pendentes", rotulo: "PENDENTES", cor: "#EF4444" },
+            { id: "perda_ligacao", rotulo: "PERDA DE LIGAÇÃO", cor: "#F59E0B" },
+            { id: "atendidos", rotulo: "ATENDIDOS", cor: "#8B5CF6" },
+          ] as const)
+        : ([
+            { id: "todos", rotulo: "TODOS", cor: "#2563FF" },
+            { id: "pendentes", rotulo: "PENDENTES", cor: "#EF4444" },
+            { id: "perda_ligacao", rotulo: "PERDA DE LIGAÇÃO", cor: "#F59E0B" },
+            { id: "atendidos", rotulo: "ATENDIDOS", cor: "#8B5CF6" },
+          ] as const),
+    [admin],
+  );
 
   const kpis = useMemo(() => {
     const aguardando = leads.filter((l) => l.status === "aguardando").length;
@@ -712,13 +740,11 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
         </div>
       )}
 
-      {/* Abas: o que falta enviar × o que já foi */}
-      {admin && (
+      {/* Abas: cada uma é um filtro de verdade sobre a fila */}
+      {
         <div className="lb-fade-up flex flex-wrap gap-2" role="tablist" aria-label="Situação dos leads">
-          {([
-            { id: "novos", rotulo: "NOVOS", total: contagemAbas.novos, cor: "#2563FF" },
-            { id: "enviados", rotulo: "ENVIADOS", total: contagemAbas.enviados, cor: "#10B981" },
-          ] as const).map((t) => {
+          {abas.map((t) => {
+            const total = t.id === "todos" ? contagemAbas.novos + contagemAbas.enviados : contagemAbas[t.id];
             const ativa = aba === t.id;
             return (
               <button
@@ -732,7 +758,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   setSel(new Set());
                   setFConsultor("");
                 }}
-                className="flex h-12 items-center gap-2 rounded-xl border px-4 text-sm font-bold uppercase tracking-wider transition-colors"
+                className="flex h-12 items-center gap-2 rounded-xl border px-3 text-xs font-bold uppercase tracking-wider transition-colors sm:px-4 sm:text-sm"
                 style={{
                   borderColor: ativa ? t.cor : "rgba(255,255,255,.14)",
                   background: ativa ? `${t.cor}22` : "rgba(255,255,255,.04)",
@@ -744,16 +770,16 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   className="rounded-full px-2 py-0.5 text-xs font-bold tabular-nums"
                   style={{ background: ativa ? `${t.cor}33` : "rgba(255,255,255,.10)" }}
                 >
-                  {t.total}
+                  {total}
                 </span>
               </button>
             );
           })}
         </div>
-      )}
+      }
 
       {/* Barra de consultores — bater o olho e saber quanto cada um tem */}
-      {admin && aba === "enviados" && porConsultor.lista.length > 0 && (
+      {admin && aba !== "novos" && porConsultor.lista.length > 0 && (
         <div className="lb-fade-up flex flex-wrap items-center gap-2">
           <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
             Consultores
@@ -782,6 +808,32 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Situação do consultor escolhido — o quadro que responde "como está o
+          Willyan" sem precisar contar card na tela. */}
+      {admin && fConsultor && situacaoConsultor.get(fConsultor) && (
+        <div className="lb-fade-up flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-3">
+          <span className="text-sm font-bold text-white">{nomeVend(fConsultor)}</span>
+          {(() => {
+            const r = situacaoConsultor.get(fConsultor)!;
+            const itens = [
+              { rotulo: "enviados", valor: r.enviados, cor: "#E2E8F0" },
+              { rotulo: "pendentes", valor: r.pendentes, cor: "#EF4444" },
+              { rotulo: "em atendimento", valor: r.emAtendimento, cor: "#F59E0B" },
+              { rotulo: "perda de ligação", valor: r.perdaLigacao, cor: "#FB923C" },
+              { rotulo: "concluídos", valor: r.concluidos, cor: "#34D399" },
+            ];
+            return itens.map((i) => (
+              <span key={i.rotulo} className="flex items-baseline gap-1.5">
+                <span className="text-base font-bold tabular-nums" style={{ color: i.cor }}>
+                  {i.valor}
+                </span>
+                <span className="text-xs text-white/60">{i.rotulo}</span>
+              </span>
+            ));
+          })()}
         </div>
       )}
 

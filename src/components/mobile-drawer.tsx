@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/store";
 import { filterNav } from "@/components/nav-items";
+import { usePendentes } from "@/lib/use-pendentes";
 import { Logo } from "@/components/logo";
 import { useMobileNav } from "@/components/mobile-nav-context";
 
@@ -20,6 +21,7 @@ export function MobileDrawer() {
   const pathname = usePathname();
   const session = useSession();
   const nav = filterNav(session);
+  const pendentes = usePendentes();
 
   useEffect(() => {
     if (!open) return;
@@ -93,6 +95,14 @@ export function MobileDrawer() {
                     >
                       <Icon className="h-4 w-4" />
                       {it.label}
+                      {it.href === "/central" && pendentes > 0 && (
+                        <span
+                          className="ml-auto grid min-w-[20px] place-items-center rounded-full px-1.5 text-[10px] font-bold leading-5 text-white tabular-nums"
+                          style={{ background: "var(--color-danger)" }}
+                        >
+                          {pendentes > 99 ? "99+" : pendentes}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

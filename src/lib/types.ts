@@ -333,6 +333,8 @@ export type CentralLead = {
   prazoInteresse?: string;
   /** Todas as perguntas e respostas do formulário, como vieram da Meta. */
   formulario?: { pergunta: string; resposta: string }[];
+  /** Cidade informada pelo cliente no formulário. Resposta literal. */
+  cidade?: string;
   /** Tipo de imóvel, tipo de máquina, local da instalação — resposta literal. */
   subproduto?: string;
   /** Faixa de valor procurada (ou a conta de luz, no solar) — resposta literal. */

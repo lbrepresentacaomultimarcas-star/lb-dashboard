@@ -239,22 +239,22 @@ export default function ResultadosPage() {
   // página, então ele não redigita o kit a cada peça.
   const kitSalvo = useTextSetting("material_comunicacao");
   const frasesSalvas = useTextSetting("material_frases");
-  const [kit, setKit] = useState<KitComunicacao>(KIT_VAZIO);
-  const [kitCarregado, setKitCarregado] = useState(false);
-
-  useEffect(() => {
-    if (kitCarregado) return;
-    setKitCarregado(true);
-    if (!kitSalvo) return;
+  /** O que ele digitou nesta sessão. Enquanto for nulo, vale o que está
+   *  guardado — derivar em vez de copiar para dentro de um efeito, que é o que
+   *  o React 19 recusa e que também causaria um render a mais. */
+  const [kitEditado, setKitEditado] = useState<KitComunicacao | null>(null);
+  const kit = useMemo<KitComunicacao>(() => {
+    if (kitEditado) return kitEditado;
+    if (!kitSalvo) return KIT_VAZIO;
     try {
-      setKit({ ...KIT_VAZIO, ...(JSON.parse(kitSalvo) as Partial<KitComunicacao>) });
+      return { ...KIT_VAZIO, ...(JSON.parse(kitSalvo) as Partial<KitComunicacao>) };
     } catch {
-      /* kit corrompido no navegador não pode derrubar a tela */
+      return KIT_VAZIO; // kit corrompido no navegador não derruba a tela
     }
-  }, [kitSalvo, kitCarregado]);
+  }, [kitEditado, kitSalvo]);
 
   function trocarKit(k: KitComunicacao) {
-    setKit(k);
+    setKitEditado(k);
     settings.setText("material_comunicacao", JSON.stringify(k));
   }
 

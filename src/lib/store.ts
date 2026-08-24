@@ -582,6 +582,33 @@ async function logEventoCentral(
   });
 }
 
+/**
+ * Texto do aviso de lead novo.
+ *
+ * Vem com nome, telefone e interesse no corpo de propósito: o consultor precisa
+ * conseguir decidir se atende AGORA olhando só o aviso, sem abrir o sistema.
+ * "Você recebeu um lead" obrigaria a abrir para saber se vale a pressa.
+ */
+function avisoDeLead(leads: CentralLead[]): { titulo: string; mensagem: string } {
+  const rodape = "\n\n⚡ Aguardando seu atendimento.";
+  if (leads.length === 1) {
+    const l = leads[0];
+    const dados = [
+      `👤 ${l.nome}`,
+      l.telefone ? `📱 ${l.telefone}` : "",
+      l.produto ? `🎯 ${l.produto}` : "",
+      l.cidade ? `📍 ${l.cidade}` : "",
+    ].filter(Boolean);
+    return { titulo: "🚨 NOVO LEAD RECEBIDO", mensagem: dados.join("\n") + rodape };
+  }
+  const nomes = leads.slice(0, 3).map((l) => l.nome).join(", ");
+  const resto = leads.length > 3 ? ` e mais ${leads.length - 3}` : "";
+  return {
+    titulo: `🚨 ${leads.length} NOVOS LEADS RECEBIDOS`,
+    mensagem: `👤 ${nomes}${resto}` + rodape,
+  };
+}
+
 /** Cria uma notificação interna p/ um usuário (destinatário = profiles.id). */
 async function notificarUsuario(
   userId: string | undefined,
@@ -1595,8 +1622,7 @@ export const centralLeadsApi = {
     const prof = state.roster.find((p) => p.vendedorRef === vendedorId);
     void notificarUsuario(prof?.id, {
       tipo: "central_distribuicao",
-      titulo: `Você recebeu ${centralLeadIds.length} novo(s) lead(s)`,
-      mensagem: "Abra a Central de Leads para começar.",
+      ...avisoDeLead(state.centralLeads.filter((c) => centralLeadIds.includes(c.id))),
       link: "/central",
     });
     void logAudit({ acao: "distribuir", entidade: "central_lead", detalhes: `${centralLeadIds.length} → ${nomeVend}` });
@@ -1654,10 +1680,11 @@ export const centralLeadsApi = {
       detalhe: motivo?.trim() || undefined,
     });
     const prof = state.roster.find((p) => p.vendedorRef === novoVendedorId);
+    const av = avisoDeLead([cl]);
     void notificarUsuario(prof?.id, {
       tipo: "central_distribuicao",
-      titulo: "Um lead passou a ser seu",
-      mensagem: `${cl.nome} — abra a Central de Leads.`,
+      titulo: "🔁 LEAD REDISTRIBUÍDO PARA VOCÊ",
+      mensagem: av.mensagem,
       link: "/central",
     });
     void logAudit({

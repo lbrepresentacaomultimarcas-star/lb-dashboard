@@ -409,7 +409,7 @@ export async function insightsDeAnuncios(
   ].join(",");
 
   const todas: LinhaInsight[] = [];
-  let caminho: string | null = `/${contaId}/insights`;
+  const caminho = `/${contaId}/insights`;
   let params: Record<string, string> | undefined = {
     level: opts.nivel,
     time_range: JSON.stringify({ since: opts.desde, until: opts.ate }),
@@ -419,7 +419,7 @@ export async function insightsDeAnuncios(
   };
 
   // a Meta pagina; sem seguir o cursor, período longo volta cortado em silêncio
-  for (let pagina = 0; pagina < 20 && caminho; pagina++) {
+  for (let pagina = 0; pagina < 20; pagina++) {
     const r: { data?: LinhaInsight[]; paging?: { cursors?: { after?: string } } } =
       await chamar(caminho, { token, params });
     todas.push(...(r.data ?? []));

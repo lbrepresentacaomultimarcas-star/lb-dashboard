@@ -6,6 +6,7 @@ import { sessionApi, useSession } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RefreshButton } from "@/components/refresh-button";
+import { NotificacoesSino } from "@/components/notificacoes-sino";
 import { Avatar } from "@/components/avatar";
 import { useMobileNav } from "@/components/mobile-nav-context";
 
@@ -36,6 +37,7 @@ export function Topbar() {
         <span className="hidden text-xs text-[var(--color-text-dim)] sm:inline">
           {session?.email}
         </span>
+        <NotificacoesSino />
         <RefreshButton />
         <ThemeToggle />
         <Button
