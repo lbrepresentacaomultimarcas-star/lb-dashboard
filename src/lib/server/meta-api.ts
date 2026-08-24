@@ -474,20 +474,39 @@ export type DefinicaoFormulario = {
   context_card?: Record<string, unknown>;
   thank_you_page?: Record<string, unknown>;
   privacy_policy?: Record<string, unknown>;
+  legal_content?: Record<string, unknown>;
   follow_up_action_url?: string;
   block_display_for_non_targeted_viewer?: boolean;
 };
 
-/** Lê a definição completa de um formulário, para servir de molde. */
+/**
+ * Lê a definição completa de um formulário, para servir de molde.
+ *
+ * A Meta muda o conjunto de campos legíveis entre versões da API e responde
+ * "Tried accessing nonexisting field (x)" quando um deles não existe — derrubando
+ * a chamada inteira por causa de um campo. Em vez de fixar uma lista que quebra
+ * na próxima versão, a leitura tira o campo recusado e tenta de novo.
+ */
 export async function lerFormulario(formId: string, pageToken: string): Promise<DefinicaoFormulario> {
-  return chamar<DefinicaoFormulario>(`/${formId}`, {
-    token: pageToken,
-    params: {
-      fields:
-        "id,name,locale,questions,context_card,thank_you_page,privacy_policy," +
-        "follow_up_action_url,block_display_for_non_targeted_viewer",
-    },
-  });
+  let campos = [
+    "id", "name", "locale", "questions", "context_card", "thank_you_page",
+    "privacy_policy", "legal_content", "follow_up_action_url",
+    "block_display_for_non_targeted_viewer",
+  ];
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    try {
+      return await chamar<DefinicaoFormulario>(`/${formId}`, {
+        token: pageToken,
+        params: { fields: campos.join(",") },
+      });
+    } catch (e) {
+      const msg = e instanceof ErroMeta ? e.message : "";
+      const recusado = msg.match(/nonexisting field \(([^)]+)\)/)?.[1];
+      if (!recusado || !campos.includes(recusado)) throw e;
+      campos = campos.filter((c) => c !== recusado);
+    }
+  }
+  throw new ErroMeta("Não consegui ler a definição do formulário na Meta.");
 }
 
 /**
