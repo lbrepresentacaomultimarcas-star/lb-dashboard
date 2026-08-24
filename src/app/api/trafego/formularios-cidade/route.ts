@@ -33,6 +33,21 @@ const PERGUNTA_CIDADE: PerguntaFormulario = {
 };
 
 /** Só os formulários da sondagem — o antigo e o padrão ficam de fora. */
+/**
+ * A leitura devolve chaves que a criação recusa ("id" na pergunta, por exemplo).
+ * Aqui fica só o que descreve a pergunta — o resto é identificador do formulário
+ * antigo e não faz sentido no novo.
+ */
+function limparPergunta(q: PerguntaFormulario): PerguntaFormulario {
+  const limpa: PerguntaFormulario = { type: q.type };
+  if (q.key) limpa.key = q.key;
+  if (q.label) limpa.label = q.label;
+  if (q.options?.length) {
+    limpa.options = q.options.map((o) => (o.key ? { key: o.key, value: o.value } : { value: o.value }));
+  }
+  return limpa;
+}
+
 const PREFIXO = "LB | ";
 const SUFIXO = " · com cidade";
 
@@ -100,8 +115,14 @@ export async function POST(req: NextRequest) {
       const perguntas = def.questions ?? [];
       const jaTem = perguntas.some((q) => /cidade|city/i.test(q.key ?? "") || /cidade/i.test(q.label ?? ""));
       // a cidade entra ANTES dos campos de contato, junto das outras perguntas
-      const novas = jaTem ? perguntas : [...perguntas.filter((q) => q.type === "CUSTOM"), PERGUNTA_CIDADE,
-        ...perguntas.filter((q) => q.type !== "CUSTOM")];
+      const ordenadas = jaTem
+        ? perguntas
+        : [
+            ...perguntas.filter((q) => q.type === "CUSTOM"),
+            PERGUNTA_CIDADE,
+            ...perguntas.filter((q) => q.type !== "CUSTOM"),
+          ];
+      const novas = ordenadas.map(limparPergunta);
 
       const id = await criarFormulario(pageId, token, {
         name: nomeNovo,
