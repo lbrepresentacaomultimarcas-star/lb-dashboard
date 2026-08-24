@@ -23,7 +23,15 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
-import { reloadResultados, useResultados, useSession, useVendasEscopo } from "@/lib/store";
+import { reloadResultados, useResultados, useSession, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
+import { settings, useTextSetting } from "@/lib/settings";
+import {
+  AssinaturaComercial,
+  EMPRESA_LB,
+  KIT_VAZIO,
+  kitEstaVazio,
+  type KitComunicacao,
+} from "@/components/materiais/assinatura-comercial";
 import { PeriodFilter } from "@/components/period-filter";
 import { dateToInputValue, formatPeriodLabel, periodFromPreset, type Period } from "@/lib/period";
 import {
@@ -48,6 +56,7 @@ import {
   renderEmCanvas,
   resetLogos,
   type FormatoMaterial,
+  type ModeloComunicacao,
   type TemplateFeed,
 } from "@/lib/materiais";
 
@@ -112,6 +121,7 @@ function TabelaContemplacoes({ itens }: { itens: Contemplacao[] }) {
 export default function ResultadosPage() {
   const session = useSession();
   const vendas = useVendasEscopo();
+  const vendedores = useVendedoresEscopo();
   const isAdmin = session?.papel === "admin";
 
   // Mesma fonte e mecânica dos demais módulos: store global (carregado no
@@ -223,6 +233,66 @@ export default function ResultadosPage() {
   const periodoLabel = formatPeriodLabel(period);
   const preparadoPor = session?.nome;
 
+  /* --------------------------- Comunicação da peça -------------------------- */
+  // Fica no navegador (mesmo lugar das logos do co-branding): é preferência de
+  // quem monta o material, não dado da empresa. Sobrevive ao recarregar a
+  // página, então ele não redigita o kit a cada peça.
+  const kitSalvo = useTextSetting("material_comunicacao");
+  const frasesSalvas = useTextSetting("material_frases");
+  const [kit, setKit] = useState<KitComunicacao>(KIT_VAZIO);
+  const [kitCarregado, setKitCarregado] = useState(false);
+
+  useEffect(() => {
+    if (kitCarregado) return;
+    setKitCarregado(true);
+    if (!kitSalvo) return;
+    try {
+      setKit({ ...KIT_VAZIO, ...(JSON.parse(kitSalvo) as Partial<KitComunicacao>) });
+    } catch {
+      /* kit corrompido no navegador não pode derrubar a tela */
+    }
+  }, [kitSalvo, kitCarregado]);
+
+  function trocarKit(k: KitComunicacao) {
+    setKit(k);
+    settings.setText("material_comunicacao", JSON.stringify(k));
+  }
+
+  const proprias: ModeloComunicacao[] = useMemo(() => {
+    if (!frasesSalvas) return [];
+    try {
+      return JSON.parse(frasesSalvas) as ModeloComunicacao[];
+    } catch {
+      return [];
+    }
+  }, [frasesSalvas]);
+
+  function guardarFrase(nome: string) {
+    const nova: ModeloComunicacao = {
+      id: `meu:${Date.now()}`,
+      grupo: "Minhas frases",
+      nome,
+      modo: kit.modo,
+      selo: kit.selo,
+      chamada: kit.chamada,
+      destaque: kit.destaque,
+      assinatura: kit.assinatura,
+    };
+    settings.setText("material_frases", JSON.stringify([nova, ...proprias]));
+    trocarKit({ ...kit, modeloId: nova.id });
+    notify.success("Frase guardada.");
+  }
+
+  function apagarFrase(id: string) {
+    settings.setText("material_frases", JSON.stringify(proprias.filter((f) => f.id !== id)));
+    if (kit.modeloId === id) trocarKit({ ...kit, modeloId: null });
+  }
+
+  const consultores = useMemo(
+    () => vendedores.filter((v) => v.ativo).map((v) => v.nome).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [vendedores],
+  );
+
   /* ------------------------------ Gerar Material ---------------------------- */
   const [matSel, setMatSel] = useState<OpcaoMaterial>("feed");
   const [matTemplate, setMatTemplate] = useState<TemplateFeed | undefined>(undefined);
@@ -240,8 +310,18 @@ export default function ResultadosPage() {
         periodoLabel: daBusca ? `Pesquisa: ${busca.trim()}` : periodoLabel,
         recorde,
         preparadoPor,
+        // Kit vazio = arte exatamente como era antes deste painel existir.
+        comunicacao: kitEstaVazio(kit)
+          ? null
+          : {
+              modo: kit.modo,
+              selo: kit.selo,
+              chamada: kit.chamada,
+              destaque: kit.destaque,
+              assinatura: kit.assinatura,
+            },
       }),
-    [matResumo, matItens, daBusca, busca, periodoLabel, recorde, preparadoPor],
+    [matResumo, matItens, daBusca, busca, periodoLabel, recorde, preparadoPor, kit],
   );
 
   const previewFormato: FormatoMaterial | null =
@@ -604,7 +684,7 @@ export default function ResultadosPage() {
         open={modalMaterial}
         onClose={() => setModalMaterial(false)}
         title="Gerar Material"
-        subtitle="Peças premium com a identidade da LB — o sistema escolhe o melhor layout pelos dados."
+        subtitle="Os números vêm do resultado oficial. A frase e a assinatura são sua escolha."
         icon={<ImageIcon className="h-5 w-5" />}
       >
         <div className="space-y-4">
@@ -639,6 +719,16 @@ export default function ResultadosPage() {
               );
             })}
           </div>
+
+          {/* como apresentar — palavras, não números */}
+          <AssinaturaComercial
+            kit={kit}
+            onChange={trocarKit}
+            consultores={consultores}
+            proprios={proprias}
+            onSalvarFrase={guardarFrase}
+            onApagarFrase={apagarFrase}
+          />
 
           {/* prévia ao vivo */}
           <div className="rounded-2xl border border-[var(--color-border)] bg-[#0a1220] p-4">
@@ -681,8 +771,12 @@ export default function ResultadosPage() {
           {/* baixar */}
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] text-[var(--color-muted)]">
-              {preparadoPor ? `Assinado por ${preparadoPor}` : "Identidade LB Representações"}
-              {dadosMaterial.recorde ? ` · 🏆 ${dadosMaterial.recorde}` : ""}
+              {kitEstaVazio(kit)
+                ? preparadoPor
+                  ? `Assinado por ${preparadoPor}`
+                  : `Identidade ${EMPRESA_LB}`
+                : kit.assinatura.trim() || kit.destaque.trim() || `Identidade ${EMPRESA_LB}`}
+              {dadosMaterial.recorde && kitEstaVazio(kit) ? ` · 🏆 ${dadosMaterial.recorde}` : ""}
             </p>
             <Button onClick={baixarMaterial}>
               {matSel === "print" ? <Printer className="h-4 w-4" /> : <Download className="h-4 w-4" />}

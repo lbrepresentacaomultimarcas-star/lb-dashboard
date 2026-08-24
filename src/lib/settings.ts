@@ -14,12 +14,16 @@ export type ImageSettingKey =
 /** Preferências booleanas (ex.: exibir a logo parceira no co-branding). */
 export type BoolSettingKey = "exibir_logo_parceira";
 
+/** Preferências de texto. Guardam JSON — é o que permite mudar as frases dos
+ *  materiais sem passar por deploy: quem escreve é o administrador, na tela. */
+export type TextSettingKey = "material_comunicacao" | "material_frases";
+
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 const cache = new Map<string, { raw: string | null; value: string | null }>();
 
-function read(key: ImageSettingKey): string | null {
+function read(key: ImageSettingKey | TextSettingKey): string | null {
   if (typeof window === "undefined") return null;
   const full = PREFIX + key;
   const raw = (() => {
@@ -61,6 +65,10 @@ export function useBoolSetting(key: BoolSettingKey, padrao = true): boolean {
   return useSyncExternalStore(subscribe, () => readBool(key, padrao), () => padrao);
 }
 
+export function useTextSetting(key: TextSettingKey): string | null {
+  return useSyncExternalStore(subscribe, () => read(key), () => null);
+}
+
 export const settings = {
   set(key: ImageSettingKey, dataUrl: string | null) {
     if (typeof window === "undefined") return;
@@ -77,6 +85,15 @@ export const settings = {
     notify();
   },
   getBool: readBool,
+  setText(key: TextSettingKey, valor: string | null) {
+    if (typeof window === "undefined") return;
+    const full = PREFIX + key;
+    if (valor) localStorage.setItem(full, valor);
+    else localStorage.removeItem(full);
+    cache.delete(full);
+    notify();
+  },
+  getText: (key: TextSettingKey) => read(key),
 };
 
 if (typeof window !== "undefined") {

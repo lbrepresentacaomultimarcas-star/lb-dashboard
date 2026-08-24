@@ -12,6 +12,145 @@ export type Ctx = CanvasRenderingContext2D;
 export type FormatoMaterial = "feed" | "story" | "status" | "pdf-capa";
 export type TemplateFeed = "Premium" | "Executivo" | "Comercial";
 
+/* -------------------------- Comunicação comercial -------------------------- */
+// Os NÚMEROS da peça vêm sempre do resultado oficial da administradora e nada
+// aqui os altera. Este bloco é só a camada de PALAVRAS: quem assina o resultado
+// e com que frase. Quem decide é o administrador — a mesma contemplação pode
+// sair como resultado da empresa, do consultor, ou com um texto próprio.
+
+export type ModoAssinatura = "empresa" | "consultor" | "personalizado";
+
+export type Comunicacao = {
+  modo: ModoAssinatura;
+  /** Faixa dourada do topo. Ex.: "MELHOR CONSULTOR DO MÊS". Quando existe,
+   *  tem prioridade sobre o selo automático de recorde. */
+  selo?: string | null;
+  /** Frase comercial, logo abaixo do número. */
+  chamada?: string | null;
+  /** Linha em evidência depois da frase — normalmente o nome de quem assina. */
+  destaque?: string | null;
+  /** Assinatura do rodapé. Vazio mantém o rodapé de sempre. */
+  assinatura?: string | null;
+};
+
+export type ModeloComunicacao = {
+  id: string;
+  grupo: string;
+  nome: string;
+  modo: ModoAssinatura;
+  selo?: string;
+  chamada?: string;
+  destaque?: string;
+  assinatura?: string;
+};
+
+/**
+ * Frases prontas. É o ÚNICO lugar de código a mexer para mudar a lista da tela
+ * — e mesmo assim ninguém precisa vir aqui: o administrador edita qualquer
+ * campo antes de gerar e pode guardar frases proprias direto na tela.
+ *
+ * {consultor} e {empresa} são trocados na hora de aplicar.
+ */
+export const MODELOS_COMUNICACAO: ModeloComunicacao[] = [
+  {
+    id: "empresa-contemplacao",
+    grupo: "Resultado da empresa",
+    nome: "Mais uma contemplação",
+    modo: "empresa",
+    selo: "MAIS UMA CONTEMPLAÇÃO",
+    chamada: "Mais uma contemplação conquistada pela",
+    destaque: "{empresa}",
+    assinatura: "{empresa}",
+  },
+  {
+    id: "empresa-resultado",
+    grupo: "Resultado da empresa",
+    nome: "Resultado LB",
+    modo: "empresa",
+    selo: "RESULTADO {empresa}",
+    chamada: "Mais uma família realizando seus planos.",
+    assinatura: "{empresa}",
+  },
+  {
+    id: "consultor-acompanhamento",
+    grupo: "Resultado com o consultor",
+    nome: "Com o acompanhamento de",
+    modo: "consultor",
+    selo: "MAIS UMA CONQUISTA REALIZADA",
+    chamada: "Resultado conquistado com o acompanhamento de",
+    destaque: "{consultor}",
+    assinatura: "{consultor} · {empresa}",
+  },
+  {
+    id: "consultor-destaque",
+    grupo: "Destaque do consultor",
+    nome: "Destaque em resultados",
+    modo: "consultor",
+    selo: "DESTAQUE EM RESULTADOS",
+    destaque: "{consultor}",
+    assinatura: "{consultor} · {empresa}",
+  },
+  {
+    id: "consultor-autoridade",
+    grupo: "Autoridade",
+    nome: "Especialista em conquistas",
+    modo: "consultor",
+    selo: "ESPECIALISTA EM CONSÓRCIO",
+    chamada: "Especialista em transformar planos em conquistas",
+    destaque: "{consultor}",
+    assinatura: "{consultor} · {empresa}",
+  },
+  {
+    id: "comercial-sonho",
+    grupo: "Frase comercial",
+    nome: "Realizando o sonho",
+    modo: "empresa",
+    selo: "MAIS UM SONHO REALIZADO",
+    chamada: "Mais um cliente realizando o sonho com a",
+    destaque: "{empresa}",
+    assinatura: "{empresa}",
+  },
+];
+
+/** Selos de ranking/desempenho — entram na faixa dourada do topo. */
+export const SELOS_PRONTOS = [
+  "🏆 MELHOR CONSULTOR DO MÊS",
+  "🏆 DESTAQUE EM CONTEMPLAÇÕES",
+  "🏆 CONSULTOR Nº 1 EM CONTEMPLAÇÕES",
+  "🏆 DESTAQUE EM RESULTADOS",
+  "MAIS UMA CONQUISTA REALIZADA",
+  "RESULTADO OFICIAL · SERGIPE",
+];
+
+/**
+ * Troca {consultor} e {empresa} pelos valores da peça.
+ *
+ * Na linha de destaque o nome sai em CAIXA ALTA (é a linha que precisa ser
+ * lida de longe); nos outros campos entra como está. O resultado cai em campos
+ * editáveis, então o que ele vê na tela é exatamente o que sai na arte.
+ */
+export function aplicarModelo(
+  m: ModeloComunicacao,
+  ctx: { consultor?: string | null; empresa?: string | null },
+): Comunicacao {
+  const consultor = (ctx.consultor ?? "").trim();
+  const empresa = (ctx.empresa ?? "LB Representações").trim();
+  const troca = (t: string | undefined, alto: boolean): string =>
+    (t ?? "")
+      .replace(/\{consultor\}/g, alto ? consultor.toUpperCase() : consultor)
+      .replace(/\{empresa\}/g, alto ? empresa.toUpperCase() : empresa)
+      .replace(/\s+·\s*$/, "")
+      .replace(/^\s*·\s+/, "")
+      .trim();
+  return {
+    modo: m.modo,
+    selo: troca(m.selo, true),
+    chamada: troca(m.chamada, false),
+    destaque: troca(m.destaque, true),
+    assinatura: troca(m.assinatura, false),
+  };
+}
+
 export type SegmentoDado = { nome: string; qtd: number; credito: number };
 export type MesDado = { mes: string; label: string; qtd: number; credito: number };
 
@@ -28,6 +167,8 @@ export type DadosMaterial = {
   recorde: string | null;
   destaqueUnico?: { grupo: string; cota: string; tipo: string } | null;
   preparadoPor?: string;
+  /** Camada de palavras da peça. Sem ela, tudo sai como sempre saiu. */
+  comunicacao?: Comunicacao | null;
 };
 
 /* --------------------------------- Paleta ---------------------------------- */
@@ -286,6 +427,46 @@ const icoSol: DesenhoIcone = (ctx, cx, cy, s, cor) => {
     ctx.lineTo(cx + Math.cos(a) * s * 0.44, cy + Math.sin(a) * s * 0.44);
     ctx.stroke();
   }
+};
+
+/**
+ * Troféu vetorial para a faixa de selo.
+ *
+ * O emoji de troféu do sistema é dourado: medido contra o dourado da faixa dá
+ * 1,18 de contraste — some. Redesenhado na cor do texto da faixa, ele aparece.
+ */
+const icoTrofeu: DesenhoIcone = (ctx, cx, cy, s, cor) => {
+  ctx.save();
+  ctx.fillStyle = cor;
+  ctx.strokeStyle = cor;
+  ctx.lineWidth = Math.max(1.6, s * 0.1);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.3, cy - s * 0.4);
+  ctx.lineTo(cx + s * 0.3, cy - s * 0.4);
+  ctx.lineTo(cx + s * 0.24, cy - s * 0.1);
+  ctx.quadraticCurveTo(cx + s * 0.2, cy + s * 0.08, cx, cy + s * 0.1);
+  ctx.quadraticCurveTo(cx - s * 0.2, cy + s * 0.08, cx - s * 0.24, cy - s * 0.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.34, cy - s * 0.26, s * 0.15, Math.PI * 0.55, Math.PI * 1.55, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + s * 0.34, cy - s * 0.26, s * 0.15, Math.PI * 1.45, Math.PI * 0.45, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(cx - s * 0.06, cy + s * 0.06, s * 0.12, s * 0.2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.26, cy + s * 0.4);
+  ctx.lineTo(cx + s * 0.26, cy + s * 0.4);
+  ctx.lineTo(cx + s * 0.18, cy + s * 0.24);
+  ctx.lineTo(cx - s * 0.18, cy + s * 0.24);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 };
 
 const icoDiamante: DesenhoIcone = (ctx, cx, cy, s, cor) => {
@@ -750,7 +931,27 @@ function rodape(ctx: Ctx, cx: number, yTop: number, d: DadosMaterial, escala = 1
   ctx.moveTo(cx - fw / 2, yTop - 18 * escala);
   ctx.lineTo(cx + fw / 2, yTop - 18 * escala);
   ctx.stroke();
-  if (d.preparadoPor) {
+  const assinatura = d.comunicacao?.assinatura?.trim();
+  if (assinatura) {
+    // Assinatura escolhida na tela. A terceira linha guarda a procedência do
+    // número: a peça pode dizer o que ele quiser, mas nunca esconde de onde
+    // veio o dado — é isso que sustenta a peça como prova.
+    ctx.fillStyle = PALETA.cinza;
+    ctx.font = fonte(500, 20 * escala);
+    ctx.fillText("Apresentado por", cx, yTop);
+    let pxA = 26 * escala;
+    const maxA = 640 * escala;
+    for (;;) {
+      ctx.font = fonte(800, pxA);
+      if (ctx.measureText(assinatura).width <= maxA || pxA <= 16 * escala) break;
+      pxA -= 1;
+    }
+    ctx.fillStyle = PALETA.branco;
+    ctx.fillText(assinatura, cx, yTop + 26 * escala);
+    ctx.fillStyle = rgba(hexRgb(PALETA.ouro), 0.9);
+    ctx.font = fonte(600, 17 * escala);
+    ctx.fillText("Dados oficiais da administradora", cx, yTop + 62 * escala);
+  } else if (d.preparadoPor) {
     ctx.fillStyle = PALETA.cinza;
     ctx.font = fonte(500, 20 * escala);
     ctx.fillText("Apresentação preparada por", cx, yTop);
@@ -768,9 +969,80 @@ function rodape(ctx: Ctx, cx: number, yTop: number, d: DadosMaterial, escala = 1
   ctx.restore();
 }
 
+/** Número protagonista que se ajusta à largura: "R$ 119 mil" não cabe no
+ *  mesmo corpo de "47". */
+function blocoNumeroLargura(ctx: Ctx, cx: number, yTop: number, txt: string, sizeIdeal: number, maxW: number, cor = PALETA.ouroClaro) {
+  let size = sizeIdeal;
+  for (;;) {
+    ctx.font = fonte(900, size);
+    if (ctx.measureText(txt).width <= maxW || size <= 56) break;
+    size -= 4;
+  }
+  const f = fonte(900, size);
+  textoGlow(ctx, txt, cx, yTop, f, cor, rgba(hexRgb(PALETA.ouro), 0.6), size * 0.16, "center", "top");
+  return yTop + alturaTinta(ctx, txt, f, size * 1.02);
+}
+
+/** A peça tem frase comercial escrita? */
+function temFrase(d: DadosMaterial): boolean {
+  return !!(d.comunicacao?.chamada?.trim() || d.comunicacao?.destaque?.trim());
+}
+
+/**
+ * Frase comercial + linha em evidência (normalmente o nome).
+ *
+ * Encolhe até caber na altura livre: numa peça de venda, texto atravessando o
+ * rodapé é defeito, não estilo. Como o texto é digitado à mão e pode ter
+ * qualquer tamanho, o ajuste é obrigatório — não dá para confiar num corpo fixo.
+ */
+function blocoComunicacao(ctx: Ctx, cx: number, yTop: number, d: DadosMaterial, maxW: number, alturaLivre: number, escala = 1): number {
+  const chamada = d.comunicacao?.chamada?.trim() ?? "";
+  const destaque = d.comunicacao?.destaque?.trim() ?? "";
+  if (!chamada && !destaque) return yTop;
+
+  let px = 32 * escala;
+  let pxD = 50 * escala;
+  const minPx = 17 * escala;
+  let linhas: string[] = [];
+  let linhasD: string[] = [];
+  let gap = 0;
+  for (;;) {
+    ctx.font = fonte(600, px);
+    linhas = chamada ? wrap(ctx, chamada, maxW) : [];
+    ctx.font = fonte(900, pxD);
+    linhasD = destaque ? wrap(ctx, destaque, maxW) : [];
+    gap = linhas.length && linhasD.length ? 16 * escala : 0;
+    const alt = linhas.length * px * 1.22 + gap + linhasD.length * pxD * 1.08;
+    if (alt <= alturaLivre || px <= minPx) break;
+    px -= 2;
+    pxD = Math.max(minPx * 1.4, pxD - 3);
+  }
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  let y = yTop;
+  ctx.fillStyle = PALETA.brancoSuave;
+  ctx.font = fonte(600, px);
+  linhas.forEach((l) => {
+    ctx.fillText(l, cx, y);
+    y += px * 1.22;
+  });
+  y += gap;
+  linhasD.forEach((l) => {
+    textoGlow(ctx, l, cx, y, fonte(900, pxD), PALETA.ouroClaro, rgba(hexRgb(PALETA.ouro), 0.55), pxD * 0.22, "center", "top");
+    y += pxD * 1.08;
+  });
+  ctx.restore();
+  return y;
+}
+
 /* ------------------------------ Inteligência ------------------------------- */
 
 export function templateFeed(d: DadosMaterial): TemplateFeed {
+  // Com frase comercial escrita, o Premium é o único modelo do feed que dá
+  // espaço de verdade para ela — o Executivo é denso de números.
+  if (temFrase(d)) return "Premium";
   if (d.total <= 1) return "Premium";
   if (d.total >= 5 && d.segmentos.length >= 2 && d.porMes.length >= 2) return "Executivo";
   return "Comercial";
@@ -819,11 +1091,36 @@ function blocoTitulo(ctx: Ctx, cx: number, yTop: number, txt: string, size: numb
   return yTop + linhas.length * lh;
 }
 
-function blocoFaixaRecorde(ctx: Ctx, xRef: number, yTop: number, texto: string, ancora: "centro" | "dir" = "centro", escala = 1) {
-  const label = `RECORDE  ·  ${texto.toUpperCase()}`;
-  const px = 26 * escala;
-  ctx.font = fonte(800, px);
-  const w = ctx.measureText(label).width + 120 * escala, h = 60 * escala;
+/** Rótulo da faixa dourada: o selo comercial tem prioridade sobre o recorde
+ *  automático. Quem escreveu o selo quis dizer aquilo naquela peça. */
+function faixaDaPeca(d: DadosMaterial): string | null {
+  const selo = d.comunicacao?.selo?.trim();
+  if (selo) return selo.toUpperCase();
+  return d.recorde ? `RECORDE  ·  ${d.recorde.toUpperCase()}` : null;
+}
+
+/** Faixa dourada. O texto entra literal e a fonte encolhe até caber na
+ *  largura — frase escrita à mão não pode estourar a arte. */
+const EMOJI_PREMIO = /^[\u{1F3C6}\u{1F947}\u{1F451}]\u{FE0F}?\s*/u;
+
+function blocoFaixa(ctx: Ctx, xRef: number, yTop: number, label: string, maxW: number, ancora: "centro" | "dir" = "centro", escala = 1) {
+  // Só os emojis de premiação viram vetor; qualquer outro que ele digite fica
+  // como está — a escolha continua sendo dele.
+  const comTrofeu = EMOJI_PREMIO.test(label);
+  const texto = comTrofeu ? label.replace(EMOJI_PREMIO, "") : label;
+  const h = 60 * escala;
+  const sIcone = comTrofeu ? h * 0.62 : 0;
+  const folgaIcone = comTrofeu ? sIcone + 16 * escala : 0;
+  let px = 26 * escala;
+  let w = 0;
+  let wTexto = 0;
+  for (;;) {
+    ctx.font = fonte(800, px);
+    wTexto = ctx.measureText(texto).width;
+    w = wTexto + folgaIcone + 120 * escala;
+    if (w <= maxW || px <= 14 * escala) break;
+    px -= 1;
+  }
   const cx = ancora === "dir" ? xRef - w / 2 : xRef;
   comSombra(ctx, rgba(hexRgb(PALETA.ouro), 0.55), 26, () => {
     rrect(ctx, cx - w / 2, yTop, w, h, h / 2);
@@ -834,14 +1131,34 @@ function blocoFaixaRecorde(ctx: Ctx, xRef: number, yTop: number, texto: string, 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = fonte(800, px);
-  ctx.fillText(label, cx, yTop + h / 2 + 1);
+  const cxTexto = cx + folgaIcone / 2;
+  ctx.fillText(texto, cxTexto, yTop + h / 2 + 1);
+  if (comTrofeu) icoTrofeu(ctx, cxTexto - wTexto / 2 - folgaIcone / 2, yTop + h / 2, sIcone, "#20180A");
   ctx.textBaseline = "top";
   return yTop + h;
 }
 
+/**
+ * Altura real da tinta, medida a partir do topo.
+ *
+ * Fator fixo erra: no mesmo corpo, "47" ocupa 0,92 da caixa e "R$ 4,2 mi"
+ * ocupa 1,12 — a vírgula e o cifrão descem. Era isso que fazia a legenda de
+ * baixo subir por cima do número.
+ */
+function alturaTinta(ctx: Ctx, txt: string, f: string, reserva: number): number {
+  ctx.save();
+  ctx.font = f;
+  ctx.textBaseline = "top";
+  const m = ctx.measureText(txt);
+  ctx.restore();
+  const d = m.actualBoundingBoxDescent;
+  return typeof d === "number" && isFinite(d) && d > 0 ? d : reserva;
+}
+
 function blocoNumero(ctx: Ctx, cx: number, yTop: number, txt: string, size: number, cor = PALETA.ouroClaro) {
-  textoGlow(ctx, txt, cx, yTop, fonte(900, size), cor, rgba(hexRgb(PALETA.ouro), 0.6), size * 0.16, "center", "top");
-  return yTop + size * 0.82;
+  const f = fonte(900, size);
+  textoGlow(ctx, txt, cx, yTop, f, cor, rgba(hexRgb(PALETA.ouro), 0.6), size * 0.16, "center", "top");
+  return yTop + alturaTinta(ctx, txt, f, size * 0.92);
 }
 
 function blocoLinha(ctx: Ctx, cx: number, yTop: number, txt: string, size: number, cor = PALETA.branco, peso = 800) {
@@ -860,30 +1177,63 @@ function feedPremium(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   fundo(ctx, W, H, { mapaCentro: true });
   moldura(ctx, W, H);
   coBrand(ctx, W, 54, logos, 60, 64);
-  let y = 250;
-  y = blocoEyebrow(ctx, W / 2, y, "RESULTADO OFICIAL · SERGIPE", 24) + 10;
-  if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 18;
-  y = blocoNumero(ctx, W / 2, y, String(d.total), 356) + 2;
-  y = blocoLinha(ctx, W / 2, y, d.total === 1 ? "contemplação em Sergipe" : "contemplações em Sergipe", 42) + 12;
 
   const un = d.destaqueUnico;
+  const frase = temFrase(d);
+  // Numa peça de UMA contemplação o protagonista é o CRÉDITO: um "1" gigante
+  // não prova nada para quem olha. Sorteio não tem valor divulgado pela
+  // administradora — nesse caso volta a ser a contagem.
+  const heroCredito = !!un && d.credito > 0;
+
+  // Sem frase, o bloco é curto: começar mais abaixo evita o vão morto entre a
+  // legenda e o rodapé. Com frase, ela ocupa esse espaço.
+  let y = !frase && heroCredito ? 330 : 250;
+  y = blocoEyebrow(ctx, W / 2, y, "RESULTADO OFICIAL · SERGIPE", 24) + 10;
+  const faixa = faixaDaPeca(d);
+  if (faixa) y = blocoFaixa(ctx, W / 2, y, faixa, W - 150) + 18;
+
+  y = blocoNumeroLargura(
+    ctx, W / 2, y,
+    heroCredito ? creditoCurto(d.credito) : String(d.total),
+    heroCredito ? 210 : frase ? 286 : 356,
+    W - 170,
+  ) + 2;
+  y = blocoLinha(
+    ctx, W / 2, y,
+    heroCredito ? "crédito conquistado" : d.total === 1 ? "contemplação em Sergipe" : "contemplações em Sergipe",
+    heroCredito ? 36 : 42,
+  ) + 12;
+
   if (un) {
     const seg = resolverSegmento(d.segmentos[0]?.nome ?? "outro");
-    badgeSegmento(ctx, W / 2, y + 54, 52, seg);
-    ctx.fillStyle = PALETA.brancoSuave;
-    ctx.font = fonte(700, 30);
+    badgeSegmento(ctx, W / 2, y + 50, 46, seg);
+    ctx.fillStyle = frase ? PALETA.cinza : PALETA.brancoSuave;
+    ctx.font = fonte(700, frase ? 26 : 30);
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(`Grupo ${un.grupo} · Cota ${un.cota} · ${un.tipo}`, W / 2, y + 116);
+    ctx.fillText(`Grupo ${un.grupo} · Cota ${un.cota} · ${un.tipo}`, W / 2, y + 106);
+    y += 140;
   } else if (d.credito > 0) {
     ctx.textBaseline = "top";
     ctx.textAlign = "center";
-    ctx.fillStyle = PALETA.cinza;
-    ctx.font = fonte(600, 26);
-    ctx.fillText("crédito estimado liberado", W / 2, y + 4);
-    blocoNumero(ctx, W / 2, y + 38, creditoCurto(d.credito), 86, PALETA.branco);
+    if (frase) {
+      // Com frase escrita, o crédito recua para uma linha só: o protagonismo
+      // é da mensagem, e dois números grandes empilhados brigam entre si.
+      ctx.fillStyle = PALETA.cinza;
+      ctx.font = fonte(600, 26);
+      ctx.fillText(`crédito estimado liberado · ${creditoCurto(d.credito)}`, W / 2, y + 6);
+      y += 42;
+    } else {
+      ctx.fillStyle = PALETA.cinza;
+      ctx.font = fonte(600, 26);
+      ctx.fillText("crédito estimado liberado", W / 2, y + 4);
+      y = blocoNumero(ctx, W / 2, y + 38, creditoCurto(d.credito), 86, PALETA.branco);
+    }
   }
-  rodape(ctx, W / 2, 968, d, 0.85);
+
+  const yRodape = 968;
+  if (frase) blocoComunicacao(ctx, W / 2, y + 30, d, W - 220, yRodape - 60 - (y + 30));
+  rodape(ctx, W / 2, yRodape, d, 0.85);
 }
 
 function feedExecutivo(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
@@ -893,8 +1243,9 @@ function feedExecutivo(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   // cabeçalho co-branding (LB esq. + Multimarcas dir.) + eyebrow/recorde;
   // o corpo (KPIs a partir de y=200) permanece inalterado.
   coBrand(ctx, W, 40, logos, 60, 52);
-  if (d.recorde) {
-    blocoFaixaRecorde(ctx, W / 2, 138, d.recorde);
+  const faixaEx = faixaDaPeca(d);
+  if (faixaEx) {
+    blocoFaixa(ctx, W / 2, 138, faixaEx, W - 150);
   } else {
     ctx.fillStyle = rgba(hexRgb(PALETA.ouro), 0.95);
     ctx.font = fonte(700, 24);
@@ -941,7 +1292,18 @@ function feedExecutivo(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   ctx.textBaseline = "top";
   ctx.fillStyle = PALETA.cinza;
   ctx.font = fonte(500, 18);
-  ctx.fillText(d.preparadoPor ? `Preparado por ${d.preparadoPor} · Consultor LB Representações` : "LB Representações · dados oficiais da administradora", W / 2, 1024);
+  // O Executivo é o modelo denso de números: cabe a assinatura, não a frase
+  // grande. Quem quer a frase em evidência usa Premium, Comercial ou Story.
+  const assEx = d.comunicacao?.assinatura?.trim();
+  ctx.fillText(
+    assEx
+      ? `${assEx} · dados oficiais da administradora`
+      : d.preparadoPor
+        ? `Preparado por ${d.preparadoPor} · Consultor LB Representações`
+        : "LB Representações · dados oficiais da administradora",
+    W / 2,
+    1024,
+  );
 }
 
 function feedComercial(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
@@ -950,8 +1312,16 @@ function feedComercial(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   moldura(ctx, W, H);
   coBrand(ctx, W, 50, logos, 60, 60);
   let y = 214;
-  y = blocoTitulo(ctx, W / 2, y, "CONSÓRCIO CONTEMPLA EM SERGIPE", 56, 900) + 16;
-  if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 14;
+  const faixaCom = faixaDaPeca(d);
+  if (temFrase(d)) {
+    // Com frase escrita, ela É o título da peça — o título fixo só brigaria
+    // com o texto dele por atenção.
+    if (faixaCom) y = blocoFaixa(ctx, W / 2, y, faixaCom, W - 150) + 16;
+    y = blocoComunicacao(ctx, W / 2, y, d, 900, 250) + 14;
+  } else {
+    y = blocoTitulo(ctx, W / 2, y, "CONSÓRCIO CONTEMPLA EM SERGIPE", 56, 900) + 16;
+    if (faixaCom) y = blocoFaixa(ctx, W / 2, y, faixaCom, W - 150) + 14;
+  }
 
   const cy = y + 6;
   cartao(ctx, 70, cy, 450, 210, { rotulo: "Contemplações", valor: String(d.total), sub: `${d.sorteios} sorteios · ${d.lances} lances`, cor: PALETA.ouro });
@@ -987,7 +1357,8 @@ function story(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   let y = 300;
   y = blocoEyebrow(ctx, W / 2, y, "RESULTADO OFICIAL · SERGIPE", 30) + 6;
   y = blocoTitulo(ctx, W / 2, y, "CONSÓRCIO CONTEMPLA EM SERGIPE", 62, 900) + 16;
-  if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 18;
+  const faixaSt = faixaDaPeca(d);
+  if (faixaSt) y = blocoFaixa(ctx, W / 2, y, faixaSt, W - 160) + 18;
   y = blocoNumero(ctx, W / 2, y, String(d.total), 400) + 2;
   y = blocoLinha(ctx, W / 2, y, "contemplações em Sergipe", 50) + 22;
 
@@ -1010,6 +1381,10 @@ function story(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
     ctx.fillText(String(s.qtd), sx + cw / 2, y + 154);
     sx += cw + gap;
   });
+  y += 250;
+
+  // O Story tem altura sobrando: a frase entra inteira, sem disputar espaço.
+  if (temFrase(d)) blocoComunicacao(ctx, W / 2, y, d, W - 200, 1748 - 76 - y, 1.1);
 
   rodape(ctx, W / 2, 1748, d, 1.05);
 }
@@ -1021,7 +1396,8 @@ function status(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   coBrand(ctx, W, 66, logos, 70, 84);
   let y = 320;
   y = blocoTitulo(ctx, W / 2, y, "O CONSÓRCIO CONTEMPLA EM SERGIPE", 72, 920) + 18;
-  if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 16;
+  const faixaSw = faixaDaPeca(d);
+  if (faixaSw) y = blocoFaixa(ctx, W / 2, y, faixaSw, W - 160) + 16;
   y = blocoNumero(ctx, W / 2, y, String(d.total), 380) + 2;
   y = blocoLinha(ctx, W / 2, y, "contemplações oficiais", 50) + 34;
 
@@ -1034,8 +1410,14 @@ function status(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   cards.forEach((it, i) => cartao(ctx, x0 + i * (cw + gap), y, cw, 190, it));
   y += 190 + 76;
 
-  y = blocoLinha(ctx, W / 2, y, "Fale agora com a LB", 58, PALETA.ouroClaro, 900) + 6;
-  blocoLinha(ctx, W / 2, y, "e realize a sua carta contemplada", 34, PALETA.brancoSuave, 600);
+  if (temFrase(d)) {
+    // A frase escrita substitui a chamada padrão: se ele escolheu o que dizer,
+    // o sistema não fica repetindo o convite genérico por cima.
+    blocoComunicacao(ctx, W / 2, y, d, W - 200, 1748 - 76 - y, 1.1);
+  } else {
+    y = blocoLinha(ctx, W / 2, y, "Fale agora com a LB", 58, PALETA.ouroClaro, 900) + 6;
+    blocoLinha(ctx, W / 2, y, "e realize a sua carta contemplada", 34, PALETA.brancoSuave, 600);
+  }
 
   rodape(ctx, W / 2, 1748, d, 1.0);
 }
@@ -1049,7 +1431,8 @@ function capaPdf(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
   y = blocoEyebrow(ctx, W / 2, y, "RELATÓRIO OFICIAL DE CONTEMPLAÇÕES", 26) + 8;
   y = blocoTitulo(ctx, W / 2, y, "RESULTADOS EM SERGIPE", 72, 1060) + 6;
   y = blocoLinha(ctx, W / 2, y, d.periodo, 30, PALETA.cinza, 600) + 20;
-  if (d.recorde) y = blocoFaixaRecorde(ctx, W / 2, y, d.recorde) + 20;
+  const faixaPdf = faixaDaPeca(d);
+  if (faixaPdf) y = blocoFaixa(ctx, W / 2, y, faixaPdf, W - 170) + 20;
   y = blocoNumero(ctx, W / 2, y, String(d.total), 300) + 2;
   y = blocoLinha(ctx, W / 2, y, "contemplações oficiais em Sergipe", 44) + 26;
 
@@ -1070,6 +1453,9 @@ function capaPdf(ctx: Ctx, d: DadosMaterial, logos?: LogosCo) {
     pilula(ctx, sx + larguras[i] / 2, y, `${seg.label}  ${s.qtd}`, 30, 54, seg.cor);
     sx += larguras[i] + 16;
   });
+  y += 96;
+
+  if (temFrase(d)) blocoComunicacao(ctx, W / 2, y, d, W - 240, 1616 - 80 - y, 1.05);
 
   rodape(ctx, W / 2, 1616, d, 1.1);
 }

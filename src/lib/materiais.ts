@@ -12,6 +12,7 @@ import {
   donut,
   renderMaterial,
   resolverSegmento,
+  type Comunicacao,
   type DadosMaterial,
   type FormatoMaterial,
   type LogosCo,
@@ -85,8 +86,15 @@ function imgParaDataUrl(img: CanvasImageSource | null | undefined): { url: strin
   return { url: c.toDataURL("image/png"), ratio: w / h };
 }
 
-export { dimensoes, nomeTemplate } from "./materiais-render";
-export type { DadosMaterial, FormatoMaterial, TemplateFeed } from "./materiais-render";
+export { dimensoes, nomeTemplate, aplicarModelo, MODELOS_COMUNICACAO, SELOS_PRONTOS } from "./materiais-render";
+export type {
+  Comunicacao,
+  DadosMaterial,
+  FormatoMaterial,
+  ModeloComunicacao,
+  ModoAssinatura,
+  TemplateFeed,
+} from "./materiais-render";
 
 /** Monta o pacote de dados que alimenta todos os templates. */
 export function construirDados(input: {
@@ -95,8 +103,9 @@ export function construirDados(input: {
   periodoLabel: string;
   recorde: string | null;
   preparadoPor?: string;
+  comunicacao?: Comunicacao | null;
 }): DadosMaterial {
-  const { resumo, itens, periodoLabel, recorde, preparadoPor } = input;
+  const { resumo, itens, periodoLabel, recorde, preparadoPor, comunicacao } = input;
   const unico =
     resumo.total === 1 && itens[0]
       ? { grupo: itens[0].grupo, cota: itens[0].cota, tipo: itens[0].tipoContemplacao }
@@ -114,6 +123,7 @@ export function construirDados(input: {
     recorde,
     destaqueUnico: unico,
     preparadoPor,
+    comunicacao: comunicacao ?? null,
   };
 }
 
