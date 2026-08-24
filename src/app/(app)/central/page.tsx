@@ -20,6 +20,8 @@ import {
   XCircle,
   ChevronDown,
   Repeat,
+  RefreshCw,
+  ShieldAlert,
 } from "lucide-react";
 import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
 import { ehAdmin } from "@/lib/permissions";
@@ -41,6 +43,8 @@ import { PremiumStage } from "@/components/premium-stage";
 import { Dropdown, DropdownItem } from "@/components/ui/dropdown";
 import { Modal } from "@/components/ui/modal";
 import { contarFaixas, naFaixa, resumoPorConsultor, type FaixaCentral } from "@/lib/pendencias";
+import { telefoneBonito } from "@/lib/telefone";
+import type { VerificacaoDistribuicao } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
@@ -266,6 +270,8 @@ export default function CentralLeadsPage() {
   const [fConsultor, setFConsultor] = useState("");
   /** Lead em redistribuição — null quando o modal está fechado. */
   const [redist, setRedist] = useState<CentralLead | null>(null);
+  /** Resultado da conferência quando algum cliente já tem dono. */
+  const [conflito, setConflito] = useState<(VerificacaoDistribuicao & { paraVendedorId: string }) | null>(null);
   const [redistPara, setRedistPara] = useState("");
   const [redistMotivo, setRedistMotivo] = useState("");
   const [redistOutro, setRedistOutro] = useState("");
@@ -403,7 +409,14 @@ export default function CentralLeadsPage() {
     [base, soTestes],
   );
 
-  const MOTIVOS_REDIST = ["Consultor faltou", "Ausência", "Folga", "Reorganização", "Outro"];
+  const MOTIVOS_REDIST = [
+    "Consultor ausente",
+    "Consultor faltou",
+    "Consultor indisponível",
+    "Problema operacional",
+    "Solicitação do administrador",
+    "Outro",
+  ];
 
   function abrirRedist(l: CentralLead) {
     setRedist(l);
@@ -560,7 +573,11 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
   }
 
   // --- admin: distribuição ---
-  async function distribuir(ids: string[]) {
+  /**
+   * Confere ANTES de enviar. Se algum cliente já tem dono, não envia escondido
+   * nem cancela tudo: mostra quem é o dono e deixa a decisão com o admin.
+   */
+  function distribuir(ids: string[]) {
     if (!distVend) {
       notify.error("Escolha um consultor");
       return;
@@ -569,11 +586,32 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
       notify.error("Nenhum lead para distribuir");
       return;
     }
+    const v = centralLeadsApi.verificarDistribuicao(ids, distVend);
+    if (v.bloqueados.length > 0) {
+      setConflito({ ...v, paraVendedorId: distVend });
+      return;
+    }
+    void enviarDeFato(v.liberados);
+  }
+
+  async function enviarDeFato(ids: string[]) {
+    if (ids.length === 0) {
+      setConflito(null);
+      return;
+    }
     setSalvando(true);
     try {
-      await centralLeadsApi.distribuir(ids, distVend);
-      notify.success(`${ids.length} lead(s) distribuído(s)`, nomeVend(distVend));
+      const r = await centralLeadsApi.distribuir(ids, distVend);
+      if (r.enviados > 0) notify.success(`${r.enviados} lead(s) distribuído(s)`, nomeVend(distVend));
+      // A corrida existe de verdade: dois admins na mesma fila ao mesmo tempo.
+      if (r.perdidos > 0) {
+        notify.error(
+          `${r.perdidos} lead(s) não foram enviados`,
+          "Alguém distribuiu enquanto esta tela estava aberta. A lista já está atualizada.",
+        );
+      }
       setSel(new Set());
+      setConflito(null);
     } catch (e) {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
     } finally {
@@ -585,7 +623,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
       .sort((a, b) => new Date(a.recebidoEm).getTime() - new Date(b.recebidoEm).getTime())
       .slice(0, Math.max(0, qtd))
       .map((l) => l.id);
-    void distribuir(ids);
+    distribuir(ids);
   }
 
   // --- admin: cadastro manual ---
@@ -1250,6 +1288,87 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
       </Modal>
 
       {/* Modal Redistribuir (admin) */}
+      {/* ------------------- cliente já distribuído ------------------- */}
+      <Modal
+        open={!!conflito}
+        onClose={() => setConflito(null)}
+        title="Cliente já distribuído"
+        subtitle="A verificação é feita antes do envio — nada foi enviado ainda."
+        icon={<ShieldAlert className="h-5 w-5" />}
+      >
+        {conflito && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3">
+              <span className="text-sm font-bold text-amber-200">
+                {conflito.bloqueados.length} de {conflito.bloqueados.length + conflito.liberados.length} não {conflito.bloqueados.length === 1 ? "será enviado" : "serão enviados"}
+              </span>
+              <span className="text-xs text-amber-100/80">
+                {conflito.liberados.length} {conflito.liberados.length === 1 ? "segue normalmente" : "seguem normalmente"}
+              </span>
+            </div>
+
+            <div className="max-h-[42vh] space-y-2 overflow-y-auto">
+              {conflito.bloqueados.map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3"
+                >
+                  <p className="text-sm font-bold text-[var(--color-text)]">👤 {b.nome}</p>
+                  {b.telefone && (
+                    <p className="text-xs text-[var(--color-text-dim)]">📱 {telefoneBonito(b.telefone)}</p>
+                  )}
+                  {b.motivo === "ja_distribuido" ? (
+                    <>
+                      <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                        👨‍💼 Consultor atual: <span className="font-semibold text-[var(--color-text)]">{b.donoNome}</span>
+                      </p>
+                      <p className="text-xs text-[var(--color-text-dim)]">
+                        📌 {CENTRAL_STATUS_INFO[b.status].label}
+                        {b.desdeEm ? ` · desde ${new Date(b.desdeEm).toLocaleDateString("pt-BR")}` : ""}
+                      </p>
+                      <button
+                        onClick={() => {
+                          const alvo = leads.find((l) => l.id === b.existenteId) ?? leads.find((l) => l.id === b.id);
+                          setConflito(null);
+                          if (alvo) abrirRedist(alvo);
+                        }}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-300 transition-colors hover:bg-amber-400/10"
+                      >
+                        <RefreshCw className="h-3 w-3" /> Redistribuir mesmo assim
+                      </button>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                      📌 Mesmo cliente marcado duas vezes nesta seleção — só uma cópia é enviada.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs leading-relaxed text-[var(--color-text-dim)]">
+              Um cliente ativo pertence a um consultor só. Para passar o atendimento a outra pessoa,
+              use <span className="font-semibold text-[var(--color-text)]">Redistribuir</span> — o
+              lead continua sendo o mesmo, com todo o histórico.
+            </p>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConflito(null)}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={salvando || conflito.liberados.length === 0}
+                onClick={() => void enviarDeFato(conflito.liberados)}
+              >
+                {conflito.liberados.length === 0
+                  ? "Nada a enviar"
+                  : `Confirmar envio ${conflito.liberados.length === 1 ? "do 1" : `dos ${conflito.liberados.length}`}`}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <Modal
         open={!!redist}
         onClose={() => setRedist(null)}

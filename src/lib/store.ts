@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
 import { bumpSync } from "./sync-bus";
+import { conferirDistribuicao, leadAtivo, type VerificacaoDistribuicao } from "./antiduplicidade";
 import { resultadosApi, type Contemplacao } from "./resultados";
 import {
   auditFromDb,
@@ -608,6 +609,9 @@ function avisoDeLead(leads: CentralLead[]): { titulo: string; mensagem: string }
     mensagem: `👤 ${nomes}${resto}` + rodape,
   };
 }
+
+/** Reexporta o que a tela consome — a regra mora em lib/antiduplicidade. */
+export type { BloqueioDistribuicao, VerificacaoDistribuicao } from "./antiduplicidade";
 
 /** Cria uma notificação interna p/ um usuário (destinatário = profiles.id). */
 async function notificarUsuario(
@@ -1593,12 +1597,44 @@ export const centralLeadsApi = {
   },
 
   /** Distribui leads a um consultor (só admin no app). Registra e notifica. */
-  async distribuir(centralLeadIds: string[], vendedorId: string): Promise<void> {
-    if (centralLeadIds.length === 0 || !vendedorId) return;
+  /**
+   * PRIMEIRA verificação: antes de mostrar o botão de confirmar.
+   *
+   * Roda sobre o que está na tela, então é instantânea e serve para explicar ao
+   * administrador o que vai e o que não vai. A segunda verificação, a que
+   * realmente impede, está dentro de `distribuir` — esta aqui é a que informa.
+   */
+  verificarDistribuicao(centralLeadIds: string[], vendedorId: string): VerificacaoDistribuicao {
+    const selecionados = centralLeadIds
+      .map((id) => state.centralLeads.find((c) => c.id === id))
+      .filter((l): l is CentralLead => !!l);
+    return conferirDistribuicao(
+      selecionados,
+      state.centralLeads.filter(leadAtivo),
+      vendedorId,
+      (id) => state.vendedores.find((v) => v.id === id)?.nome ?? "outro consultor",
+    );
+  },
+
+  async distribuir(centralLeadIds: string[], vendedorId: string): Promise<{ enviados: number; perdidos: number }> {
+    if (centralLeadIds.length === 0 || !vendedorId) return { enviados: 0, perdidos: 0 };
     const agora = new Date().toISOString();
+    let idsQueForam = centralLeadIds;
+
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb
+      /*
+       * SEGUNDA verificação — e é esta que impede de verdade.
+       *
+       * A condição vai junto do UPDATE: só grava se o lead AINDA estiver sem
+       * dono (ou já for do mesmo destino). Se outro administrador distribuiu
+       * enquanto esta tela estava aberta, a linha não casa e simplesmente não
+       * é atualizada — em vez de sobrescrever o trabalho do outro.
+       *
+       * `select()` devolve o que realmente mudou; a diferença é o que a corrida
+       * levou, e é isso que a tela informa.
+       */
+      const { data, error } = await sb
         .from("central_leads")
         .update(
           centralLeadToDb({
@@ -1608,24 +1644,32 @@ export const centralLeadsApi = {
             distribuidoEm: agora,
           }),
         )
-        .in("id", centralLeadIds);
+        .in("id", centralLeadIds)
+        .or(`vendedor_id.is.null,vendedor_id.eq.${vendedorId}`)
+        .select("id");
       if (error) throw error;
+      idsQueForam = ((data ?? []) as { id: string }[]).map((r) => r.id);
     }
+
+    const perdidos = centralLeadIds.length - idsQueForam.length;
+    if (idsQueForam.length === 0) return { enviados: 0, perdidos };
+
     state.centralLeads = state.centralLeads.map((c) =>
-      centralLeadIds.includes(c.id)
+      idsQueForam.includes(c.id)
         ? { ...c, vendedorId, distribuidoPor: state.session?.id, status: "aguardando" as const, distribuidoEm: agora }
         : c,
     );
     notify();
     const nomeVend = state.vendedores.find((v) => v.id === vendedorId)?.nome ?? "consultor";
-    for (const id of centralLeadIds) void logEventoCentral(id, { tipo: "distribuido", detalhe: `→ ${nomeVend}` });
+    for (const id of idsQueForam) void logEventoCentral(id, { tipo: "distribuido", detalhe: `→ ${nomeVend}` });
     const prof = state.roster.find((p) => p.vendedorRef === vendedorId);
     void notificarUsuario(prof?.id, {
       tipo: "central_distribuicao",
-      ...avisoDeLead(state.centralLeads.filter((c) => centralLeadIds.includes(c.id))),
+      ...avisoDeLead(state.centralLeads.filter((c) => idsQueForam.includes(c.id))),
       link: "/central",
     });
-    void logAudit({ acao: "distribuir", entidade: "central_lead", detalhes: `${centralLeadIds.length} → ${nomeVend}` });
+    void logAudit({ acao: "distribuir", entidade: "central_lead", detalhes: `${idsQueForam.length} → ${nomeVend}` });
+    return { enviados: idsQueForam.length, perdidos };
   },
 
   /**

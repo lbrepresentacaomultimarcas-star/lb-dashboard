@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { chaveTelefone } from "@/lib/telefone";
 import {
   formularioLiberado,
   produtoDoFormulario,
@@ -59,6 +60,45 @@ export async function GET(req: NextRequest) {
 }
 
 /* ----------------------------------------------------------------- POST */
+/**
+ * Procura lead ATIVO do mesmo cliente.
+ *
+ * Compara pela CHAVE do telefone, não pelo texto: comparando texto, o mesmo
+ * número entrava duas vezes só por vir "+5579…" de um formulário e "(79) 9…"
+ * do site — e cada cópia ia parar com um consultor diferente.
+ *
+ * A busca cai para o comportamento antigo se a coluna `telefone_chave` ainda
+ * não existir. É proposital: se o deploy chegar antes da migration, o webhook
+ * NÃO pode parar de receber lead — perder lead pago é pior do que deixar
+ * passar um duplicado por algumas horas.
+ */
+async function procurarAtivoMesmoTelefone(
+  db: ReturnType<typeof supabaseAdmin>,
+  orgId: string,
+  telefone: string | undefined,
+): Promise<{ id: string; produto: string | null }[] | null> {
+  const base = () =>
+    db
+      .from("central_leads")
+      .select("id, produto")
+      .eq("org_id", orgId)
+      .is("encerrado_em", null)
+      // lead EXCLUÍDO não pode bloquear lead novo: ele some da tela, então
+      // usar como "conversa em andamento" descartaria o lead novo em silêncio.
+      .is("excluido_em", null)
+      .order("recebido_em", { ascending: false })
+      .limit(1);
+
+  const chave = chaveTelefone(telefone);
+  if (chave) {
+    const r = await base().eq("telefone_chave", chave);
+    if (!r.error) return (r.data ?? []) as { id: string; produto: string | null }[];
+    console.warn("[intake] telefone_chave indisponível, comparando pelo texto:", r.error.message);
+  }
+  const r2 = await base().eq("telefone", telefone ?? "");
+  return (r2.data ?? []) as { id: string; produto: string | null }[];
+}
+
 export async function POST(req: NextRequest) {
   // corpo CRU é obrigatório: a assinatura é calculada sobre os bytes originais
   const raw = await req.text();
@@ -90,17 +130,11 @@ export async function POST(req: NextRequest) {
         // registra a nova mensagem. A busca é por TELEFONE (não por external_id),
         // porque um cliente que voltou depois de um lead encerrado precisa gerar
         // um lead NOVO — e não ser descartado.
-        const { data: ativos } = await db
-          .from("central_leads")
-          .select("id, produto")
-          .eq("org_id", orgId)
-          .eq("telefone", lead.telefone)
-          .is("encerrado_em", null)
-          // lead EXCLUÍDO não pode bloquear lead novo: ele some da tela, então
-          // usar como "conversa em andamento" descartaria o lead novo em silêncio.
-          .is("excluido_em", null)
-          .order("recebido_em", { ascending: false })
-          .limit(1);
+        //
+        // A comparação é pela CHAVE, não pelo texto. Comparando texto, o mesmo
+        // número entrava duas vezes só por vir "+5579…" de um formulário e
+        // "(79) 9…" do site — e cada cópia ia para um consultor diferente.
+        const ativos = await procurarAtivoMesmoTelefone(db, orgId, lead.telefone);
         const existente = ativos?.[0] ?? null;
 
         // A Meta reenvia o mesmo webhook quando demora a receber o 200. Marcamos
