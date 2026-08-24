@@ -1602,6 +1602,71 @@ export const centralLeadsApi = {
     void logAudit({ acao: "distribuir", entidade: "central_lead", detalhes: `${centralLeadIds.length} → ${nomeVend}` });
   },
 
+  /**
+   * Troca o consultor responsável por um lead JÁ distribuído.
+   *
+   * Muda SÓ o responsável: mesmo lead, mesmo cadastro, mesmo status. Como
+   * `vendedor_id` é um campo único, não existe instante em que dois consultores
+   * fiquem com o mesmo lead — sai de um e entra no outro na mesma escrita.
+   *
+   * O histórico não se perde: o evento guarda quem era, quem passou a ser e o
+   * motivo, e a ficha do lead já sabe exibir "campo: antes → depois".
+   *
+   * `distribuidoEm` passa a marcar quando o RESPONSÁVEL ATUAL recebeu — senão o
+   * card diria que o Edvan recebeu num horário em que o lead ainda era da Ana.
+   * O horário do primeiro envio continua no histórico.
+   */
+  async redistribuir(id: string, novoVendedorId: string, motivo?: string): Promise<void> {
+    const cl = state.centralLeads.find((c) => c.id === id);
+    if (!cl || !novoVendedorId || cl.vendedorId === novoVendedorId) return;
+
+    const anterior = state.vendedores.find((v) => v.id === cl.vendedorId)?.nome ?? "sem consultor";
+    const nomeNovo = state.vendedores.find((v) => v.id === novoVendedorId)?.nome ?? "consultor";
+    const agora = new Date().toISOString();
+
+    if (supabaseEnabled) {
+      const sb = supabaseBrowser();
+      const { error } = await sb
+        .from("central_leads")
+        .update(
+          centralLeadToDb({
+            vendedorId: novoVendedorId,
+            distribuidoPor: state.session?.id,
+            distribuidoEm: agora,
+          }),
+        )
+        .eq("id", id);
+      if (error) throw error;
+    }
+
+    state.centralLeads = state.centralLeads.map((c) =>
+      c.id === id
+        ? { ...c, vendedorId: novoVendedorId, distribuidoPor: state.session?.id, distribuidoEm: agora }
+        : c,
+    );
+    notify();
+
+    void logEventoCentral(id, {
+      tipo: "redistribuido",
+      campo: "Consultor",
+      valorAnterior: anterior,
+      valorNovo: nomeNovo,
+      detalhe: motivo?.trim() || undefined,
+    });
+    const prof = state.roster.find((p) => p.vendedorRef === novoVendedorId);
+    void notificarUsuario(prof?.id, {
+      tipo: "central_distribuicao",
+      titulo: "Um lead passou a ser seu",
+      mensagem: `${cl.nome} — abra a Central de Leads.`,
+      link: "/central",
+    });
+    void logAudit({
+      acao: "redistribuir",
+      entidade: "central_lead",
+      detalhes: `${cl.nome}: ${anterior} → ${nomeNovo}${motivo ? ` (${motivo})` : ""}`,
+    });
+  },
+
   /** Consultor iniciou o atendimento (botão LIGAR — não faz a ligação). */
   async iniciarLigacao(id: string): Promise<void> {
     await patchCentral(id, { status: "em_atendimento", ligacaoIniciadaEm: new Date().toISOString() });

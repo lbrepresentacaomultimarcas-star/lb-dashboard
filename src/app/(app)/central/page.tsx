@@ -19,6 +19,7 @@ import {
   UserRound,
   XCircle,
   ChevronDown,
+  Repeat,
 } from "lucide-react";
 import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
 import { ehAdmin } from "@/lib/permissions";
@@ -259,6 +260,14 @@ export default function CentralLeadsPage() {
    * distribuição nem em nada do fluxo.
    */
   const [aba, setAba] = useState<"novos" | "enviados">("novos");
+  /** "" = todos os consultores. Só vale na aba ENVIADOS. */
+  const [fConsultor, setFConsultor] = useState("");
+  /** Lead em redistribuição — null quando o modal está fechado. */
+  const [redist, setRedist] = useState<CentralLead | null>(null);
+  const [redistPara, setRedistPara] = useState("");
+  const [redistMotivo, setRedistMotivo] = useState("");
+  const [redistOutro, setRedistOutro] = useState("");
+  const [redistSalvando, setRedistSalvando] = useState(false);
 
   // fluxo do consultor
   const [acao, setAcao] = useState<{ lead: CentralLead; tipo: "atendeu" | "naoatendeu" | "perdido" } | null>(null);
@@ -341,6 +350,8 @@ export default function CentralLeadsPage() {
       .filter((l) => (fStatus === "todos" ? true : l.status === fStatus))
       // lead com status "novo" é o que ainda não foi para nenhum consultor
       .filter((l) => (!admin ? true : aba === "novos" ? l.status === "novo" : l.status !== "novo"))
+      // barra de consultores: só faz sentido sobre os que já foram enviados
+      .filter((l) => (!admin || aba !== "enviados" || !fConsultor ? true : l.vendedorId === fConsultor))
       .filter((l) => {
         if (!q) return true;
         return (
@@ -358,7 +369,53 @@ export default function CentralLeadsPage() {
         if (pa !== 0) return pa;
         return new Date(b.recebidoEm).getTime() - new Date(a.recebidoEm).getTime();
       });
-  }, [base, busca, fPrioridade, fStatus, soTestes, vendedores, admin, aba]);
+  }, [base, busca, fPrioridade, fStatus, soTestes, vendedores, admin, aba, fConsultor]);
+
+  /**
+   * Quantos leads cada consultor tem agora entre os ENVIADOS.
+   * Conta sobre a população da aba, não sobre a lista já filtrada — senão o
+   * número mudaria conforme a busca e deixaria de responder "quanto cada um tem".
+   */
+  const porConsultor = useMemo(() => {
+    const enviados = base
+      .filter((l) => (soTestes ? l.teste === true : true))
+      .filter((l) => l.status !== "novo");
+    const mapa = new Map<string, number>();
+    for (const l of enviados) {
+      const k = l.vendedorId ?? "";
+      mapa.set(k, (mapa.get(k) ?? 0) + 1);
+    }
+    const lista = [...mapa.entries()]
+      .map(([id, total]) => ({ id, nome: id ? nomeVend(id) : "Sem consultor", total }))
+      .sort((a, b) => b.total - a.total);
+    return { total: enviados.length, lista };
+    // nomeVend depende de `vendedores`, que já está nas dependências
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, soTestes, vendedores]);
+
+  const MOTIVOS_REDIST = ["Consultor faltou", "Ausência", "Folga", "Reorganização", "Outro"];
+
+  function abrirRedist(l: CentralLead) {
+    setRedist(l);
+    setRedistPara("");
+    setRedistMotivo("");
+    setRedistOutro("");
+  }
+
+  async function confirmarRedist() {
+    if (!redist || !redistPara) return;
+    const motivo = redistMotivo === "Outro" ? redistOutro.trim() : redistMotivo;
+    setRedistSalvando(true);
+    try {
+      await centralLeadsApi.redistribuir(redist.id, redistPara, motivo || undefined);
+      notify.success(`Lead passou para ${nomeVend(redistPara)}.`);
+      setRedist(null);
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não consegui redistribuir.");
+    } finally {
+      setRedistSalvando(false);
+    }
+  }
 
   /** Contadores das abas — seguem a mesma fonte e o mesmo filtro de teste. */
   const contagemAbas = useMemo(() => {
@@ -673,6 +730,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   setAba(t.id);
                   // seleção some junto: marcado numa aba não faz sentido na outra
                   setSel(new Set());
+                  setFConsultor("");
                 }}
                 className="flex h-12 items-center gap-2 rounded-xl border px-4 text-sm font-bold uppercase tracking-wider transition-colors"
                 style={{
@@ -687,6 +745,39 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   style={{ background: ativa ? `${t.cor}33` : "rgba(255,255,255,.10)" }}
                 >
                   {t.total}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Barra de consultores — bater o olho e saber quanto cada um tem */}
+      {admin && aba === "enviados" && porConsultor.lista.length > 0 && (
+        <div className="lb-fade-up flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
+            Consultores
+          </span>
+          {[{ id: "", nome: "Todos", total: porConsultor.total }, ...porConsultor.lista].map((c) => {
+            const ativo = fConsultor === c.id;
+            return (
+              <button
+                key={c.id || "todos"}
+                type="button"
+                onClick={() => setFConsultor(c.id)}
+                className="flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors"
+                style={{
+                  borderColor: ativo ? "#10B981" : "rgba(255,255,255,.14)",
+                  background: ativo ? "rgba(16,185,129,.15)" : "rgba(255,255,255,.04)",
+                  color: ativo ? "#6EE7B7" : "rgba(255,255,255,.8)",
+                }}
+              >
+                <span className="max-w-[160px] truncate">{c.nome}</span>
+                <span
+                  className="rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums"
+                  style={{ background: ativo ? "rgba(16,185,129,.25)" : "rgba(255,255,255,.10)" }}
+                >
+                  {c.total}
                 </span>
               </button>
             );
@@ -932,6 +1023,17 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   </button>
                 </div>
 
+                {admin && l.vendedorId && (
+                  <button
+                    type="button"
+                    onClick={() => abrirRedist(l)}
+                    title="Passar este lead para outro consultor, mantendo o histórico"
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+                  >
+                    <Repeat className="h-3.5 w-3.5" /> Redistribuir
+                  </button>
+                )}
+
                 {naoDist ? (
                   <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[11px] text-white/70">
                     {admin ? "Selecione e distribua a um consultor" : "Aguardando distribuição"}
@@ -1093,6 +1195,106 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Redistribuir (admin) */}
+      <Modal
+        open={!!redist}
+        onClose={() => setRedist(null)}
+        title="Redistribuir lead"
+        subtitle={redist?.nome}
+      >
+        {redist && (
+          <div className="space-y-5">
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm">
+              <span className="text-[var(--color-text-dim)]">Está com: </span>
+              <span className="font-semibold text-[var(--color-text)]">{nomeVend(redist.vendedorId)}</span>
+              {redist.distribuidoEm && (
+                <span className="text-[var(--color-text-dim)]">
+                  {" "}· desde {fmtData(redist.distribuidoEm)} {fmtHora(redist.distribuidoEm)}
+                </span>
+              )}
+            </div>
+
+            <div>
+              <Label>Passar para</Label>
+              <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                {vendedoresAtivos
+                  .filter((v) => v.id !== redist.vendedorId)
+                  .map((v) => {
+                    const escolhido = redistPara === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setRedistPara(v.id)}
+                        className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-sm transition-colors ${
+                          escolhido
+                            ? "border-[var(--color-brand)] bg-[var(--color-brand)]/12 font-semibold text-[var(--color-text)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface)]"
+                        }`}
+                      >
+                        <UserRound className="h-4 w-4 shrink-0 opacity-70" />
+                        <span className="truncate">{v.nome}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+              {vendedoresAtivos.filter((v) => v.id !== redist.vendedorId).length === 0 && (
+                <p className="mt-1.5 text-sm text-[var(--color-text-dim)]">
+                  Não há outro consultor ativo para receber este lead.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label>Motivo (opcional)</Label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {MOTIVOS_REDIST.map((m) => {
+                  const escolhido = redistMotivo === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setRedistMotivo(escolhido ? "" : m)}
+                      className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+                        escolhido
+                          ? "border-[var(--color-brand)] bg-[var(--color-brand)]/12 text-[var(--color-text)]"
+                          : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+              {redistMotivo === "Outro" && (
+                <textarea
+                  rows={2}
+                  value={redistOutro}
+                  onChange={(e) => setRedistOutro(e.target.value)}
+                  placeholder="Escreva o motivo"
+                  className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#3B82F6]"
+                />
+              )}
+            </div>
+
+            <p className="text-xs text-[var(--color-text-dim)]">
+              É o mesmo lead: nada é duplicado e o histórico fica guardado na ficha —
+              quem recebeu antes, quem passou a atender e o motivo.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setRedist(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => void confirmarRedist()} disabled={!redistPara || redistSalvando}>
+                <Repeat className="h-4 w-4" />
+                {redistSalvando ? "Passando…" : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal Novo lead (admin) */}
