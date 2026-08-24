@@ -195,6 +195,12 @@ export default function CentralLeadsPage() {
   const [excluindo, setExcluindo] = useState(false);
   const [fPrioridade, setFPrioridade] = useState<Prioridade | "todas">("todas");
   const [fStatus, setFStatus] = useState<CentralLeadStatus | "todos">("todos");
+  /**
+   * Abas da visão administrativa: "o que ainda preciso enviar" contra "o que já
+   * enviei e para quem". Só separa o que a tela mostra — não mexe em status,
+   * distribuição nem em nada do fluxo.
+   */
+  const [aba, setAba] = useState<"novos" | "enviados">("novos");
 
   // fluxo do consultor
   const [acao, setAcao] = useState<{ lead: CentralLead; tipo: "atendeu" | "naoatendeu" | "perdido" } | null>(null);
@@ -275,6 +281,8 @@ export default function CentralLeadsPage() {
       .filter((l) => (soTestes ? l.teste === true : true))
       .filter((l) => (fPrioridade === "todas" ? true : l.prioridade === fPrioridade))
       .filter((l) => (fStatus === "todos" ? true : l.status === fStatus))
+      // lead com status "novo" é o que ainda não foi para nenhum consultor
+      .filter((l) => (!admin ? true : aba === "novos" ? l.status === "novo" : l.status !== "novo"))
       .filter((l) => {
         if (!q) return true;
         return (
@@ -292,7 +300,16 @@ export default function CentralLeadsPage() {
         if (pa !== 0) return pa;
         return new Date(b.recebidoEm).getTime() - new Date(a.recebidoEm).getTime();
       });
-  }, [base, busca, fPrioridade, fStatus, soTestes, vendedores]);
+  }, [base, busca, fPrioridade, fStatus, soTestes, vendedores, admin, aba]);
+
+  /** Contadores das abas — seguem a mesma fonte e o mesmo filtro de teste. */
+  const contagemAbas = useMemo(() => {
+    const arr = base.filter((l) => (soTestes ? l.teste === true : true));
+    return {
+      novos: arr.filter((l) => l.status === "novo").length,
+      enviados: arr.filter((l) => l.status !== "novo").length,
+    };
+  }, [base, soTestes]);
 
   const kpis = useMemo(() => {
     const aguardando = leads.filter((l) => l.status === "aguardando").length;
@@ -512,7 +529,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             <h1 className="text-2xl font-extrabold text-white md:text-3xl" style={{ letterSpacing: "-0.03em" }}>
               Central de Leads
             </h1>
-            <p className="text-sm text-white/55">
+            <p className="text-sm text-white/70">
               {admin ? "Distribua e acompanhe os leads da equipe" : "Seus leads para atender"}
             </p>
           </div>
@@ -560,7 +577,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
               <Send className="h-4 w-4" /> Selecionados ({sel.size})
             </Button>
           </div>
-          <p className="mt-2 text-[11px] text-white/45">
+          <p className="mt-2 text-[11px] text-white/70">
             {naoDistribuidos.length} lead(s) aguardando distribuição · marque os cards para escolher manualmente.
           </p>
         </div>
@@ -580,15 +597,54 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
         </div>
       )}
 
+      {/* Abas: o que falta enviar × o que já foi */}
+      {admin && (
+        <div className="lb-fade-up flex flex-wrap gap-2" role="tablist" aria-label="Situação dos leads">
+          {([
+            { id: "novos", rotulo: "NOVOS", total: contagemAbas.novos, cor: "#2563FF" },
+            { id: "enviados", rotulo: "ENVIADOS", total: contagemAbas.enviados, cor: "#10B981" },
+          ] as const).map((t) => {
+            const ativa = aba === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={ativa}
+                onClick={() => {
+                  setAba(t.id);
+                  // seleção some junto: marcado numa aba não faz sentido na outra
+                  setSel(new Set());
+                }}
+                className="flex h-12 items-center gap-2 rounded-xl border px-4 text-sm font-bold uppercase tracking-wider transition-colors"
+                style={{
+                  borderColor: ativa ? t.cor : "rgba(255,255,255,.14)",
+                  background: ativa ? `${t.cor}22` : "rgba(255,255,255,.04)",
+                  color: ativa ? t.cor : "rgba(255,255,255,.75)",
+                }}
+              >
+                {t.rotulo}
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs font-bold tabular-nums"
+                  style={{ background: ativa ? `${t.cor}33` : "rgba(255,255,255,.10)" }}
+                >
+                  {t.total}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="lb-fade-up flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
           <input
             placeholder="Buscar por nome, telefone, produto, origem, consultor…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none backdrop-blur transition-all placeholder:text-white/35 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10"
+            className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none backdrop-blur transition-all placeholder:text-white/55 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10"
           />
         </div>
         <select
@@ -674,7 +730,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             <p className="text-base font-bold text-white">
               {leads.length === 0 ? "Nenhum lead na Central" : "Nada encontrado com esses filtros"}
             </p>
-            <p className="max-w-md text-sm text-white/55">
+            <p className="max-w-md text-sm text-white/70">
               {leads.length === 0
                 ? admin
                   ? "Use “Novo lead” ou “Importar” para começar, depois distribua aos consultores."
@@ -727,7 +783,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                         onClick={() => void excluir(l)}
                         title="Remover da Central (continua no banco)"
                         aria-label={`Remover ${l.nome}`}
-                        className="rounded-md p-1 text-white/35 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+                        className="rounded-md p-1 text-white/60 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -736,9 +792,9 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-base font-bold text-white">{l.nome}</p>
+                  <p className="truncate text-[17px] font-bold leading-tight tracking-tight text-white">{l.nome}</p>
                   {(l.produto || l.subproduto) && (
-                    <p className="truncate text-xs text-white/60">
+                    <p className="truncate text-[13px] font-medium text-white/80">
                       {[l.produto, l.subproduto].filter(Boolean).join(" · ")}
                     </p>
                   )}
@@ -752,27 +808,37 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
 
                 {l.prazoInteresse && (
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/60">
                       Quer fechar
                     </p>
                     <PrazoBadge prazo={l.prazoInteresse} />
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-white/70">
+                <div className="grid grid-cols-1 gap-x-3 gap-y-1.5 text-xs text-white/85 sm:grid-cols-2">
                   <span className="flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-white/40" />
-                    {l.telefone || "—"}
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-white/70" />
+                    <span className="truncate">{l.telefone || "—"}</span>
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-white/40" />
-                    {fmtData(l.recebidoEm)} · {fmtHora(l.recebidoEm)}
+                    <Clock className="h-3.5 w-3.5 shrink-0 text-white/70" />
+                    <span className="truncate">
+                      Entrada: {fmtData(l.recebidoEm)} · {fmtHora(l.recebidoEm)}
+                    </span>
                   </span>
-                  {l.origem && <span className="col-span-2 text-white/45">Origem: {l.origem}</span>}
-                  {veConsultor && (
-                    <span className="col-span-2 flex items-center gap-1.5 text-white/45">
-                      <UserRound className="h-3.5 w-3.5" />
-                      {nomeVend(l.vendedorId)}
+                  {l.origem && (
+                    <span className="truncate text-white/70 sm:col-span-2">Origem: {l.origem}</span>
+                  )}
+                  {/* para quem foi e quando — a pergunta da aba ENVIADOS */}
+                  {l.vendedorId && (admin || veConsultor) && (
+                    <span className="flex items-center gap-1.5 font-semibold text-emerald-300/90 sm:col-span-2">
+                      <UserRound className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Enviado para: {nomeVend(l.vendedorId)}</span>
+                    </span>
+                  )}
+                  {l.distribuidoEm && (admin || veConsultor) && (
+                    <span className="truncate text-white/70 sm:col-span-2">
+                      Enviado: {fmtData(l.distribuidoEm)} · {fmtHora(l.distribuidoEm)}
                     </span>
                   )}
                   {l.status === "aguardando_resposta" && l.mensagemEnviadaEm && (
@@ -809,7 +875,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                 </div>
 
                 {naoDist ? (
-                  <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[11px] text-white/45">
+                  <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[11px] text-white/70">
                     {admin ? "Selecione e distribua a um consultor" : "Aguardando distribuição"}
                   </p>
                 ) : emAtend ? (
@@ -900,9 +966,9 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             </>
           ) : acao?.tipo === "atendeu" ? (
             <>
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-                <span className="text-white/45">Consultor: </span>
-                <span className="font-semibold text-white">{nomeVend(acao.lead.vendedorId)}</span>
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm">
+                <span className="text-[var(--color-text-dim)]">Consultor: </span>
+                <span className="font-semibold text-[var(--color-text)]">{nomeVend(acao.lead.vendedorId)}</span>
               </div>
               <div>
                 <Label>Etapa inicial no Pipeline</Label>
@@ -914,8 +980,8 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                         key={s}
                         className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
                           sel
-                            ? "border-[#3B82F6] bg-[#3B82F6]/12 text-white"
-                            : "border-white/10 bg-white/[0.02] text-white/75 hover:bg-white/[0.05]"
+                            ? "border-[#3B82F6] bg-[#3B82F6]/12 text-[var(--color-text)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
                         }`}
                       >
                         <input
@@ -939,7 +1005,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                   onChange={(e) => setObs(e.target.value)}
                   rows={3}
                   placeholder="O que o cliente falou, próximos passos…"
-                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-white outline-none focus:border-[#3B82F6]"
+                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#3B82F6]"
                 />
               </div>
               <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200/90">
@@ -956,7 +1022,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                 onChange={(e) => setObs(e.target.value)}
                 rows={4}
                 placeholder="Ex.: caixa postal, chamou e não atendeu…"
-                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-white outline-none focus:border-[#3B82F6]"
+                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#3B82F6]"
               />
             </div>
           )}
@@ -990,7 +1056,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                 list="produtos-central"
                 value={novo.produto}
                 onChange={(e) => setNovo({ ...novo, produto: e.target.value })}
-                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm text-white"
+                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm text-[var(--color-text)]"
               />
               <datalist id="produtos-central">
                 {PRODUTOS.map((p) => (
@@ -1047,9 +1113,9 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={onArquivo}
-              className="block w-full text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-[#2563FF] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#1d4ed8]"
+              className="block w-full text-sm text-[var(--color-text-dim)] file:mr-3 file:rounded-lg file:border-0 file:bg-[#2563FF] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--color-text)] hover:file:bg-[#1d4ed8]"
             />
-            <p className="mt-1 text-[11px] text-white/40">Colunas reconhecidas: Nome, Telefone, Produto, Origem.</p>
+            <p className="mt-1 text-[11px] text-[var(--color-text-dim)]">Colunas reconhecidas: Nome, Telefone, Produto, Origem.</p>
           </div>
           <div>
             <Label htmlFor="colar">Ou cole a lista (uma por linha: Nome, Telefone, Produto, Origem)</Label>
@@ -1059,7 +1125,7 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
               onChange={(e) => setColar(e.target.value)}
               rows={5}
               placeholder={"João, 79999999999, Imóvel, Instagram\nMaria; 7988888888; Carro; Tráfego Pago"}
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-white outline-none focus:border-[#3B82F6]"
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#3B82F6]"
             />
             <div className="mt-2">
               <Button type="button" variant="secondary" onClick={lerColado} disabled={!colar.trim()}>
@@ -1069,16 +1135,16 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
           </div>
 
           {importRows.length > 0 && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-              <p className="mb-2 text-xs font-semibold text-white">{importRows.length} lead(s) prontos para importar:</p>
-              <div className="lb-scroll max-h-40 space-y-1 overflow-y-auto pr-1 text-xs text-white/70">
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+              <p className="mb-2 text-xs font-semibold text-[var(--color-text)]">{importRows.length} lead(s) prontos para importar:</p>
+              <div className="lb-scroll max-h-40 space-y-1 overflow-y-auto pr-1 text-xs text-[var(--color-text-dim)]">
                 {importRows.slice(0, 8).map((r, idx) => (
                   <div key={idx} className="flex justify-between gap-2">
                     <span className="truncate">{r.nome}</span>
-                    <span className="shrink-0 text-white/40">{r.telefone || "—"}</span>
+                    <span className="shrink-0 text-[var(--color-text-dim)]">{r.telefone || "—"}</span>
                   </div>
                 ))}
-                {importRows.length > 8 && <p className="text-white/40">…e mais {importRows.length - 8}</p>}
+                {importRows.length > 8 && <p className="text-[var(--color-text-dim)]">…e mais {importRows.length - 8}</p>}
               </div>
             </div>
           )}
@@ -1170,25 +1236,25 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
         )}
 
         {eventos === null ? (
-          <p className="py-6 text-center text-sm text-white/45">Carregando…</p>
+          <p className="py-6 text-center text-sm text-[var(--color-text-dim)]">Carregando…</p>
         ) : eventos.length === 0 ? (
-          <p className="py-6 text-center text-sm text-white/45">Sem eventos registrados.</p>
+          <p className="py-6 text-center text-sm text-[var(--color-text-dim)]">Sem eventos registrados.</p>
         ) : (
           <ol className="lb-scroll max-h-[60vh] space-y-3 overflow-y-auto pr-1">
             {eventos.map((ev) => (
               <li key={ev.id} className="flex gap-3">
                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#3B82F6]" style={{ boxShadow: "0 0 8px #3B82F6" }} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-white">
+                  <p className="text-sm text-[var(--color-text)]">
                     <span className="font-semibold capitalize">{ev.tipo.replace(/_/g, " ")}</span>
-                    {ev.detalhe ? <span className="text-white/70"> — {ev.detalhe}</span> : null}
+                    {ev.detalhe ? <span className="text-[var(--color-text-dim)]"> — {ev.detalhe}</span> : null}
                   </p>
                   {ev.campo && (
-                    <p className="text-[11px] text-white/45">
+                    <p className="text-[11px] text-[var(--color-text-dim)]">
                       {ev.campo}: {ev.valorAnterior ?? "—"} → {ev.valorNovo ?? "—"}
                     </p>
                   )}
-                  <p className="text-[11px] text-white/40">
+                  <p className="text-[11px] text-[var(--color-text-dim)]">
                     {fmtDataHora(ev.criadoEm)}
                     {ev.autorNome ? ` · ${ev.autorNome}` : ""}
                   </p>
