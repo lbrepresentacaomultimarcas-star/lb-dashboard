@@ -33,6 +33,29 @@ html.light {
   --color-danger: #dc2626;
 }
 
+/*
+ * OPÇÕES DO <select>.
+ *
+ * O popup que abre ao clicar num <select> é desenhado pelo navegador, fora do
+ * nosso CSS: ele NÃO herda o fundo escuro do card, mas HERDA a cor do texto do
+ * <select> — que aqui é branca. Resultado: opções brancas sobre o fundo claro
+ * do popup, invisíveis.
+ *
+ * Fixar cor E fundo no próprio <option> é o que o Chrome respeita para pintar
+ * esse popup. Vale para todos os selects da aplicação, não só os da Central.
+ */
+select option,
+select optgroup {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+/* a opção sob o cursor precisa continuar legível */
+select option:checked,
+select option:hover {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
 html,
 body {
   background: var(--color-bg);

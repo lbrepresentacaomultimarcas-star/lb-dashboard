@@ -14,12 +14,17 @@ export function Dropdown({
   width = 240,
   /** Opcionalmente exibe um cabeçalho dentro do popover. */
   header,
+  /** Aparência do gatilho. O padrão é o botão de ícone; um filtro passa o seu. */
+  triggerClassName,
+  rotulo = "Ações",
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   align?: "start" | "end";
   width?: number;
   header?: React.ReactNode;
+  triggerClassName?: string;
+  rotulo?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -86,8 +91,11 @@ export function Dropdown({
         ref={triggerRef}
         type="button"
         onClick={toggle}
-        className="rounded p-1 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
-        aria-label="Ações"
+        className={
+          triggerClassName ??
+          "rounded p-1 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+        }
+        aria-label={rotulo}
         aria-haspopup="menu"
         aria-expanded={open}
       >

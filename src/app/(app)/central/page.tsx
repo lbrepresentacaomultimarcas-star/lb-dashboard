@@ -18,6 +18,7 @@ import {
   Upload,
   UserRound,
   XCircle,
+  ChevronDown,
 } from "lucide-react";
 import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
 import { ehAdmin } from "@/lib/permissions";
@@ -36,6 +37,7 @@ import {
 } from "@/lib/types";
 import { notify } from "@/lib/notify";
 import { PremiumStage } from "@/components/premium-stage";
+import { Dropdown, DropdownItem } from "@/components/ui/dropdown";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -174,6 +176,62 @@ function mapObjRow(o: Record<string, unknown>): ImportRow {
       valContem("interesse", "produto", "procura"),
     origem: val("origem", "fonte", "source") || origemMeta,
   };
+}
+
+/**
+ * Filtro em menu de verdade, no DOM.
+ *
+ * Antes era <select> nativo. O popup dele é desenhado pelo sistema, fora do
+ * nosso CSS: não herda o fundo escuro do card, mas herda a cor do texto — que
+ * aqui é branca. Dava opções brancas sobre popup claro, invisíveis.
+ *
+ * Em DOM o menu usa os tokens do tema (fundo opaco, texto legível) e funciona
+ * igual nos dois temas, sem depender de como o sistema pinta controle nativo.
+ */
+function FiltroSelect<T extends string>({
+  valor,
+  opcoes,
+  onChange,
+  largura = 230,
+  titulo,
+}: {
+  valor: T;
+  opcoes: { valor: T; rotulo: string }[];
+  onChange: (v: T) => void;
+  largura?: number;
+  titulo?: string;
+}) {
+  const atual = opcoes.find((o) => o.valor === valor)?.rotulo ?? opcoes[0]?.rotulo ?? "";
+  return (
+    <Dropdown
+      align="start"
+      width={largura}
+      rotulo={titulo ?? atual}
+      triggerClassName="flex h-11 items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white transition-colors hover:bg-white/[0.08]"
+      trigger={
+        <>
+          <span className="max-w-[190px] truncate">{atual}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
+        </>
+      }
+    >
+      {(close) =>
+        opcoes.map((o) => (
+          <DropdownItem
+            key={o.valor}
+            onClick={() => {
+              onChange(o.valor);
+              close();
+            }}
+          >
+            <span className={o.valor === valor ? "font-semibold text-[var(--color-brand)]" : undefined}>
+              {o.rotulo}
+            </span>
+          </DropdownItem>
+        ))
+      }
+    </Dropdown>
+  );
 }
 
 export default function CentralLeadsPage() {
@@ -647,43 +705,43 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none backdrop-blur transition-all placeholder:text-white/55 focus:border-[#3B82F6] focus:bg-[#3B82F6]/10"
           />
         </div>
-        <select
-          value={fPrioridade}
-          onChange={(e) => setFPrioridade(e.target.value as Prioridade | "todas")}
-          className="h-11 rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
-        >
-          <option value="todas">Prioridade: todas</option>
-          {(Object.keys(PRIORIDADE_INFO) as Prioridade[]).map((p) => (
-            <option key={p} value={p}>
-              {PRIORIDADE_INFO[p].label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={fStatus}
-          onChange={(e) => setFStatus(e.target.value as CentralLeadStatus | "todos")}
-          className="h-11 rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
-        >
-          <option value="todos">Status: todos</option>
-          {(Object.keys(CENTRAL_STATUS_INFO) as CentralLeadStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {CENTRAL_STATUS_INFO[s].label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={mesRef}
-          onChange={(e) => setMesRef(e.target.value)}
-          title="Consultar os leads de um mês específico"
-          className="h-11 rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
-        >
-          <option value="">Fila atual</option>
-          {mesesDisponiveis.map((m, i) => (
-            <option key={m.ym} value={m.ym}>
-              {i === 0 ? `Este mês — ${m.label}` : i === 1 ? `Mês anterior — ${m.label}` : m.label}
-            </option>
-          ))}
-        </select>
+        <FiltroSelect<Prioridade | "todas">
+          titulo="Prioridade"
+          valor={fPrioridade}
+          onChange={setFPrioridade}
+          opcoes={[
+            { valor: "todas", rotulo: "Prioridade: todas" },
+            ...(Object.keys(PRIORIDADE_INFO) as Prioridade[]).map((p) => ({
+              valor: p,
+              rotulo: PRIORIDADE_INFO[p].label,
+            })),
+          ]}
+        />
+        <FiltroSelect<CentralLeadStatus | "todos">
+          titulo="Status"
+          valor={fStatus}
+          onChange={setFStatus}
+          opcoes={[
+            { valor: "todos", rotulo: "Status: todos" },
+            ...(Object.keys(CENTRAL_STATUS_INFO) as CentralLeadStatus[]).map((st) => ({
+              valor: st,
+              rotulo: CENTRAL_STATUS_INFO[st].label,
+            })),
+          ]}
+        />
+        <FiltroSelect<string>
+          titulo="Período"
+          largura={250}
+          valor={mesRef}
+          onChange={setMesRef}
+          opcoes={[
+            { valor: "", rotulo: "Fila atual" },
+            ...mesesDisponiveis.map((m, i) => ({
+              valor: m.ym,
+              rotulo: i === 0 ? `Este mês — ${m.label}` : i === 1 ? `Mês anterior — ${m.label}` : m.label,
+            })),
+          ]}
+        />
         {admin && (
           <button
             type="button"
