@@ -450,3 +450,71 @@ export function leadsDaLinha(l: LinhaInsight): number {
 export function podeLerAnuncios(escopos: string[] | null | undefined): boolean {
   return (escopos ?? []).includes("ads_read");
 }
+
+/* ------------------------- Criar formulário de lead ----------------------- */
+/*
+ * Formulário publicado na Meta NÃO pode ser editado — só duplicado. Então
+ * "acrescentar a cidade" é, na prática, criar um formulário novo a partir da
+ * definição do atual. Fazer isso pela API evita o construtor da interface, que
+ * é onde o trabalho manual se perde.
+ */
+
+export type PerguntaFormulario = {
+  type: string;
+  key?: string;
+  label?: string;
+  options?: { key?: string; value: string }[];
+};
+
+export type DefinicaoFormulario = {
+  id?: string;
+  name?: string;
+  locale?: string;
+  questions?: PerguntaFormulario[];
+  context_card?: Record<string, unknown>;
+  thank_you_page?: Record<string, unknown>;
+  privacy_policy?: Record<string, unknown>;
+  follow_up_action_url?: string;
+  block_display_for_non_targeted_viewer?: boolean;
+};
+
+/** Lê a definição completa de um formulário, para servir de molde. */
+export async function lerFormulario(formId: string, pageToken: string): Promise<DefinicaoFormulario> {
+  return chamar<DefinicaoFormulario>(`/${formId}`, {
+    token: pageToken,
+    params: {
+      fields:
+        "id,name,locale,questions,context_card,thank_you_page,privacy_policy," +
+        "follow_up_action_url,block_display_for_non_targeted_viewer",
+    },
+  });
+}
+
+/**
+ * Cria um formulário na Página. Devolve o id do novo.
+ *
+ * Os objetos compostos (cartão de contexto, tela final, política) vão como JSON
+ * em string — é assim que a Graph API os aceita em POST.
+ */
+export async function criarFormulario(
+  pageId: string,
+  pageToken: string,
+  def: DefinicaoFormulario & { name: string },
+): Promise<string> {
+  const params: Record<string, string> = { name: def.name };
+  if (def.locale) params.locale = def.locale;
+  if (def.questions) params.questions = JSON.stringify(def.questions);
+  if (def.context_card) params.context_card = JSON.stringify(def.context_card);
+  if (def.thank_you_page) params.thank_you_page = JSON.stringify(def.thank_you_page);
+  if (def.privacy_policy) params.privacy_policy = JSON.stringify(def.privacy_policy);
+  if (def.follow_up_action_url) params.follow_up_action_url = def.follow_up_action_url;
+  if (def.block_display_for_non_targeted_viewer != null) {
+    params.block_display_for_non_targeted_viewer = String(def.block_display_for_non_targeted_viewer);
+  }
+  const r = await chamar<{ id: string }>(`/${pageId}/leadgen_forms`, {
+    token: pageToken,
+    metodo: "POST",
+    params,
+  });
+  return r.id;
+}
