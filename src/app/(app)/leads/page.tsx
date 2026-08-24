@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -25,6 +25,7 @@ import {
   Phone,
   Plus,
   Receipt,
+  Search,
   Share2,
   Sparkles,
   Star,
@@ -38,6 +39,7 @@ import {
   Users,
   Wallet,
   Wrench,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -54,6 +56,7 @@ import {
   type LeadTipo,
 } from "@/lib/types";
 import { brl, cn, formatNumBR, parseNumBR, pct } from "@/lib/utils";
+import { casa, indexarLeads, termosDaBusca } from "@/lib/busca-pipeline";
 import { useCountUp } from "@/lib/use-count-up";
 import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
@@ -259,6 +262,27 @@ function Kpi({
   );
 }
 
+/* ------------------------------- Pesquisa --------------------------------- */
+// A busca é só um LOCALIZADOR: filtra os cards que já estão na tela e não toca
+// em dado nenhum. A comparação em si mora em @/lib/busca-pipeline, que é puro
+// e por isso pode ser testado fora do navegador.
+
+/** Agrupa por etapa. Fora do componente porque não depende de nada dele. */
+function agrupar(lista: Lead[]): Record<LeadStatus, Lead[]> {
+  const grupos: Record<LeadStatus, Lead[]> = {
+    oportunidade: [],
+    primeiro_contato: [],
+    nao_responde: [],
+    reuniao_agendada: [],
+    reuniao: [],
+    acompanhamento: [],
+    fechamento: [],
+    perdido: [],
+  };
+  for (const l of lista) grupos[l.status].push(l);
+  return grupos;
+}
+
 type LeadTag = {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
@@ -273,6 +297,10 @@ export default function LeadsPage() {
   const session = useSession();
   const gestor = temPermissao(session, "supervisor");
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");
+  const [busca, setBusca] = useState("");
+  // Digitar é instantâneo; redesenhar o quadro pode esperar um tick. É isso que
+  // segura a resposta quando o funil tiver centenas de cards.
+  const buscaAdiada = useDeferredValue(busca);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [form, setForm] = useState<FormState>(empty);
@@ -294,31 +322,52 @@ export default function LeadsPage() {
     [leads, filtroVendedor],
   );
 
-  const colunas = useMemo(() => {
-    const grupos: Record<LeadStatus, Lead[]> = {
-      oportunidade: [],
-      primeiro_contato: [],
-      nao_responde: [],
-      reuniao_agendada: [],
-      reuniao: [],
-      acompanhamento: [],
-      fechamento: [],
-      perdido: [],
-    };
-    for (const l of filtrados) grupos[l.status].push(l);
-    return grupos;
-  }, [filtrados]);
+  const colunas = useMemo(() => agrupar(filtrados), [filtrados]);
+
+  /**
+   * Índice de pesquisa: um texto já normalizado por negócio.
+   *
+   * Reconstruído só quando os leads ou os vendedores mudam — nunca a cada
+   * tecla. Assim digitar custa UMA comparação de texto por card, em vez de
+   * normalizar todos os campos de todos os cards a cada letra. É isso que
+   * segura o crescimento do CRM.
+   */
+  const indiceBusca = useMemo(() => {
+    const nomes = new Map(vendedores.map((v) => [v.id, v.nome]));
+    return indexarLeads(leads, (id) => nomes.get(id ?? "") ?? "");
+  }, [leads, vendedores]);
+
+  /** Palavras da busca: todas precisam bater. "joao carro" acha o João que
+   *  quer carro, e "joao silva" acha "João da Silva" — o que uma busca por
+   *  trecho inteiro não acharia. */
+  const termos = useMemo(() => termosDaBusca(buscaAdiada), [buscaAdiada]);
+  const buscando = termos.length > 0;
+
+  /** O que o QUADRO mostra: filtro de consultor primeiro, busca depois. Sem
+   *  busca devolve a mesma lista, sem custo nenhum. */
+  const visiveis = useMemo(() => {
+    if (!buscando) return filtrados;
+    return filtrados.filter((l) => casa(indiceBusca.get(l.id), termos));
+  }, [filtrados, termos, buscando, indiceBusca]);
+
+  // O quadro (colunas, contagens e somas) segue a busca. Os KPIs do topo e o
+  // funil de baixo NÃO seguem: ticket médio de um cliente pesquisado não quer
+  // dizer nada, e mexer neles mudaria número que já estava certo.
+  const colunasVis = useMemo(
+    () => (buscando ? agrupar(visiveis) : colunas),
+    [buscando, visiveis, colunas],
+  );
 
   const totais = useMemo(
     () =>
       STATUS_ORDER.reduce(
         (acc, s) => ({
           ...acc,
-          [s]: colunas[s].reduce((a, l) => a + l.valorEstimado, 0),
+          [s]: colunasVis[s].reduce((a, l) => a + l.valorEstimado, 0),
         }),
         {} as Record<LeadStatus, number>,
       ),
-    [colunas],
+    [colunasVis],
   );
 
   const metrics = useMemo(() => {
@@ -783,6 +832,46 @@ export default function LeadsPage() {
           />
         </div>
 
+        {/* ===================== PESQUISA ===================== */}
+        {/* Localizador do funil: fica logo acima do quadro porque é o quadro
+            que ele filtra. Vale para todas as etapas de uma vez — o Kanban já
+            mostra o funil inteiro, então achar em qualquer etapa é o padrão,
+            não um caso especial. */}
+        <div className="lb-fade-up flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="relative w-full min-w-0 sm:w-auto sm:max-w-lg sm:flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              enterKeyHint="search"
+              aria-label="Pesquisar negócios na Pipeline"
+              placeholder="Pesquisar cliente, telefone, produto ou consultor..."
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 pl-9 pr-9 text-sm text-white backdrop-blur transition-colors placeholder:text-white/40 focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-400/25"
+            />
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca("")}
+                aria-label="Limpar pesquisa"
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {buscando && (
+            <p className="text-xs text-white/55 tabular-nums">
+              <span className="font-semibold text-white">{visiveis.length}</span> de {filtrados.length} · em todas as etapas
+            </p>
+          )}
+        </div>
+
+        {buscando && visiveis.length === 0 && (
+          <div className="lb-fade-up rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/60 backdrop-blur">
+            Nenhum cliente encontrado.
+          </div>
+        )}
+
         {/* ===================== KANBAN ===================== */}
         <div className="relative">
           {/* luz ambiente atrás das colunas */}
@@ -799,7 +888,7 @@ export default function LeadsPage() {
                 const info = LEAD_STATUS_INFO[s];
                 const tone = STATUS_TONE[s];
                 const StageIcon = tone.icon;
-                const items = colunas[s];
+                const items = colunasVis[s];
                 const isOver = overCol === s;
                 return (
                   <div
