@@ -14,6 +14,7 @@ import {
   Clock,
   FileText,
   History,
+  Hourglass,
   Loader2,
   Plus,
   Search,
@@ -34,7 +35,9 @@ import { telefoneBonito } from "@/lib/telefone";
 import {
   AVISO_ANALISE_INTERNA,
   OBJETIVOS,
+  MENSAGENS_REPROVACAO,
   STATUS_ANALISE_INFO,
+  TEMPOS_ANALISE,
   analisesApi,
   brlOuTraco,
   calcularLancePct,
@@ -42,8 +45,11 @@ import {
   type Analise,
   type EventoAnalise,
   type StatusAnalise,
+  type StatusFinal,
 } from "@/lib/analises";
+import { AnaliseAndamento, relogio } from "@/components/analises/analise-andamento";
 import { AprovacaoCelebracao } from "@/components/analises/aprovacao-celebracao";
+import { ReprovacaoResultado } from "@/components/analises/reprovacao-resultado";
 import { FichaFinal } from "@/components/analises/ficha-final";
 import { MENSAGENS_APROVACAO, fichasApi, type Ficha } from "@/lib/fichas";
 import { LEAD_TIPO_INFO } from "@/lib/types";
@@ -125,8 +131,15 @@ export default function AnalisesPage() {
   const [obsDecisao, setObsDecisao] = useState("");
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [mensagem, setMensagem] = useState(MENSAGENS_APROVACAO[0]);
-  /** Tela que o consultor vira para o cliente. Só em decisão aprovada. */
+  const [mensagemRep, setMensagemRep] = useState(MENSAGENS_REPROVACAO[0]);
+  /** Configuração da análise com tempo (só quando "deixar em análise"). */
+  const [tempo, setTempo] = useState<number>(TEMPOS_ANALISE[1]);
+  const [programado, setProgramado] = useState<StatusFinal | null>(null);
+  /** Telas que o consultor vira para o cliente. */
   const [celebrar, setCelebrar] = useState<{ nome: string; mensagem: string } | null>(null);
+  const [reprovar, setReprovar] = useState<{ nome: string; mensagem: string } | null>(null);
+  const [mostrarRelogio, setMostrarRelogio] = useState(false);
+  const [conferindo, setConferindo] = useState(false);
 
   /** Recarrega sob demanda (depois de criar, decidir…). */
   const recarregar = useCallback(async () => {
@@ -294,6 +307,77 @@ export default function AnalisesPage() {
       setSalvando(false);
     }
   }
+
+  /** Inicia a análise com tempo e já abre a tela para o cliente. */
+  async function iniciarAnalise() {
+    if (!aberta || !programado) return;
+    setSalvando(true);
+    try {
+      const ok = await analisesApi.iniciarAnalise(aberta.id, tempo, programado, { nome: session?.nome });
+      if (!ok) {
+        // Outro administrador começou antes: nada foi gravado por cima.
+        notify.error("Já existe uma análise em andamento", "A tela foi atualizada com o estado atual.");
+        await recarregarAberta();
+        return;
+      }
+      setDecisao(null);
+      setProgramado(null);
+      await recarregarAberta();
+      await recarregar();
+      setMostrarRelogio(true);
+    } catch (e) {
+      notify.error("Não consegui iniciar", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  /** Revela o resultado programado e o grava como decisão final. */
+  async function conferirResultado() {
+    if (!aberta) return;
+    setConferindo(true);
+    try {
+      const r = await analisesApi.revelar(aberta.id, { nome: session?.nome });
+      setMostrarRelogio(false);
+      if (!r) {
+        // alguém já revelou nesta proposta — mostra o estado real, sem 2ª decisão
+        notify.error("Este resultado já foi conferido", "A tela foi atualizada.");
+        await recarregarAberta();
+        return;
+      }
+      const nome = aberta.nome;
+      await recarregarAberta();
+      await recarregar();
+      if (r === "aprovado") setCelebrar({ nome, mensagem: "PROPOSTA APROVADA" });
+      else setReprovar({ nome, mensagem: "PROPOSTA NÃO APROVADA" });
+    } catch (e) {
+      notify.error("Não consegui conferir", e instanceof Error ? e.message : undefined);
+    } finally {
+      setConferindo(false);
+    }
+  }
+
+  async function cancelarAnalise() {
+    if (!aberta) return;
+    if (!confirm("Cancelar a análise em andamento?\n\nO tempo é descartado e a proposta volta a aguardar decisão.")) return;
+    try {
+      await analisesApi.cancelarAnalise(aberta.id, { nome: session?.nome });
+      setMostrarRelogio(false);
+      await recarregarAberta();
+      await recarregar();
+    } catch (e) {
+      notify.error("Não consegui cancelar", e instanceof Error ? e.message : undefined);
+    }
+  }
+
+  /* Há análise correndo? A fonte é o banco: `analiseFim` preenchido significa
+     análise pendente, e é isso que impede iniciar outra por cima. */
+  const analiseRodando = !!aberta?.analiseFim;
+  /* Quanto falta AGORA. Recalculado a cada render do modal (o relógio grande
+     dentro da tela cheia tem o próprio tique de meio segundo). */
+  const faltaMs = aberta?.analiseFim
+    ? Math.max(0, new Date(aberta.analiseFim).getTime() - new Date().getTime())
+    : 0;
 
   const nomeConsultor = (id?: string) => vendedores.find((v) => v.id === id)?.nome ?? "—";
 
@@ -577,7 +661,27 @@ export default function AnalisesPage() {
                   <p className="mt-2 text-sm text-[var(--color-text-dim)]">{aberta.decisaoObservacao}</p>
                 )}
 
-                {admin ? (
+                {analiseRodando ? (
+                  <div className="mt-3 rounded-xl border border-[var(--color-brand)]/40 bg-[var(--color-brand)]/10 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
+                        <Hourglass className="h-4 w-4 text-[var(--color-brand)]" />
+                        {faltaMs > 0 ? `Análise em andamento · ${relogio(faltaMs)}` : "Análise finalizada — aguardando conferência"}
+                      </span>
+                      <span className="text-[11px] text-[var(--color-text-dim)]">
+                        {aberta.analiseMinutos} min · iniciada por {aberta.analisePorNome ?? "—"}
+                      </span>
+                    </div>
+                    {admin && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button onClick={() => setMostrarRelogio(true)}>
+                          <Hourglass className="h-4 w-4" /> Mostrar ao cliente
+                        </Button>
+                        <Button variant="ghost" onClick={() => void cancelarAnalise()}>Cancelar análise</Button>
+                      </div>
+                    )}
+                  </div>
+                ) : admin ? (
                   <div className="mt-3 space-y-2">
                     <div className="flex flex-wrap gap-2">
                       {([
@@ -622,7 +726,86 @@ export default function AnalisesPage() {
                         </p>
                       </div>
                     )}
-                    {decisao && (
+                    {decisao === "nao_aprovado" && (
+                      <div>
+                        <Label>Como mostrar o resultado</Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {MENSAGENS_REPROVACAO.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setMensagemRep(m)}
+                              className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                                mensagemRep === m
+                                  ? "border-[var(--color-text-dim)] bg-[var(--color-surface-2)] text-[var(--color-text)]"
+                                  : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                          Esta tela também é virada para o cliente — a frase importa.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* análise com tempo: escolhe quanto dura e o que sai no fim */}
+                    {decisao === "em_analise" && (
+                      <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                        <div>
+                          <Label>Tempo da análise</Label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {TEMPOS_ANALISE.map((t) => (
+                              <button
+                                key={t}
+                                onClick={() => setTempo(t)}
+                                className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                                  tempo === t
+                                    ? "border-[var(--color-brand)] bg-[var(--color-brand)]/15 text-[var(--color-brand)]"
+                                    : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                                }`}
+                              >
+                                {t} minutos
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Resultado após o tempo</Label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(["aprovado", "nao_aprovado"] as StatusFinal[]).map((r) => (
+                              <button
+                                key={r}
+                                onClick={() => setProgramado(r)}
+                                className="rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors"
+                                style={{
+                                  borderColor: programado === r ? STATUS_ANALISE_INFO[r].cor : "var(--color-border)",
+                                  background: programado === r ? `${STATUS_ANALISE_INFO[r].cor}1f` : "transparent",
+                                  color: programado === r ? STATUS_ANALISE_INFO[r].cor : "var(--color-text-dim)",
+                                }}
+                              >
+                                {STATUS_ANALISE_INFO[r].curto}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                            O cliente vê o contador; o resultado só aparece quando alguém clicar em conferir.
+                          </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" onClick={() => { setDecisao(null); setProgramado(null); }}>
+                            Cancelar
+                          </Button>
+                          <Button onClick={() => void iniciarAnalise()} disabled={salvando || !programado}>
+                            {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hourglass className="h-4 w-4" />}
+                            Iniciar análise
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {decisao && decisao !== "em_analise" && (
                       <div className="space-y-2">
                         <textarea
                           rows={2}
@@ -699,6 +882,25 @@ export default function AnalisesPage() {
           nomeCliente={celebrar.nome}
           mensagem={celebrar.mensagem}
           onContinuar={() => setCelebrar(null)}
+        />
+      )}
+
+      {reprovar && (
+        <ReprovacaoResultado
+          nomeCliente={reprovar.nome}
+          mensagem={reprovar.mensagem}
+          onContinuar={() => setReprovar(null)}
+        />
+      )}
+
+      {mostrarRelogio && aberta?.analiseFim && (
+        <AnaliseAndamento
+          nomeCliente={aberta.nome}
+          fimIso={aberta.analiseFim}
+          minutos={aberta.analiseMinutos}
+          conferindo={conferindo}
+          onConferir={() => void conferirResultado()}
+          onFechar={() => setMostrarRelogio(false)}
         />
       )}
     </PremiumStage>

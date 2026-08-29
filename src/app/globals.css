@@ -462,13 +462,27 @@ body {
 .lb-aprov-halo { animation: lb-aprov-halo 1.1s ease-out 0.3s both; }
 .lb-aprov-sobe { animation: lb-aprov-sobe 0.5s ease-out both; }
 
+/* Análise em andamento: um anel girando devagar e três pontos.
+   Movimento lento de propósito — pressa aqui parece carregamento travado,
+   e o que se quer passar é "tem gente analisando", não "o sistema pendurou". */
+@keyframes lb-anal-anel {
+  to { transform: rotate(360deg); }
+}
+@keyframes lb-anal-ponto {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+}
+.lb-anal-anel { animation: lb-anal-anel 3.2s linear infinite; }
+.lb-anal-ponto { animation: lb-anal-ponto 1.4s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .lb-glow, .lb-float, .lb-ring::before, .lb-bar-shine, .lb-fade-up,
   .lb-aura, .lb-drift, .lb-spotlight, .lb-pillar::after, .lb-fog,
   .lb-bob, .lb-bob-sm, .lb-holo::after, .lb-rise, .lb-pulse-glow,
   .lb-medal::after, .lb-shine::after, .lb-sparkle, .lb-marker,
   .lb-hover-rise,
-  .lb-aprov-fundo, .lb-aprov-selo, .lb-aprov-halo, .lb-aprov-sobe
+  .lb-aprov-fundo, .lb-aprov-selo, .lb-aprov-halo, .lb-aprov-sobe,
+  .lb-anal-anel, .lb-anal-ponto
     { animation: none; transition: none; }
   /* o traço do "certo" precisa terminar visível, não sumir */
   .lb-aprov-risco { animation: none; stroke-dashoffset: 0; }

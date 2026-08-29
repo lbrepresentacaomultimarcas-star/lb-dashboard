@@ -14,6 +14,28 @@ import { chaveTelefone } from "./telefone";
 
 export type StatusAnalise = "em_analise" | "aprovado" | "nao_aprovado";
 
+/** Os dois desfechos possíveis — o que o administrador programa e o que sai. */
+export type StatusFinal = Exclude<StatusAnalise, "em_analise">;
+
+/** Tempos oferecidos. Lista, não constante fixa: acrescentar não pede deploy
+ *  de schema — `analise_minutos` é inteiro no banco. */
+export const TEMPOS_ANALISE = [7, 10, 15] as const;
+
+/**
+ * Frases do resultado NÃO aprovado.
+ *
+ * Sóbrias de propósito: essa tela também é virada para o cliente, e "recusado"
+ * na cara de quem acabou de se abrir com você fecha a porta para a próxima
+ * tentativa. "Não aprovada nesta análise" diz a verdade sem constranger.
+ */
+export const MENSAGENS_REPROVACAO = [
+  "PROPOSTA NÃO APROVADA",
+  "ANÁLISE NÃO APROVADA",
+  "PROPOSTA NÃO APROVADA NESTA ANÁLISE",
+  "ANÁLISE CONCLUÍDA — NÃO APROVADA",
+  "NÃO FOI POSSÍVEL APROVAR A PROPOSTA",
+];
+
 export const STATUS_ANALISE_INFO: Record<
   StatusAnalise,
   { label: string; curto: string; tone: "warn" | "success" | "danger"; cor: string }
@@ -87,6 +109,16 @@ export type Analise = {
   mensagemAprovacao?: string;
   /** Momento em que a proposta virou concluída — é o que libera a ficha. */
   concluidaEm?: string;
+  /** Frase escolhida na reprovação. */
+  mensagemReprovacao?: string;
+  // ---- análise com tempo (etapa "deixar em análise") ----
+  analiseInicio?: string;
+  /** Instante do término. `!= null` significa análise pendente. */
+  analiseFim?: string;
+  analiseMinutos?: number;
+  /** Resultado programado pelo administrador. */
+  analiseResultado?: StatusFinal;
+  analisePorNome?: string;
   criadoEm: string;
   atualizadoEm?: string;
 };
@@ -176,7 +208,13 @@ function fromDb(r: Row): Analise {
     decididoPorNome: s(r.decidido_por_nome),
     decididoEm: s(r.decidido_em),
     mensagemAprovacao: s(r.mensagem_aprovacao),
+    mensagemReprovacao: s(r.mensagem_reprovacao),
     concluidaEm: s(r.concluida_em),
+    analiseInicio: s(r.analise_inicio),
+    analiseFim: s(r.analise_fim),
+    analiseMinutos: n(r.analise_minutos),
+    analiseResultado: r.analise_resultado ? (String(r.analise_resultado) as StatusFinal) : undefined,
+    analisePorNome: s(r.analise_por_nome),
     criadoEm: String(r.criado_em),
     atualizadoEm: s(r.atualizado_em),
   };
@@ -211,6 +249,7 @@ function toDb(a: Partial<Analise>): Row {
   põe("decidido_por_nome", a.decididoPorNome);
   põe("decidido_em", a.decididoEm);
   põe("mensagem_aprovacao", a.mensagemAprovacao);
+  põe("mensagem_reprovacao", a.mensagemReprovacao);
   põe("concluida_em", a.concluidaEm);
   return r;
 }
@@ -335,9 +374,17 @@ export const analisesApi = {
         decidido_por_nome: quem.nome ?? null,
         decidido_em: agora,
         mensagem_aprovacao: status === "aprovado" ? (quem.mensagem ?? "PROPOSTA APROVADA") : null,
+        mensagem_reprovacao: status === "nao_aprovado" ? (quem.mensagem ?? "PROPOSTA NÃO APROVADA") : null,
         // marca a conclusão só na PRIMEIRA aprovação: reaprovar não reescreve
         // a data em que a proposta foi concluída.
         concluida_em: status === "aprovado" ? (jaConcluiu ?? agora) : null,
+        // Decisão registrada encerra qualquer análise pendente. É o que mantém
+        // o invariante "analise_fim != null <=> análise em andamento".
+        analise_inicio: null,
+        analise_fim: null,
+        analise_minutos: null,
+        analise_resultado: null,
+        analise_por_nome: null,
       })
       .eq("id", id);
     if (error) throw error;
@@ -354,6 +401,114 @@ export const analisesApi = {
       },
       quem.nome,
     );
+  },
+
+  /**
+   * Inicia a análise com tempo.
+   *
+   * A condição `analise_fim is null` viaja JUNTO do update: se outro
+   * administrador já iniciou, a linha não casa e nada é gravado — em vez de
+   * dois relógios correndo sobre a mesma proposta. Devolve false nesse caso.
+   */
+  async iniciarAnalise(
+    id: string,
+    minutos: number,
+    resultado: StatusFinal,
+    quem: { nome?: string } = {},
+  ): Promise<boolean> {
+    const inicio = new Date();
+    const fim = new Date(inicio.getTime() + minutos * 60_000);
+    const { data, error } = await supabaseBrowser()
+      .from("analises")
+      .update({
+        status: "em_analise",
+        analise_inicio: inicio.toISOString(),
+        analise_fim: fim.toISOString(),
+        analise_minutos: minutos,
+        analise_resultado: resultado,
+        analise_por_nome: quem.nome ?? null,
+      })
+      .eq("id", id)
+      .is("analise_fim", null)
+      .select("id");
+    if (error) throw error;
+    if (!data || data.length === 0) return false;
+
+    await registrar(
+      id,
+      {
+        tipo: "analise",
+        campo: "Análise",
+        valorNovo: `${minutos} min`,
+        detalhe: `Análise iniciada — ${minutos} minutos — resultado programado: ${STATUS_ANALISE_INFO[resultado].curto}`,
+      },
+      quem.nome,
+    );
+    return true;
+  },
+
+  /**
+   * Revela o resultado programado e o registra como decisão final.
+   *
+   * `analise_fim is not null` é conferido no próprio update: se outra pessoa
+   * já revelou, esta chamada não grava nada e devolve null. Uma análise, uma
+   * decisão final.
+   */
+  async revelar(id: string, quem: { nome?: string } = {}): Promise<StatusFinal | null> {
+    const { data } = await supabaseBrowser()
+      .from("analises")
+      .select("analise_resultado, analise_fim, analise_minutos")
+      .eq("id", id)
+      .single();
+    const linha = data as Row | null;
+    const resultado = linha?.analise_resultado ? (String(linha.analise_resultado) as StatusFinal) : null;
+    if (!resultado || !linha?.analise_fim) return null;
+
+    // trava de corrida: só quem encontrar a análise ainda pendente prossegue
+    const { data: pego } = await supabaseBrowser()
+      .from("analises")
+      .update({ analise_por_nome: quem.nome ?? null })
+      .eq("id", id)
+      .not("analise_fim", "is", null)
+      .select("id");
+    if (!pego || pego.length === 0) return null;
+
+    const minutos = linha.analise_minutos ? `${linha.analise_minutos} min` : "";
+    await registrar(
+      id,
+      {
+        tipo: "analise",
+        campo: "Análise",
+        valorAnterior: minutos || undefined,
+        valorNovo: STATUS_ANALISE_INFO[resultado].curto,
+        detalhe: `Análise finalizada — ${STATUS_ANALISE_INFO[resultado].curto}`,
+      },
+      quem.nome,
+    );
+    // `decidir` limpa os campos do relógio e grava a decisão definitiva.
+    await this.decidir(id, resultado, "", {
+      nome: quem.nome,
+      mensagem: resultado === "aprovado" ? "PROPOSTA APROVADA" : "PROPOSTA NÃO APROVADA",
+    });
+    return resultado;
+  },
+
+  /** Cancela a análise em andamento — sem isso, um tempo escolhido por engano
+   *  deixaria a proposta presa até o relógio zerar. */
+  async cancelarAnalise(id: string, quem: { nome?: string } = {}): Promise<void> {
+    const { error } = await supabaseBrowser()
+      .from("analises")
+      .update({
+        analise_inicio: null,
+        analise_fim: null,
+        analise_minutos: null,
+        analise_resultado: null,
+        analise_por_nome: null,
+      })
+      .eq("id", id)
+      .not("analise_fim", "is", null);
+    if (error) throw error;
+    await registrar(id, { tipo: "analise", detalhe: "Análise cancelada pelo administrador" }, quem.nome);
   },
 
   async historico(analiseId: string): Promise<EventoAnalise[]> {
