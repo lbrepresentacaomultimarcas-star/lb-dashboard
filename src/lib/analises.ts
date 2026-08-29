@@ -1,0 +1,369 @@
+"use client";
+
+// Módulo "Análise e Fichas" — camada própria, no mesmo padrão de resultados.ts:
+// não entra no store global e não depende dele. Assim este módulo pode crescer
+// (ou sair) sem mexer em Pipeline, Central de Leads ou Tráfego.
+//
+// NÃO tem relação com a Central de Tráfego. São coisas diferentes dentro do
+// mesmo CRM: lá é anúncio, aqui é cliente, documento e ficha.
+
+import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
+import { chaveTelefone } from "./telefone";
+
+/* ----------------------------------- Tipos ---------------------------------- */
+
+export type StatusAnalise = "em_analise" | "aprovado" | "nao_aprovado";
+
+export const STATUS_ANALISE_INFO: Record<
+  StatusAnalise,
+  { label: string; curto: string; tone: "warn" | "success" | "danger"; cor: string }
+> = {
+  // O rótulo diz "interna" de propósito: o CRM não aprova consórcio, a
+  // administradora aprova. Isso vale na tela e vale no PDF.
+  em_analise: { label: "Em análise", curto: "EM ANÁLISE", tone: "warn", cor: "#F59E0B" },
+  aprovado: { label: "Aprovado — análise interna LB", curto: "APROVADO", tone: "success", cor: "#10B981" },
+  nao_aprovado: { label: "Não aprovado — análise interna LB", curto: "NÃO APROVADO", tone: "danger", cor: "#EF4444" },
+};
+
+/** Aviso legal obrigatório em qualquer lugar que mostre o resultado. */
+export const AVISO_ANALISE_INTERNA =
+  "Esta análise é interna da LB Representações e está sujeita à aprovação definitiva " +
+  "conforme as regras e procedimentos da administradora do consórcio.";
+
+/**
+ * Objetivos. Lista aberta de propósito: `objetivo` é texto no banco, então
+ * acrescentar produto no futuro não pede migration nem deploy de schema.
+ */
+export const OBJETIVOS = [
+  "Carro",
+  "Moto",
+  "Imóvel",
+  "Caminhão",
+  "Maquinário",
+  "Energia solar",
+  "Outros",
+] as const;
+
+/**
+ * Tipos de documento. Também aberto: o `tipo` é texto, e a tela lê desta
+ * lista — acrescentar ou tirar um item aqui muda o checklist inteiro.
+ */
+export type TipoDocumento = { chave: string; rotulo: string; exigido: boolean };
+
+export const TIPOS_DOCUMENTO: TipoDocumento[] = [
+  { chave: "identificacao", rotulo: "Documento de identificação", exigido: true },
+  { chave: "renda", rotulo: "Comprovante de renda", exigido: false },
+  { chave: "residencia", rotulo: "Comprovante de residência", exigido: false },
+  { chave: "outros", rotulo: "Outros documentos", exigido: false },
+];
+
+export type Analise = {
+  id: string;
+  leadId?: string;
+  centralLeadId?: string;
+  vendedorId?: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+  nome: string;
+  cpf?: string;
+  nascimento?: string;
+  email?: string;
+  telefone?: string;
+  cidade?: string;
+  objetivo?: string;
+  credito?: number;
+  parcela?: number;
+  comLance: boolean;
+  lanceValor?: number;
+  lancePct?: number;
+  lanceEmbutido?: number;
+  observacoes?: string;
+  status: StatusAnalise;
+  decisaoObservacao?: string;
+  decididoPorNome?: string;
+  decididoEm?: string;
+  criadoEm: string;
+  atualizadoEm?: string;
+};
+
+export type DocumentoAnalise = {
+  id: string;
+  analiseId: string;
+  tipo: string;
+  rotulo?: string;
+  nomeArquivo?: string;
+  caminho: string;
+  mime?: string;
+  tamanho?: number;
+  enviadoPorNome?: string;
+  criadoEm: string;
+};
+
+export type EventoAnalise = {
+  id: string;
+  analiseId: string;
+  tipo: string;
+  campo?: string;
+  valorAnterior?: string;
+  valorNovo?: string;
+  detalhe?: string;
+  autorNome?: string;
+  criadoEm: string;
+};
+
+/* --------------------------------- Cálculos --------------------------------- */
+
+/**
+ * Percentual do lance sobre o crédito.
+ *
+ * Fica aqui, fora da tela, porque é conta que vai para o PDF e para o
+ * histórico — se cada lugar calculasse do seu jeito, um dia divergiriam.
+ * Crédito zero devolve indefinido em vez de infinito: "—" é honesto,
+ * um número inventado não é.
+ */
+export function calcularLancePct(credito?: number | null, lance?: number | null): number | undefined {
+  if (!credito || credito <= 0 || lance == null || lance < 0) return undefined;
+  return (lance / credito) * 100;
+}
+
+export const brlOuTraco = (v?: number | null) =>
+  v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+export const pctOuTraco = (v?: number | null) =>
+  v == null ? "—" : `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+
+/** Quais documentos exigidos ainda faltam. */
+export function documentosPendentes(docs: DocumentoAnalise[]): TipoDocumento[] {
+  const tem = new Set(docs.map((d) => d.tipo));
+  return TIPOS_DOCUMENTO.filter((t) => t.exigido && !tem.has(t.chave));
+}
+
+/* ------------------------------ Dados (Supabase) ----------------------------- */
+
+type Row = Record<string, unknown>;
+const s = (v: unknown) => (v == null ? undefined : String(v));
+const n = (v: unknown) => (v == null ? undefined : Number(v));
+
+function fromDb(r: Row): Analise {
+  return {
+    id: String(r.id),
+    leadId: s(r.lead_id),
+    centralLeadId: s(r.central_lead_id),
+    vendedorId: s(r.vendedor_id),
+    criadoPor: s(r.criado_por),
+    criadoPorNome: s(r.criado_por_nome),
+    nome: String(r.nome ?? ""),
+    cpf: s(r.cpf),
+    nascimento: s(r.nascimento),
+    email: s(r.email),
+    telefone: s(r.telefone),
+    cidade: s(r.cidade),
+    objetivo: s(r.objetivo),
+    credito: n(r.credito),
+    parcela: n(r.parcela),
+    comLance: Boolean(r.com_lance),
+    lanceValor: n(r.lance_valor),
+    lancePct: n(r.lance_pct),
+    lanceEmbutido: n(r.lance_embutido),
+    observacoes: s(r.observacoes),
+    status: String(r.status ?? "em_analise") as StatusAnalise,
+    decisaoObservacao: s(r.decisao_observacao),
+    decididoPorNome: s(r.decidido_por_nome),
+    decididoEm: s(r.decidido_em),
+    criadoEm: String(r.criado_em),
+    atualizadoEm: s(r.atualizado_em),
+  };
+}
+
+function toDb(a: Partial<Analise>): Row {
+  const r: Row = {};
+  const põe = (k: string, v: unknown) => {
+    if (v !== undefined) r[k] = v === "" ? null : v;
+  };
+  põe("lead_id", a.leadId);
+  põe("central_lead_id", a.centralLeadId);
+  põe("vendedor_id", a.vendedorId);
+  põe("criado_por", a.criadoPor);
+  põe("criado_por_nome", a.criadoPorNome);
+  põe("nome", a.nome);
+  põe("cpf", a.cpf);
+  põe("nascimento", a.nascimento);
+  põe("email", a.email);
+  põe("telefone", a.telefone);
+  põe("cidade", a.cidade);
+  põe("objetivo", a.objetivo);
+  põe("credito", a.credito);
+  põe("parcela", a.parcela);
+  põe("com_lance", a.comLance);
+  põe("lance_valor", a.lanceValor);
+  põe("lance_pct", a.lancePct);
+  põe("lance_embutido", a.lanceEmbutido);
+  põe("observacoes", a.observacoes);
+  põe("status", a.status);
+  põe("decisao_observacao", a.decisaoObservacao);
+  põe("decidido_por_nome", a.decididoPorNome);
+  põe("decidido_em", a.decididoEm);
+  return r;
+}
+
+function eventoFromDb(r: Row): EventoAnalise {
+  return {
+    id: String(r.id),
+    analiseId: String(r.analise_id),
+    tipo: String(r.tipo),
+    campo: s(r.campo),
+    valorAnterior: s(r.valor_anterior),
+    valorNovo: s(r.valor_novo),
+    detalhe: s(r.detalhe),
+    autorNome: s(r.autor_nome),
+    criadoEm: String(r.criado_em),
+  };
+}
+
+function docFromDb(r: Row): DocumentoAnalise {
+  return {
+    id: String(r.id),
+    analiseId: String(r.analise_id),
+    tipo: String(r.tipo),
+    rotulo: s(r.rotulo),
+    nomeArquivo: s(r.nome_arquivo),
+    caminho: String(r.caminho),
+    mime: s(r.mime),
+    tamanho: n(r.tamanho),
+    enviadoPorNome: s(r.enviado_por_nome),
+    criadoEm: String(r.criado_em),
+  };
+}
+
+/** Grava um evento. Nunca falha alto: histórico não pode derrubar a ação. */
+async function registrar(
+  analiseId: string,
+  ev: { tipo: string; campo?: string; valorAnterior?: string; valorNovo?: string; detalhe?: string },
+  autorNome?: string,
+) {
+  if (!supabaseEnabled) return;
+  try {
+    await supabaseBrowser().from("analise_eventos").insert({
+      analise_id: analiseId,
+      tipo: ev.tipo,
+      campo: ev.campo ?? null,
+      valor_anterior: ev.valorAnterior ?? null,
+      valor_novo: ev.valorNovo ?? null,
+      detalhe: ev.detalhe ?? null,
+      autor_nome: autorNome ?? null,
+    });
+  } catch (e) {
+    console.error("[analises] falha ao gravar histórico:", e);
+  }
+}
+
+export const analisesApi = {
+  async listar(): Promise<{ data: Analise[]; error: string | null }> {
+    if (!supabaseEnabled) return { data: [], error: null };
+    const { data, error } = await supabaseBrowser()
+      .from("analises")
+      .select("*")
+      .order("criado_em", { ascending: false })
+      .limit(2000);
+    if (error) {
+      console.error("[analises] falha ao ler:", error);
+      return { data: [], error: error.message };
+    }
+    return { data: ((data ?? []) as Row[]).map(fromDb), error: null };
+  },
+
+  async criar(a: Partial<Analise> & { nome: string }, autorNome?: string): Promise<Analise> {
+    const payload = toDb({
+      ...a,
+      // A conta é feita aqui e guardada: o PDF de amanhã tem que mostrar o
+      // mesmo percentual que a tela mostrou hoje, mesmo que a regra mude.
+      lancePct: a.comLance ? calcularLancePct(a.credito, a.lanceValor) : undefined,
+      status: a.status ?? "em_analise",
+    });
+    const { data, error } = await supabaseBrowser().from("analises").insert(payload).select().single();
+    if (error) throw error;
+    const nova = fromDb(data as Row);
+    await registrar(nova.id, { tipo: "criada", detalhe: `Análise criada para ${nova.nome}` }, autorNome);
+    return nova;
+  },
+
+  async atualizar(id: string, mudancas: Partial<Analise>, autorNome?: string): Promise<void> {
+    const payload = toDb({
+      ...mudancas,
+      lancePct:
+        mudancas.comLance === false
+          ? undefined
+          : calcularLancePct(mudancas.credito, mudancas.lanceValor),
+    });
+    if (Object.keys(payload).length === 0) return;
+    const { error } = await supabaseBrowser().from("analises").update(payload).eq("id", id);
+    if (error) throw error;
+    await registrar(id, { tipo: "editada", detalhe: "Dados da análise atualizados" }, autorNome);
+  },
+
+  /**
+   * Decisão do administrador. Guarda quem decidiu e quando — e registra a
+   * mudança no histórico ANTES de qualquer coisa poder sobrescrever.
+   */
+  async decidir(
+    id: string,
+    status: StatusAnalise,
+    observacao: string,
+    quem: { nome?: string } = {},
+  ): Promise<void> {
+    const agora = new Date().toISOString();
+    const { data: antes } = await supabaseBrowser().from("analises").select("status").eq("id", id).single();
+    const { error } = await supabaseBrowser()
+      .from("analises")
+      .update({
+        status,
+        decisao_observacao: observacao.trim() || null,
+        decidido_por_nome: quem.nome ?? null,
+        decidido_em: agora,
+      })
+      .eq("id", id);
+    if (error) throw error;
+    await registrar(
+      id,
+      {
+        tipo: "status",
+        campo: "Status",
+        valorAnterior: (antes as Row | null)?.status
+          ? STATUS_ANALISE_INFO[String((antes as Row).status) as StatusAnalise].curto
+          : undefined,
+        valorNovo: STATUS_ANALISE_INFO[status].curto,
+        detalhe: observacao.trim() || undefined,
+      },
+      quem.nome,
+    );
+  },
+
+  async historico(analiseId: string): Promise<EventoAnalise[]> {
+    if (!supabaseEnabled) return [];
+    const { data } = await supabaseBrowser()
+      .from("analise_eventos")
+      .select("*")
+      .eq("analise_id", analiseId)
+      .order("criado_em", { ascending: false })
+      .limit(500);
+    return ((data ?? []) as Row[]).map(eventoFromDb);
+  },
+
+  async documentos(analiseId: string): Promise<DocumentoAnalise[]> {
+    if (!supabaseEnabled) return [];
+    const { data } = await supabaseBrowser()
+      .from("analise_documentos")
+      .select("*")
+      .eq("analise_id", analiseId)
+      .order("criado_em", { ascending: false });
+    return ((data ?? []) as Row[]).map(docFromDb);
+  },
+
+  /** Registra no histórico que a ficha foi gerada — item 7 pede rastro. */
+  async registrarFicha(analiseId: string, autorNome?: string) {
+    await registrar(analiseId, { tipo: "ficha", detalhe: "Ficha gerada em PDF" }, autorNome);
+  },
+};
+
+/** Reexporta para quem monta a ficha a partir de um lead. */
+export { chaveTelefone };
