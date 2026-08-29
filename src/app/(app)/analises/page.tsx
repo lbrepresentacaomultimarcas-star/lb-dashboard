@@ -43,6 +43,7 @@ import {
   type EventoAnalise,
   type StatusAnalise,
 } from "@/lib/analises";
+import { AprovacaoCelebracao } from "@/components/analises/aprovacao-celebracao";
 import { FichaFinal } from "@/components/analises/ficha-final";
 import { MENSAGENS_APROVACAO, fichasApi, type Ficha } from "@/lib/fichas";
 import { LEAD_TIPO_INFO } from "@/lib/types";
@@ -124,6 +125,8 @@ export default function AnalisesPage() {
   const [obsDecisao, setObsDecisao] = useState("");
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [mensagem, setMensagem] = useState(MENSAGENS_APROVACAO[0]);
+  /** Tela que o consultor vira para o cliente. Só em decisão aprovada. */
+  const [celebrar, setCelebrar] = useState<{ nome: string; mensagem: string } | null>(null);
 
   /** Recarrega sob demanda (depois de criar, decidir…). */
   const recarregar = useCallback(async () => {
@@ -274,12 +277,17 @@ export default function AnalisesPage() {
         nome: session?.nome,
         mensagem: decisao === "aprovado" ? mensagem : undefined,
       });
-      notify.success(`Marcado como ${STATUS_ANALISE_INFO[decisao].curto}`);
+      const aprovou = decisao === "aprovado";
+      // Aprovado tem tela própria; os outros dois seguem com o aviso de sempre.
+      if (!aprovou) notify.success(`Marcado como ${STATUS_ANALISE_INFO[decisao].curto}`);
       setDecisao(null);
       setObsDecisao("");
       // recarrega do banco: a data de conclusão e a frase são decididas lá.
       await recarregarAberta();
       await recarregar();
+      // depois de recarregar: quando a tela fechar, a ficha já está liberada
+      // atrás dela. A ficha NÃO é criada aqui — quem decide a hora é o consultor.
+      if (aprovou) setCelebrar({ nome: aberta.nome, mensagem });
     } catch (e) {
       notify.error("Não consegui registrar", e instanceof Error ? e.message : undefined);
     } finally {
@@ -685,6 +693,14 @@ export default function AnalisesPage() {
           </div>
         )}
       </Modal>
+
+      {celebrar && (
+        <AprovacaoCelebracao
+          nomeCliente={celebrar.nome}
+          mensagem={celebrar.mensagem}
+          onContinuar={() => setCelebrar(null)}
+        />
+      )}
     </PremiumStage>
   );
 }
