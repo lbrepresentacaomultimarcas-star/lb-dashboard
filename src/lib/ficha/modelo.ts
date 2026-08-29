@@ -18,6 +18,7 @@ import {
   type Analise,
 } from "../analises";
 import { telefoneBonito } from "../telefone";
+import type { Ficha } from "../fichas";
 
 /* --------------------------------- Descritor -------------------------------- */
 
@@ -117,6 +118,72 @@ export function dicionarioDaAnalise(a: Analise, extras: Record<string, string> =
   };
 }
 
+/**
+ * Dicionário COMPLETO: análise + ficha final.
+ *
+ * A ficha guarda só o que o CRM não tinha; nome, CPF, crédito e lance vêm da
+ * análise. Juntar aqui é o que permite ao gerador de PDF continuar sem saber
+ * de onde cada valor veio.
+ */
+export function dicionarioCompleto(
+  a: Analise,
+  f: Ficha | null,
+  extras: Record<string, string> = {},
+): Record<string, string> {
+  const base = dicionarioDaAnalise(a);
+  if (!f) return { ...base, ...extras };
+  return {
+    ...base,
+    // consorciado
+    rg: texto(f.rg),
+    orgao_emissor: texto(f.orgaoEmissor),
+    rg_completo: [f.rg, f.orgaoEmissor].filter(Boolean).join(" · ") || "—",
+    naturalidade: texto(f.naturalidade),
+    nacionalidade: texto(f.nacionalidade),
+    estado_civil: texto(f.estadoCivil),
+    nome_mae: texto(f.nomeMae),
+    nome_pai: texto(f.nomePai),
+    // cônjuge
+    conjuge_nome: f.temConjuge ? texto(f.conjugeNome) : "Não possui",
+    conjuge_cpf: f.temConjuge ? texto(f.conjugeCpf) : "—",
+    conjuge_nascimento: f.temConjuge && f.conjugeNascimento ? data(f.conjugeNascimento) : "—",
+    // endereço
+    cep: texto(f.cep),
+    endereco: texto(f.endereco),
+    numero: texto(f.numero),
+    complemento: texto(f.complemento),
+    bairro: texto(f.bairro),
+    cidade: texto(f.cidade) !== "—" ? texto(f.cidade) : base.cidade,
+    estado: texto(f.estado),
+    endereco_completo:
+      [
+        [f.endereco, f.numero].filter(Boolean).join(", "),
+        f.complemento,
+        f.bairro,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "—",
+    cidade_uf: [f.cidade ?? a.cidade, f.estado].filter(Boolean).join(" / ") || "—",
+    // bancários
+    banco_tipo_conta: texto(f.bancoTipoConta),
+    banco_nome: texto(f.bancoNome),
+    banco_agencia: texto(f.bancoAgencia),
+    banco_conta: texto(f.bancoConta),
+    // operação
+    contrato: texto(f.contrato),
+    cota: texto(f.cota),
+    grupo: texto(f.grupo),
+    forma_pagamento: texto(f.formaPagamento),
+    valor_entrada: brlOuTraco(f.valorEntrada),
+    mes_participacao: texto(f.mesParticipacao),
+    // rastro da ficha
+    ficha_confirmada_por: texto(f.confirmadaPorNome),
+    ficha_confirmada_em: f.confirmadaEm ? dataHora(f.confirmadaEm) : "—",
+    resultado_proposta: a.mensagemAprovacao ?? STATUS_ANALISE_INFO[a.status].curto,
+    ...extras,
+  };
+}
+
 /* ------------------------------ Modelo padrão ------------------------------- */
 
 /**
@@ -180,6 +247,93 @@ export const MODELO_PROVISORIO: ModeloFicha = {
     // Vazio de propósito: o pedido diz para não inventar o que ainda não foi
     // definido. Quando a ficha real chegar, as linhas dela entram aqui.
     assinaturas: [],
+    mostrarConsultor: true,
+    mostrarData: true,
+  },
+};
+
+/**
+ * FICHA FINAL DA OPERAÇÃO.
+ *
+ * Segue a estrutura da ficha de papel descrita no item 13 do pedido — dados do
+ * consorciado, cônjuge, endereço, bancários e operação, nessa ordem. Ainda não
+ * vi a foto da ficha física: quando ela chegar, é ESTE objeto que muda, e mais
+ * nada. Nenhum campo aqui foi inventado — todos vieram da lista escrita.
+ */
+export const MODELO_FICHA_FINAL: ModeloFicha = {
+  id: "ficha-final-v1",
+  nome: "Ficha Final da Operação",
+  versao: 1,
+  cabecalho: {
+    titulo: "FICHA DE COLETA DE DADOS",
+    subtitulo: "LB Representações · Consórcios",
+    mostrarLogo: true,
+  },
+  secoes: [
+    {
+      titulo: "Dados do consorciado",
+      campos: [
+        { chave: "nome", rotulo: "Nome completo", largura: 4 },
+        { chave: "cpf", rotulo: "CPF", largura: 1 },
+        { chave: "nascimento", rotulo: "Nascimento", largura: 1 },
+        { chave: "rg_completo", rotulo: "RG / Órgão emissor", largura: 2 },
+        { chave: "telefone", rotulo: "Telefone", largura: 2 },
+        { chave: "email", rotulo: "E-mail", largura: 2 },
+        { chave: "naturalidade", rotulo: "Naturalidade", largura: 1 },
+        { chave: "nacionalidade", rotulo: "Nacionalidade", largura: 1 },
+        { chave: "estado_civil", rotulo: "Estado civil", largura: 1 },
+        { chave: "consultor", rotulo: "Vendedor", largura: 1 },
+        { chave: "nome_mae", rotulo: "Nome da mãe", largura: 2 },
+        { chave: "nome_pai", rotulo: "Nome do pai", largura: 2 },
+      ],
+    },
+    {
+      titulo: "Dados do cônjuge",
+      campos: [
+        { chave: "conjuge_nome", rotulo: "Nome", largura: 2 },
+        { chave: "conjuge_cpf", rotulo: "CPF", largura: 1 },
+        { chave: "conjuge_nascimento", rotulo: "Nascimento", largura: 1 },
+      ],
+    },
+    {
+      titulo: "Endereço",
+      campos: [
+        { chave: "cep", rotulo: "CEP", largura: 1 },
+        { chave: "endereco_completo", rotulo: "Endereço", largura: 3 },
+        { chave: "cidade_uf", rotulo: "Cidade / Estado", largura: 4 },
+      ],
+    },
+    {
+      titulo: "Dados bancários",
+      campos: [
+        { chave: "banco_tipo_conta", rotulo: "Tipo de conta", largura: 1 },
+        { chave: "banco_nome", rotulo: "Banco", largura: 1 },
+        { chave: "banco_agencia", rotulo: "Agência", largura: 1 },
+        { chave: "banco_conta", rotulo: "Conta", largura: 1 },
+      ],
+    },
+    {
+      titulo: "Dados da operação",
+      campos: [
+        { chave: "contrato", rotulo: "Contrato", largura: 1 },
+        { chave: "grupo", rotulo: "Grupo", largura: 1 },
+        { chave: "cota", rotulo: "Cota", largura: 1 },
+        { chave: "objetivo", rotulo: "Bem", largura: 1 },
+        { chave: "credito", rotulo: "Crédito", largura: 1 },
+        { chave: "parcela", rotulo: "Parcela", largura: 1 },
+        { chave: "forma_pagamento", rotulo: "Forma de pagamento", largura: 1 },
+        { chave: "valor_entrada", rotulo: "Valor de entrada", largura: 1 },
+        { chave: "lance_valor", rotulo: "Valor do lance", largura: 1 },
+        { chave: "lance_pct", rotulo: "% do lance", largura: 1 },
+        { chave: "lance_embutido", rotulo: "Lance embutido", largura: 1 },
+        { chave: "mes_participacao", rotulo: "Mês de participação", largura: 1 },
+      ],
+    },
+  ],
+  rodape: {
+    aviso: AVISO_ANALISE_INTERNA,
+    // A ficha de papel é assinada. Duas linhas: quem contrata e quem vende.
+    assinaturas: ["Assinatura do consorciado", "Assinatura do consultor"],
     mostrarConsultor: true,
     mostrarData: true,
   },

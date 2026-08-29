@@ -52,7 +52,7 @@ export const NAV: (NavItem | NavGroup)[] = [
   },
   { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
-  { href: "/analises", label: "Análise e Fichas", icon: ClipboardList },
+  { href: "/analises", label: "Análise de Propostas", icon: ClipboardList },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   {
     label: "Gameficação",

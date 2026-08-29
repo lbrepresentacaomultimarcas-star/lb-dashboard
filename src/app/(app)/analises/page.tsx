@@ -12,17 +12,12 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
-  Download,
-  Eye,
   FileText,
   History,
   Loader2,
-  Paperclip,
   Plus,
   Search,
   ShieldCheck,
-  Trash2,
-  Upload,
   UserRound,
   XCircle,
 } from "lucide-react";
@@ -40,19 +35,16 @@ import {
   AVISO_ANALISE_INTERNA,
   OBJETIVOS,
   STATUS_ANALISE_INFO,
-  TIPOS_DOCUMENTO,
   analisesApi,
   brlOuTraco,
   calcularLancePct,
-  documentosPendentes,
   pctOuTraco,
   type Analise,
-  type DocumentoAnalise,
   type EventoAnalise,
   type StatusAnalise,
 } from "@/lib/analises";
-import { MODELO_PROVISORIO } from "@/lib/ficha/modelo";
-import { baixarFicha, visualizarFicha } from "@/lib/ficha/pdf";
+import { FichaFinal } from "@/components/analises/ficha-final";
+import { MENSAGENS_APROVACAO, fichasApi, type Ficha } from "@/lib/fichas";
 import { LEAD_TIPO_INFO } from "@/lib/types";
 
 /* ------------------------------- utilidades -------------------------------- */
@@ -126,13 +118,12 @@ export default function AnalisesPage() {
   const [buscaLead, setBuscaLead] = useState("");
 
   const [aberta, setAberta] = useState<Analise | null>(null);
-  const [docs, setDocs] = useState<DocumentoAnalise[]>([]);
   const [historico, setHistorico] = useState<EventoAnalise[]>([]);
   const [carregandoFicha, setCarregandoFicha] = useState(false);
-  const [enviando, setEnviando] = useState<string | null>(null);
   const [decisao, setDecisao] = useState<StatusAnalise | null>(null);
   const [obsDecisao, setObsDecisao] = useState("");
-  const [gerando, setGerando] = useState(false);
+  const [ficha, setFicha] = useState<Ficha | null>(null);
+  const [mensagem, setMensagem] = useState(MENSAGENS_APROVACAO[0]);
 
   /** Recarrega sob demanda (depois de criar, decidir…). */
   const recarregar = useCallback(async () => {
@@ -257,70 +248,37 @@ export default function AnalisesPage() {
     setAberta(a);
     setDecisao(null);
     setObsDecisao("");
+    setMensagem(a.mensagemAprovacao ?? MENSAGENS_APROVACAO[0]);
     setCarregandoFicha(true);
-    const [d, h] = await Promise.all([analisesApi.documentos(a.id), analisesApi.historico(a.id)]);
-    setDocs(d);
+    const [h, f] = await Promise.all([analisesApi.historico(a.id), fichasApi.obter(a.id)]);
     setHistorico(h);
+    setFicha(f);
     setCarregandoFicha(false);
   }
 
-  async function enviarDocumento(tipo: string, file: File) {
+  /** Recarrega análise + ficha depois de qualquer passo do fluxo. */
+  async function recarregarAberta() {
     if (!aberta) return;
-    setEnviando(tipo);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("analiseId", aberta.id);
-      fd.append("tipo", tipo);
-      const r = await fetch("/api/analises/documento", { method: "POST", body: fd });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Falha ao enviar");
-      setDocs(await analisesApi.documentos(aberta.id));
-      setHistorico(await analisesApi.historico(aberta.id));
-      notify.success("Documento anexado");
-    } catch (e) {
-      notify.error("Não consegui anexar", e instanceof Error ? e.message : undefined);
-    } finally {
-      setEnviando(null);
-    }
+    const { data } = await analisesApi.listar();
+    setAnalises(data);
+    const atual = data.find((x) => x.id === aberta.id) ?? aberta;
+    setAberta(atual);
+    setFicha(await fichasApi.obter(atual.id));
+    setHistorico(await analisesApi.historico(atual.id));
   }
-
-  async function abrirDocumento(d: DocumentoAnalise) {
-    try {
-      const r = await fetch(`/api/analises/documento?id=${d.id}`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Falha");
-      window.open(j.url, "_blank");
-    } catch (e) {
-      notify.error("Não consegui abrir", e instanceof Error ? e.message : undefined);
-    }
-  }
-
-  async function removerDocumento(d: DocumentoAnalise) {
-    if (!confirm(`Remover "${d.nomeArquivo}"?\n\nO arquivo sai, mas o registro de que existiu fica no histórico.`)) return;
-    try {
-      const r = await fetch(`/api/analises/documento?id=${d.id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error((await r.json()).error ?? "Falha");
-      if (aberta) {
-        setDocs(await analisesApi.documentos(aberta.id));
-        setHistorico(await analisesApi.historico(aberta.id));
-      }
-    } catch (e) {
-      notify.error("Não consegui remover", e instanceof Error ? e.message : undefined);
-    }
-  }
-
   async function confirmarDecisao() {
     if (!aberta || !decisao) return;
     setSalvando(true);
     try {
-      await analisesApi.decidir(aberta.id, decisao, obsDecisao, { nome: session?.nome });
+      await analisesApi.decidir(aberta.id, decisao, obsDecisao, {
+        nome: session?.nome,
+        mensagem: decisao === "aprovado" ? mensagem : undefined,
+      });
       notify.success(`Marcado como ${STATUS_ANALISE_INFO[decisao].curto}`);
-      const atualizada = { ...aberta, status: decisao, decisaoObservacao: obsDecisao, decididoPorNome: session?.nome, decididoEm: new Date().toISOString() };
-      setAberta(atualizada);
       setDecisao(null);
       setObsDecisao("");
-      setHistorico(await analisesApi.historico(aberta.id));
+      // recarrega do banco: a data de conclusão e a frase são decididas lá.
+      await recarregarAberta();
       await recarregar();
     } catch (e) {
       notify.error("Não consegui registrar", e instanceof Error ? e.message : undefined);
@@ -329,23 +287,6 @@ export default function AnalisesPage() {
     }
   }
 
-  async function gerarPdf(baixar: boolean) {
-    if (!aberta) return;
-    setGerando(true);
-    try {
-      const extras = { consultor: aberta.criadoPorNome ?? session?.nome ?? "—" };
-      if (baixar) await baixarFicha(aberta, MODELO_PROVISORIO, extras);
-      else await visualizarFicha(aberta, MODELO_PROVISORIO, extras);
-      await analisesApi.registrarFicha(aberta.id, session?.nome);
-      setHistorico(await analisesApi.historico(aberta.id));
-    } catch (e) {
-      notify.error("Não consegui gerar o PDF", e instanceof Error ? e.message : undefined);
-    } finally {
-      setGerando(false);
-    }
-  }
-
-  const pendentes = documentosPendentes(docs);
   const nomeConsultor = (id?: string) => vendedores.find((v) => v.id === id)?.nome ?? "—";
 
   /* ---------------------------------- render -------------------------------- */
@@ -359,9 +300,9 @@ export default function AnalisesPage() {
               <ClipboardList className="h-5 w-5 text-[var(--color-brand)]" />
             </span>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Análise e Fichas</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Análise Final de Proposta</h1>
               <p className="text-sm text-[var(--color-text-dim)]">
-                Documentação, simulação de lance, aprovação interna e ficha em PDF.
+                Acompanhe a proposta até a decisão e feche com a ficha final da operação.
               </p>
             </div>
           </div>
@@ -606,64 +547,6 @@ export default function AnalisesPage() {
               <Linha rotulo="% do lance" valor={aberta.comLance ? pctOuTraco(aberta.lancePct) : "—"} />
             </div>
 
-            {/* documentação */}
-            <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="flex items-center gap-2 text-sm font-bold">
-                  <Paperclip className="h-4 w-4" /> Documentação
-                </h3>
-                {pendentes.length > 0 ? (
-                  <span className="text-[11px] font-semibold text-[var(--color-warn)]">
-                    ⚠️ {pendentes.map((p) => p.rotulo).join(", ")} pendente
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-semibold text-[var(--color-success)]">✅ Documentação essencial recebida</span>
-                )}
-              </div>
-              <div className="space-y-2">
-                {TIPOS_DOCUMENTO.map((t) => {
-                  const meus = docs.filter((d) => d.tipo === t.chave);
-                  return (
-                    <div key={t.chave} className="rounded-xl border border-[var(--color-border)] p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">
-                          {meus.length > 0 ? "✅" : t.exigido ? "⚠️" : "☐"} {t.rotulo}
-                          {t.exigido && <span className="ml-1 text-[10px] uppercase text-[var(--color-muted)]">obrigatório</span>}
-                        </span>
-                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]">
-                          {enviando === t.chave ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                          Anexar
-                          <input
-                            type="file"
-                            className="hidden"
-                            accept="image/*,application/pdf"
-                            disabled={enviando !== null}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) void enviarDocumento(t.chave, f);
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
-                      </div>
-                      {meus.map((d) => (
-                        <div key={d.id} className="mt-2 flex items-center gap-2 rounded-lg bg-[var(--color-surface-2)] px-2.5 py-1.5">
-                          <span className="min-w-0 flex-1 truncate text-xs">{d.nomeArquivo}</span>
-                          <span className="shrink-0 text-[10px] text-[var(--color-muted)]">{d.enviadoPorNome}</span>
-                          <button onClick={() => void abrirDocumento(d)} className="shrink-0 rounded p-1 text-[var(--color-text-dim)] hover:text-[var(--color-brand)]" aria-label="Abrir">
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => void removerDocumento(d)} className="shrink-0 rounded p-1 text-[var(--color-text-dim)] hover:text-[var(--color-danger)]" aria-label="Remover">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
             {/* decisão — só admin */}
             <section>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-bold">
@@ -671,7 +554,11 @@ export default function AnalisesPage() {
               </h3>
               <div className="rounded-xl border border-[var(--color-border)] p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={STATUS_ANALISE_INFO[aberta.status].tone}>{STATUS_ANALISE_INFO[aberta.status].label}</Badge>
+                  <Badge tone={STATUS_ANALISE_INFO[aberta.status].tone}>
+                    {aberta.status === "aprovado" && aberta.mensagemAprovacao
+                      ? aberta.mensagemAprovacao
+                      : STATUS_ANALISE_INFO[aberta.status].label}
+                  </Badge>
                   {aberta.decididoEm && (
                     <span className="text-[11px] text-[var(--color-text-dim)]">
                       por {aberta.decididoPorNome ?? "—"} · {dataHora(aberta.decididoEm)}
@@ -704,6 +591,29 @@ export default function AnalisesPage() {
                         </button>
                       ))}
                     </div>
+                    {decisao === "aprovado" && (
+                      <div>
+                        <Label>Como mostrar o resultado</Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {MENSAGENS_APROVACAO.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setMensagem(m)}
+                              className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                                mensagem === m
+                                  ? "border-[var(--color-success)] bg-[var(--color-success)]/15 text-[var(--color-success)]"
+                                  : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                          A frase escolhida fica gravada nesta proposta e sai no PDF.
+                        </p>
+                      </div>
+                    )}
                     {decisao && (
                       <div className="space-y-2">
                         <textarea
@@ -731,25 +641,18 @@ export default function AnalisesPage() {
               </div>
             </section>
 
-            {/* ficha */}
+            {/* ficha final da operação — a ÚLTIMA etapa */}
             <section>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-bold">
-                <FileText className="h-4 w-4" /> Ficha
+                <FileText className="h-4 w-4" /> Ficha final da operação
               </h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" onClick={() => void gerarPdf(false)} disabled={gerando}>
-                  {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Visualizar PDF
-                </Button>
-                <Button onClick={() => void gerarPdf(true)} disabled={gerando}>
-                  <Download className="h-4 w-4" /> Gerar ficha em PDF
-                </Button>
-              </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
-                Modelo atual: <span className="font-semibold">{MODELO_PROVISORIO.nome}</span>. O desenho da ficha
-                é trocado sem mexer neste módulo — quando o modelo definitivo chegar, é ele que muda.
-              </p>
+              <FichaFinal
+                analise={aberta}
+                ficha={ficha}
+                autorNome={session?.nome}
+                onMudou={recarregarAberta}
+              />
             </section>
-
             {/* histórico */}
             <section>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-bold">

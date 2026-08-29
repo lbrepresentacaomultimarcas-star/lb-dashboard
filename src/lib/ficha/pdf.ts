@@ -12,7 +12,8 @@
 
 import { AVISO_ANALISE_INTERNA, STATUS_ANALISE_INFO, type Analise } from "../analises";
 import { settings } from "../settings";
-import { dicionarioDaAnalise, type ModeloFicha } from "./modelo";
+import { dicionarioCompleto, type ModeloFicha } from "./modelo";
+import type { Ficha } from "../fichas";
 
 const NAVY: [number, number, number] = [11, 22, 38];
 const GOLD: [number, number, number] = [176, 137, 36];
@@ -57,10 +58,11 @@ export async function gerarFichaPdf(
   analise: Analise,
   modelo: ModeloFicha,
   extras: Record<string, string> = {},
+  ficha: Ficha | null = null,
 ): Promise<Blob> {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  const dic = dicionarioDaAnalise(analise, extras);
+  const dic = dicionarioCompleto(analise, ficha, extras);
   const logo = modelo.cabecalho.mostrarLogo ? await carregarLogo() : null;
 
   let y = M;
@@ -86,7 +88,11 @@ export async function gerarFichaPdf(
 
   // selo do resultado, à direita
   const info = STATUS_ANALISE_INFO[analise.status];
-  const selo = info.curto;
+  // Aprovada, o selo mostra a FRASE escolhida na decisão — é ela que o cliente
+  // e o administrativo leem, não o rótulo técnico do status.
+  const selo = analise.status === "aprovado" && analise.mensagemAprovacao
+    ? analise.mensagemAprovacao
+    : info.curto;
   doc.setFont("helvetica", "bold").setFontSize(9);
   const selW = doc.getTextWidth(selo) + 10;
   const cor = analise.status === "aprovado" ? [16, 130, 90] : analise.status === "nao_aprovado" ? [175, 45, 45] : [170, 120, 10];
@@ -97,10 +103,10 @@ export async function gerarFichaPdf(
   doc.setTextColor(...CINZA).setFont("helvetica", "normal").setFontSize(7.5);
   doc.text("ANÁLISE INTERNA", L - M, y + 13, { align: "right" });
 
-  y += 20;
+  y += 18;
   doc.setDrawColor(...GOLD).setLineWidth(0.6);
   doc.line(M, y, L - M, y);
-  y += 7;
+  y += 5;
 
   /* --------------------------------- seções -------------------------------- */
   const colW = UTIL / 4;
@@ -113,7 +119,7 @@ export async function gerarFichaPdf(
     }
     doc.setTextColor(...GOLD).setFont("helvetica", "bold").setFontSize(8.5);
     doc.text(secao.titulo.toUpperCase(), M, y);
-    y += 4;
+    y += 3;
 
     let col = 0;
     let alturaDaLinha = 0;
@@ -139,9 +145,11 @@ export async function gerarFichaPdf(
       // teto de linhas: observação comprida não pode empurrar a ficha para
       // uma segunda página — ficha é documento de uma folha.
       const mostradas = campo.alto ? linhas.slice(0, 5) : linhas.slice(0, 2);
-      mostradas.forEach((l, i) => doc.text(l, x, y + 8.5 + i * (campo.alto ? 4 : 4.5)));
+      mostradas.forEach((l, i) => doc.text(l, x, y + 7.6 + i * (campo.alto ? 3.8 : 4.2)));
 
-      const alturaCampo = 10 + mostradas.length * (campo.alto ? 4 : 4.5);
+      // 8,2 de cabeça (rótulo + respiro) + as linhas do valor. Enxuto de
+      // propósito: a ficha da operação tem 5 seções e precisa caber numa folha.
+      const alturaCampo = 8.2 + mostradas.length * (campo.alto ? 3.8 : 4.2);
       alturaDaLinha = Math.max(alturaDaLinha, alturaCampo);
 
       doc.setDrawColor(...LINHA).setLineWidth(0.2);
@@ -161,7 +169,7 @@ export async function gerarFichaPdf(
       }
     }
     if (col > 0) y += alturaDaLinha;
-    y += 4;
+    y += 2.5;
   }
 
   /* --------------------------------- rodapé -------------------------------- */
@@ -171,7 +179,7 @@ export async function gerarFichaPdf(
   doc.setFontSize(7.2).setFont("helvetica", "italic");
   const nLinhasAviso = (doc.splitTextToSize(aviso0, UTIL - 8) as string[]).length;
   const alturaRodape =
-    (modelo.rodape.assinaturas.length > 0 ? 20 : 0) + (nLinhasAviso * 3.6 + 6) + 5 + 8;
+    (modelo.rodape.assinaturas.length > 0 ? 16 : 0) + (nLinhasAviso * 3.6 + 6) + 4 + 7;
   const pe = 297 - 12 - alturaRodape;
 
   if (y > pe) {
@@ -185,11 +193,11 @@ export async function gerarFichaPdf(
     modelo.rodape.assinaturas.forEach((rot, i) => {
       const x = M + i * largAss;
       doc.setDrawColor(...CINZA).setLineWidth(0.3);
-      doc.line(x + 4, y + 10, x + largAss - 8, y + 10);
+      doc.line(x + 4, y + 8, x + largAss - 8, y + 8);
       doc.setFontSize(7.5).setFont("helvetica", "normal").setTextColor(...CINZA);
-      doc.text(rot, x + (largAss - 4) / 2, y + 14, { align: "center" });
+      doc.text(rot, x + (largAss - 4) / 2, y + 11.5, { align: "center" });
     });
-    y += 20;
+    y += 16;
   }
 
   // aviso legal — nunca sai da ficha, mesmo que o modelo esqueça de pedir
@@ -225,16 +233,16 @@ export async function gerarFichaPdf(
 }
 
 /** Abre o PDF numa aba para conferência antes de baixar/imprimir. */
-export async function visualizarFicha(a: Analise, m: ModeloFicha, extras?: Record<string, string>) {
-  const blob = await gerarFichaPdf(a, m, extras);
+export async function visualizarFicha(a: Analise, m: ModeloFicha, extras?: Record<string, string>, f?: Ficha | null) {
+  const blob = await gerarFichaPdf(a, m, extras, f ?? null);
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank");
   // o navegador precisa da URL viva enquanto carrega a aba
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export async function baixarFicha(a: Analise, m: ModeloFicha, extras?: Record<string, string>) {
-  const blob = await gerarFichaPdf(a, m, extras);
+export async function baixarFicha(a: Analise, m: ModeloFicha, extras?: Record<string, string>, f?: Ficha | null) {
+  const blob = await gerarFichaPdf(a, m, extras, f ?? null);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

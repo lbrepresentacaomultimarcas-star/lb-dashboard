@@ -82,6 +82,11 @@ export type Analise = {
   decisaoObservacao?: string;
   decididoPorNome?: string;
   decididoEm?: string;
+  /** Frase escolhida na aprovação. Fica gravada: o documento de amanhã mostra
+   *  a mesma frase que apareceu no dia da decisão. */
+  mensagemAprovacao?: string;
+  /** Momento em que a proposta virou concluída — é o que libera a ficha. */
+  concluidaEm?: string;
   criadoEm: string;
   atualizadoEm?: string;
 };
@@ -170,6 +175,8 @@ function fromDb(r: Row): Analise {
     decisaoObservacao: s(r.decisao_observacao),
     decididoPorNome: s(r.decidido_por_nome),
     decididoEm: s(r.decidido_em),
+    mensagemAprovacao: s(r.mensagem_aprovacao),
+    concluidaEm: s(r.concluida_em),
     criadoEm: String(r.criado_em),
     atualizadoEm: s(r.atualizado_em),
   };
@@ -203,6 +210,8 @@ function toDb(a: Partial<Analise>): Row {
   põe("decisao_observacao", a.decisaoObservacao);
   põe("decidido_por_nome", a.decididoPorNome);
   põe("decidido_em", a.decididoEm);
+  põe("mensagem_aprovacao", a.mensagemAprovacao);
+  põe("concluida_em", a.concluidaEm);
   return r;
 }
 
@@ -309,10 +318,15 @@ export const analisesApi = {
     id: string,
     status: StatusAnalise,
     observacao: string,
-    quem: { nome?: string } = {},
+    quem: { nome?: string; mensagem?: string } = {},
   ): Promise<void> {
     const agora = new Date().toISOString();
-    const { data: antes } = await supabaseBrowser().from("analises").select("status").eq("id", id).single();
+    const { data: antes } = await supabaseBrowser()
+      .from("analises")
+      .select("status, concluida_em")
+      .eq("id", id)
+      .single();
+    const jaConcluiu = (antes as Row | null)?.concluida_em;
     const { error } = await supabaseBrowser()
       .from("analises")
       .update({
@@ -320,6 +334,10 @@ export const analisesApi = {
         decisao_observacao: observacao.trim() || null,
         decidido_por_nome: quem.nome ?? null,
         decidido_em: agora,
+        mensagem_aprovacao: status === "aprovado" ? (quem.mensagem ?? "PROPOSTA APROVADA") : null,
+        // marca a conclusão só na PRIMEIRA aprovação: reaprovar não reescreve
+        // a data em que a proposta foi concluída.
+        concluida_em: status === "aprovado" ? (jaConcluiu ?? agora) : null,
       })
       .eq("id", id);
     if (error) throw error;
