@@ -313,7 +313,8 @@ export const MODELO_FICHA_FINAL: ModeloFicha = {
   cabecalho: {
     titulo: "Formulário de Coleta de Dados",
     subtitulo: "Pessoa Física",
-    mostrarLogo: false,
+    // As duas marcas: LB à esquerda, administradora à direita.
+    mostrarLogo: true,
     logoParceira: true,
     mostrarSelo: false,
   },

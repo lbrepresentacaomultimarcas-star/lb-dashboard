@@ -31,18 +31,44 @@ const AZUL_FORTE: [number, number, number] = [37, 99, 175];
 const CAB_FUNDO: [number, number, number] = [219, 233, 245];
 const BORDA: [number, number, number] = [150, 160, 175];
 
-function carregarImagem(src: string): Promise<{ url: string; ratio: number } | null> {
+/**
+ * Carrega uma logo já REDUZIDA para o tamanho em que ela vai aparecer.
+ *
+ * Sem isso a ficha saía com 5 MB: a logo original era embutida em resolução
+ * cheia e em PNG. Uma ficha que vai por WhatsApp e e-mail não pode pesar isso.
+ * 600px de largura cobre a impressão em 300dpi com folga, e JPEG serve porque
+ * as logos não têm transparência.
+ */
+function pixelsPara(larguraMm: number): number {
+  // 300 dpi é qualidade de impressão; abaixo de 120px a logo fica serrilhada.
+  // 220 dpi: logo não tem detalhe fino, e cada pixel a mais vira peso no
+  // arquivo que o consultor manda pelo celular.
+  return Math.min(420, Math.max(120, Math.round((larguraMm / 25.4) * 220)));
+}
+
+function carregarImagem(
+  src: string,
+  larguraMm = 46,
+): Promise<{ url: string; ratio: number; formato: "JPEG" | "PNG" } | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       try {
+        const oW = img.naturalWidth;
+        const oH = img.naturalHeight;
+        if (!oW || !oH) return resolve(null);
+        const escala = Math.min(1, pixelsPara(larguraMm) / oW);
         const c = document.createElement("canvas");
-        c.width = img.naturalWidth;
-        c.height = img.naturalHeight;
+        c.width = Math.max(1, Math.round(oW * escala));
+        c.height = Math.max(1, Math.round(oH * escala));
         const cx = c.getContext("2d");
         if (!cx) return resolve(null);
-        cx.drawImage(img, 0, 0);
-        resolve({ url: c.toDataURL("image/png"), ratio: img.naturalWidth / img.naturalHeight });
+        // fundo branco: JPEG não tem transparência, e sem isso o que é
+        // transparente vira preto.
+        cx.fillStyle = "#ffffff";
+        cx.fillRect(0, 0, c.width, c.height);
+        cx.drawImage(img, 0, 0, c.width, c.height);
+        resolve({ url: c.toDataURL("image/jpeg", 0.85), ratio: oW / oH, formato: "JPEG" });
       } catch {
         resolve(null);
       }
@@ -52,8 +78,9 @@ function carregarImagem(src: string): Promise<{ url: string; ratio: number } | n
   });
 }
 
-const carregarLogo = () => carregarImagem(settings.get("logo_principal") ?? "/logo-lb.jpg");
-const carregarLogoParceira = () => carregarImagem(settings.get("logo_parceira") ?? "/logo-multimarcas.jpg");
+const carregarLogo = (mm = 34) => carregarImagem(settings.get("logo_principal") ?? "/logo-lb.jpg", mm);
+const carregarLogoParceira = (mm = 46) =>
+  carregarImagem(settings.get("logo_parceira") ?? "/logo-multimarcas.jpg", mm);
 
 type Doc = import("jspdf").jsPDF;
 
@@ -81,14 +108,30 @@ async function desenharTabela(doc: Doc, modelo: ModeloFicha, dic: Record<string,
   doc.setFillColor(...AZUL_FORTE);
   doc.rect(0, 0, L, 4, "F");
 
-  const logo = modelo.cabecalho.logoParceira ? await carregarLogoParceira() : null;
-  if (logo) {
-    const h = 13;
-    const w = Math.min(46, h * logo.ratio);
+  /*
+   * Co-branding, o mesmo do resto do sistema: LB à esquerda (quem atende) e a
+   * administradora à direita (quem administra o consórcio). As duas juntas
+   * dizem, sem precisar escrever, quem preencheu e para onde vai.
+   */
+  const [logoLb, logoAdm] = await Promise.all([
+    modelo.cabecalho.mostrarLogo ? carregarLogo(34) : Promise.resolve(null),
+    modelo.cabecalho.logoParceira ? carregarLogoParceira(46) : Promise.resolve(null),
+  ]);
+  const alturaLogo = 13;
+  if (logoLb) {
+    const w = Math.min(34, alturaLogo * logoLb.ratio);
     try {
-      doc.addImage(logo.url, "PNG", L - M - w, y, w, h);
+      doc.addImage(logoLb.url, logoLb.formato, M, y, w, alturaLogo);
     } catch {
-      /* logo é enfeite */
+      /* logo é enfeite: sem ela a ficha continua válida */
+    }
+  }
+  if (logoAdm) {
+    const w = Math.min(46, alturaLogo * logoAdm.ratio);
+    try {
+      doc.addImage(logoAdm.url, logoAdm.formato, L - M - w, y, w, alturaLogo);
+    } catch {
+      /* idem */
     }
   }
 
@@ -192,7 +235,10 @@ export async function gerarFichaPdf(
   ficha: Ficha | null = null,
 ): Promise<Blob> {
   const { jsPDF } = await import("jspdf");
-  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  // compress: o jsPDF guarda a logo como PIXEL CRU, não como JPEG — sem
+  // compressão a ficha saía com centenas de KB só de logo, e ela vai por
+  // WhatsApp e e-mail.
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
   const dic = dicionarioCompleto(analise, ficha, extras);
 
   // O formulário da administradora é uma tabela; o relatório de análise é uma
@@ -212,7 +258,7 @@ export async function gerarFichaPdf(
     const h = 16;
     const w = Math.min(30, h * logo.ratio);
     try {
-      doc.addImage(logo.url, "PNG", M, y, w, h);
+      doc.addImage(logo.url, logo.formato, M, y, w, h);
       tx = M + w + 5;
     } catch {
       /* logo é enfeite: se falhar, a ficha sai sem ela */
