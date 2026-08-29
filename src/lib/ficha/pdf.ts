@@ -25,9 +25,14 @@ const M = 15; // margem
 const L = 210; // largura A4
 const UTIL = L - M * 2;
 
-function carregarLogo(): Promise<{ url: string; ratio: number } | null> {
+/* Paleta do formulário da administradora, tirada do papel. */
+const AZUL: [number, number, number] = [31, 78, 121];
+const AZUL_FORTE: [number, number, number] = [37, 99, 175];
+const CAB_FUNDO: [number, number, number] = [219, 233, 245];
+const BORDA: [number, number, number] = [150, 160, 175];
+
+function carregarImagem(src: string): Promise<{ url: string; ratio: number } | null> {
   return new Promise((resolve) => {
-    const src = settings.get("logo_principal") ?? "/logo-lb.jpg";
     const img = new Image();
     img.onload = () => {
       try {
@@ -47,11 +52,137 @@ function carregarLogo(): Promise<{ url: string; ratio: number } | null> {
   });
 }
 
+const carregarLogo = () => carregarImagem(settings.get("logo_principal") ?? "/logo-lb.jpg");
+const carregarLogoParceira = () => carregarImagem(settings.get("logo_parceira") ?? "/logo-multimarcas.jpg");
+
 type Doc = import("jspdf").jsPDF;
 
 /** Quebra o texto e devolve as linhas — usado para saber a altura ANTES de desenhar. */
 function linhasDe(doc: Doc, txt: string, largura: number): string[] {
   return doc.splitTextToSize(txt || "—", largura) as string[];
+}
+
+
+/* ------------------------- estilo TABELA (formulário) ---------------------- */
+
+/**
+ * Reproduz o formulário de papel da administradora: uma tabela de linhas com
+ * borda, "Rótulo: valor" na mesma linha.
+ *
+ * Continua sem conhecer campo por nome — lê `modelo.tabela` e desenha. Trocar
+ * a ordem das linhas, acrescentar campo ou mudar o título é mexer no modelo.
+ */
+async function desenharTabela(doc: Doc, modelo: ModeloFicha, dic: Record<string, string>) {
+  const linhas = modelo.tabela?.linhas ?? [];
+  let y = 12;
+
+  // faixa superior: o papel tem uma curva azul; aqui vira uma barra limpa —
+  // imitação malfeita de curva fica pior do que uma barra bem feita.
+  doc.setFillColor(...AZUL_FORTE);
+  doc.rect(0, 0, L, 4, "F");
+
+  const logo = modelo.cabecalho.logoParceira ? await carregarLogoParceira() : null;
+  if (logo) {
+    const h = 13;
+    const w = Math.min(46, h * logo.ratio);
+    try {
+      doc.addImage(logo.url, "PNG", L - M - w, y, w, h);
+    } catch {
+      /* logo é enfeite */
+    }
+  }
+
+  y += 20;
+  doc.setTextColor(...AZUL).setFont("helvetica", "bold").setFontSize(15);
+  doc.text(modelo.cabecalho.titulo, L / 2, y, { align: "center" });
+  if (modelo.cabecalho.subtitulo) {
+    doc.text(modelo.cabecalho.subtitulo, L / 2, y + 6.5, { align: "center" });
+    y += 6.5;
+  }
+  y += 7;
+
+  // faixa do título da tabela
+  const H = 7.6;
+  doc.setFillColor(...CAB_FUNDO);
+  doc.setDrawColor(...BORDA).setLineWidth(0.25);
+  doc.rect(M, y, UTIL, H, "FD");
+  doc.setTextColor(...AZUL).setFont("helvetica", "bold").setFontSize(9.5);
+  doc.text(modelo.tabela?.titulo ?? "", L / 2, y + H / 2 + 1.4, { align: "center" });
+  y += H;
+
+  for (const linha of linhas) {
+    const alt = Math.max(...linha.celulas.map((c) => c.altura ?? 1));
+    const h = H * alt;
+    if (y + h > 275) {
+      doc.addPage();
+      y = M;
+    }
+    const pesos = linha.celulas.map((c) => c.peso ?? 1 / linha.celulas.length);
+    let x = M;
+    linha.celulas.forEach((cel, i) => {
+      const w = UTIL * pesos[i];
+      doc.setDrawColor(...BORDA).setLineWidth(0.25);
+      doc.rect(x, y, w, h, "S");
+
+      doc.setTextColor(...AZUL).setFont("helvetica", "bold").setFontSize(7.6);
+      const larguraRotulo = doc.getTextWidth(cel.rotulo);
+      doc.text(cel.rotulo, x + 2.5, y + 5);
+
+      /*
+       * O valor entra ao lado do rótulo, como quem preenche à mão. Mas o
+       * rótulo do endereço é longo e sobra pouco espaço: nesse caso o valor
+       * desce para a linha de baixo e usa a caixa inteira. Cortar endereço
+       * numa ficha que vai para o administrativo é o tipo de erro que este
+       * módulo existe para acabar.
+       */
+      const valor = cel.chave ? (dic[cel.chave] ?? "") : "";
+      if (valor && valor !== "—") {
+        doc.setTextColor(20, 26, 36).setFont("helvetica", "normal").setFontSize(8.4);
+        const aoLado = w - larguraRotulo - 7;
+        const cabeAoLado = doc.getTextWidth(valor) <= aoLado;
+        if (cabeAoLado) {
+          doc.text(valor, x + larguraRotulo + 4.5, y + 5);
+        } else {
+          const cabem = Math.max(1, Math.floor((h - 7) / 3.8));
+          const linhasV = (doc.splitTextToSize(valor, w - 5) as string[]).slice(0, cabem);
+          linhasV.forEach((l, i) => doc.text(l, x + 2.5, y + 9 + i * 3.8));
+        }
+      }
+
+      // segundo rótulo na mesma caixa ("Grupo: ___ Crédito: ___")
+      if (cel.extra) {
+        const meio = x + w * 0.5;
+        doc.setTextColor(...AZUL).setFont("helvetica", "bold").setFontSize(7.6);
+        doc.text(cel.extra.rotulo, meio, y + 5);
+        const v2 = cel.extra.chave ? (dic[cel.extra.chave] ?? "") : "";
+        if (v2 && v2 !== "—") {
+          const lr2 = doc.getTextWidth(cel.extra.rotulo);
+          doc.setTextColor(20, 26, 36).setFont("helvetica", "normal").setFontSize(8.4);
+          const cabe2 = (doc.splitTextToSize(v2, Math.max(w * 0.5 - lr2 - 5, 12)) as string[])[0];
+          doc.text(cabe2, meio + lr2 + 2.5, y + 5);
+        }
+      }
+      x += w;
+    });
+    y += h;
+  }
+
+  /* rodapé institucional */
+  y = Math.max(y + 10, 262);
+  const inst = modelo.rodape.institucional ?? [];
+  if (inst.length) {
+    doc.setFont("helvetica", "bold").setFontSize(7.4).setTextColor(...AZUL);
+    doc.text(inst[0], L / 2, y, { align: "center" });
+    doc.setFont("helvetica", "normal").setFontSize(6.8).setTextColor(...CINZA);
+    inst.slice(1).forEach((l, i) => doc.text(l, L / 2, y + 3.6 + i * 3.2, { align: "center" }));
+    y += 3.6 + (inst.length - 1) * 3.2;
+  }
+  if (modelo.rodape.mostrarData) {
+    doc.setFontSize(6.8).setTextColor(...CINZA);
+    doc.text(`Emitida pelo LB CRM em ${dic.emitido_em}`, L / 2, y + 5, { align: "center" });
+  }
+  doc.setFillColor(...AZUL_FORTE);
+  doc.rect(0, 291, L, 6, "F");
 }
 
 export async function gerarFichaPdf(
@@ -63,6 +194,14 @@ export async function gerarFichaPdf(
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const dic = dicionarioCompleto(analise, ficha, extras);
+
+  // O formulário da administradora é uma tabela; o relatório de análise é uma
+  // grade. Cada um tem seu desenho, e os dois leem o MESMO dicionário.
+  if (modelo.estilo === "tabela") {
+    await desenharTabela(doc, modelo, dic);
+    return doc.output("blob");
+  }
+
   const logo = modelo.cabecalho.mostrarLogo ? await carregarLogo() : null;
 
   let y = M;

@@ -37,6 +37,25 @@ export type SecaoFicha = {
   campos: CampoFicha[];
 };
 
+/**
+ * Célula de uma linha do formulário.
+ *
+ * `extra` existe porque o formulário real tem "Grupo: ____  Crédito: ____"
+ * dentro da MESMA célula — dois rótulos numa caixa só.
+ */
+export type CelulaFicha = {
+  rotulo: string;
+  /** Chave no dicionário. Vazio = campo que se preenche à mão (ex.: CHECAGEM). */
+  chave?: string;
+  extra?: { rotulo: string; chave?: string };
+  /** Fração da largura da linha. Sem peso, as células dividem por igual. */
+  peso?: number;
+  /** Multiplicador de altura — o campo de endereço é mais alto no papel. */
+  altura?: number;
+};
+
+export type LinhaFicha = { celulas: CelulaFicha[] };
+
 export type ModeloFicha = {
   id: string;
   nome: string;
@@ -45,8 +64,26 @@ export type ModeloFicha = {
     titulo: string;
     subtitulo?: string;
     mostrarLogo: boolean;
+    /** Logo da administradora, à direita. */
+    logoParceira?: boolean;
+    /**
+     * Selo do resultado no topo. O formulário de coleta da administradora NÃO
+     * tem selo: ele coleta dado, não anuncia decisão. E é por isso que o aviso
+     * de "análise interna" também não entra lá — sem afirmar resultado, não há
+     * o que ressalvar.
+     */
+    mostrarSelo?: boolean;
   };
+  /**
+   * "grid"   — rótulo em cima, valor embaixo (visual de relatório).
+   * "tabela" — linhas com borda e "Rótulo: valor" na mesma linha, que é como
+   *            o formulário de papel da administradora é.
+   */
+  estilo?: "grid" | "tabela";
+  /** Usado quando estilo === "grid". */
   secoes: SecaoFicha[];
+  /** Usado quando estilo === "tabela". */
+  tabela?: { titulo: string; linhas: LinhaFicha[] };
   rodape: {
     /** Aviso legal. Nunca deve sair da ficha. */
     aviso: string;
@@ -54,6 +91,8 @@ export type ModeloFicha = {
     assinaturas: string[];
     mostrarConsultor: boolean;
     mostrarData: boolean;
+    /** Bloco institucional do pé do formulário (endereço, telefones…). */
+    institucional?: string[];
   };
 };
 
@@ -147,6 +186,12 @@ export function dicionarioCompleto(
     conjuge_nome: f.temConjuge ? texto(f.conjugeNome) : "Não possui",
     conjuge_cpf: f.temConjuge ? texto(f.conjugeCpf) : "—",
     conjuge_nascimento: f.temConjuge && f.conjugeNascimento ? data(f.conjugeNascimento) : "—",
+    // No papel, cônjuge é UMA linha: nome, CPF e nascimento juntos.
+    conjuge_completo: f.temConjuge
+      ? [f.conjugeNome, f.conjugeCpf, f.conjugeNascimento ? data(f.conjugeNascimento) : null]
+          .filter(Boolean)
+          .join(" · ") || "—"
+      : "Não possui",
     // endereço
     cep: texto(f.cep),
     endereco: texto(f.endereco),
@@ -261,81 +306,68 @@ export const MODELO_PROVISORIO: ModeloFicha = {
  * nada. Nenhum campo aqui foi inventado — todos vieram da lista escrita.
  */
 export const MODELO_FICHA_FINAL: ModeloFicha = {
-  id: "ficha-final-v1",
-  nome: "Ficha Final da Operação",
-  versao: 1,
+  id: "coleta-pf-multimarcas-v1",
+  nome: "Formulário de Coleta de Dados · Pessoa Física",
+  versao: 2,
+  estilo: "tabela",
   cabecalho: {
-    titulo: "FICHA DE COLETA DE DADOS",
-    subtitulo: "LB Representações · Consórcios",
-    mostrarLogo: true,
+    titulo: "Formulário de Coleta de Dados",
+    subtitulo: "Pessoa Física",
+    mostrarLogo: false,
+    logoParceira: true,
+    mostrarSelo: false,
   },
-  secoes: [
-    {
-      titulo: "Dados do consorciado",
-      campos: [
-        { chave: "nome", rotulo: "Nome completo", largura: 4 },
-        { chave: "cpf", rotulo: "CPF", largura: 1 },
-        { chave: "nascimento", rotulo: "Nascimento", largura: 1 },
-        { chave: "rg_completo", rotulo: "RG / Órgão emissor", largura: 2 },
-        { chave: "telefone", rotulo: "Telefone", largura: 2 },
-        { chave: "email", rotulo: "E-mail", largura: 2 },
-        { chave: "naturalidade", rotulo: "Naturalidade", largura: 1 },
-        { chave: "nacionalidade", rotulo: "Nacionalidade", largura: 1 },
-        { chave: "estado_civil", rotulo: "Estado civil", largura: 1 },
-        { chave: "consultor", rotulo: "Vendedor", largura: 1 },
-        { chave: "nome_mae", rotulo: "Nome da mãe", largura: 2 },
-        { chave: "nome_pai", rotulo: "Nome do pai", largura: 2 },
-      ],
-    },
-    {
-      titulo: "Dados do cônjuge",
-      campos: [
-        { chave: "conjuge_nome", rotulo: "Nome", largura: 2 },
-        { chave: "conjuge_cpf", rotulo: "CPF", largura: 1 },
-        { chave: "conjuge_nascimento", rotulo: "Nascimento", largura: 1 },
-      ],
-    },
-    {
-      titulo: "Endereço",
-      campos: [
-        { chave: "cep", rotulo: "CEP", largura: 1 },
-        { chave: "endereco_completo", rotulo: "Endereço", largura: 3 },
-        { chave: "cidade_uf", rotulo: "Cidade / Estado", largura: 4 },
-      ],
-    },
-    {
-      titulo: "Dados bancários",
-      campos: [
-        { chave: "banco_tipo_conta", rotulo: "Tipo de conta", largura: 1 },
-        { chave: "banco_nome", rotulo: "Banco", largura: 1 },
-        { chave: "banco_agencia", rotulo: "Agência", largura: 1 },
-        { chave: "banco_conta", rotulo: "Conta", largura: 1 },
-      ],
-    },
-    {
-      titulo: "Dados da operação",
-      campos: [
-        { chave: "contrato", rotulo: "Contrato", largura: 1 },
-        { chave: "grupo", rotulo: "Grupo", largura: 1 },
-        { chave: "cota", rotulo: "Cota", largura: 1 },
-        { chave: "objetivo", rotulo: "Bem", largura: 1 },
-        { chave: "credito", rotulo: "Crédito", largura: 1 },
-        { chave: "parcela", rotulo: "Parcela", largura: 1 },
-        { chave: "forma_pagamento", rotulo: "Forma de pagamento", largura: 1 },
-        { chave: "valor_entrada", rotulo: "Valor de entrada", largura: 1 },
-        { chave: "lance_valor", rotulo: "Valor do lance", largura: 1 },
-        { chave: "lance_pct", rotulo: "% do lance", largura: 1 },
-        { chave: "lance_embutido", rotulo: "Lance embutido", largura: 1 },
-        { chave: "mes_participacao", rotulo: "Mês de participação", largura: 1 },
-      ],
-    },
-  ],
+  // O estilo "tabela" usa `tabela`; `secoes` fica vazio de propósito.
+  secoes: [],
+  tabela: {
+    titulo: "Dados do Consorciado",
+    linhas: [
+      { celulas: [{ rotulo: "Nome do Cliente:", chave: "nome" }] },
+      { celulas: [{ rotulo: "E-mail do Cliente:", chave: "email" }] },
+      { celulas: [{ rotulo: "Telefone(s) do Cliente:", chave: "telefone" }] },
+      { celulas: [{ rotulo: "CPF:", chave: "cpf" }, { rotulo: "Data de Nascimento:", chave: "nascimento" }] },
+      { celulas: [{ rotulo: "RG e Órgão Emissor:", chave: "rg_completo" }, { rotulo: "VENDEDOR:", chave: "consultor" }] },
+      { celulas: [{ rotulo: "Naturalidade:", chave: "naturalidade" }, { rotulo: "Nacionalidade:", chave: "nacionalidade" }] },
+      { celulas: [{ rotulo: "Estado Civil:", chave: "estado_civil" }] },
+      { celulas: [{ rotulo: "Nome, CPF e Data de Nascimento do Cônjuge:", chave: "conjuge_completo" }] },
+      // CHECAGEM não tem origem no CRM: é a conferência de quem recebe a ficha,
+      // feita à mão. Sai em branco, como no papel.
+      { celulas: [{ rotulo: "CHECAGEM:" }] },
+      { celulas: [{ rotulo: "Nome da Mãe:", chave: "nome_mae" }] },
+      { celulas: [{ rotulo: "Nome do Pai:", chave: "nome_pai" }] },
+      {
+        celulas: [
+          { rotulo: "CEP:", chave: "cep", altura: 2 },
+          { rotulo: "Endereço completo (rua, número, complemento, bairro):", chave: "endereco_completo", altura: 2 },
+        ],
+      },
+      { celulas: [{ rotulo: "Cidade:", chave: "cidade" }, { rotulo: "Estado:", chave: "estado" }] },
+      { celulas: [{ rotulo: "Tipo de conta:", chave: "banco_tipo_conta" }, { rotulo: "Banco:", chave: "banco_nome" }] },
+      { celulas: [{ rotulo: "Agência:", chave: "banco_agencia" }, { rotulo: "Conta:", chave: "banco_conta" }] },
+      { celulas: [{ rotulo: "CONTRATO:", chave: "contrato" }, { rotulo: "COTA:", chave: "cota" }] },
+      {
+        celulas: [
+          // No papel, Grupo e Crédito dividem a mesma caixa.
+          { rotulo: "Grupo:", chave: "grupo", extra: { rotulo: "Crédito:", chave: "credito" } },
+          { rotulo: "Forma de pagamento:", chave: "forma_pagamento" },
+        ],
+      },
+      { celulas: [{ rotulo: "Mês que vai participar:", chave: "mes_participacao" }, { rotulo: "Valor de entrada:", chave: "valor_entrada" }] },
+    ],
+  },
   rodape: {
-    aviso: AVISO_ANALISE_INTERNA,
-    // A ficha de papel é assinada. Duas linhas: quem contrata e quem vende.
-    assinaturas: ["Assinatura do consorciado", "Assinatura do consultor"],
-    mostrarConsultor: true,
+    // Sem selo de resultado, não há decisão a ressalvar: este documento coleta
+    // dados, não afirma aprovação.
+    aviso: "",
+    assinaturas: [],
+    mostrarConsultor: false,
     mostrarData: true,
+    institucional: [
+      "MULTIMARCAS ADMINISTRADORA DE CONSÓRCIOS LTDA",
+      "Av. Amazonas, 126, Centro · Belo Horizonte/MG",
+      "Fone: (31) 3036-1666 | Ouvidoria: 0800-722-1666",
+      "multimarcasconsorcios.com.br",
+    ],
   },
 };
 
