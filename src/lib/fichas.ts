@@ -27,6 +27,8 @@ export type Ficha = {
   nomeMae?: string;
   nomePai?: string;
   // cônjuge
+  /** Linha CHECAGEM do formulário — o mesmo campo que sai no PDF. */
+  checagem?: string;
   temConjuge: boolean;
   conjugeNome?: string;
   conjugeCpf?: string;
@@ -166,6 +168,7 @@ function fromDb(r: Row): Ficha {
     estadoCivil: s(r.estado_civil),
     nomeMae: s(r.nome_mae),
     nomePai: s(r.nome_pai),
+    checagem: s(r.checagem),
     temConjuge: Boolean(r.tem_conjuge),
     conjugeNome: s(r.conjuge_nome),
     conjugeCpf: s(r.conjuge_cpf),
@@ -209,6 +212,7 @@ function toDb(f: Partial<Ficha>): Row {
   põe("rg", f.rg); põe("orgao_emissor", f.orgaoEmissor);
   põe("naturalidade", f.naturalidade); põe("nacionalidade", f.nacionalidade);
   põe("estado_civil", f.estadoCivil); põe("nome_mae", f.nomeMae); põe("nome_pai", f.nomePai);
+  põe("checagem", f.checagem);
   põe("tem_conjuge", f.temConjuge); põe("conjuge_nome", f.conjugeNome);
   põe("conjuge_cpf", f.conjugeCpf); põe("conjuge_nascimento", f.conjugeNascimento);
   põe("cep", f.cep); põe("endereco", f.endereco); põe("numero", f.numero);

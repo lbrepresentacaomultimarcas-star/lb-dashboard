@@ -293,6 +293,10 @@ export function FichaFinal({
             )}
           </div>
 
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Ler rotulo="Checagem" valor={ficha.checagem} />
+          </div>
+
           <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Endereço</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Ler rotulo="CEP" valor={ficha.cep} />
@@ -430,6 +434,14 @@ export function FichaFinal({
           <C rotulo="Nascimento" tipo="date" valor={f.conjugeNascimento ?? ""} onChange={(v) => set("conjugeNascimento", v)} />
         </div>
       )}
+
+      {/* CHECAGEM: a linha do formulário que antes só existia no papel. */}
+      <C
+        rotulo="Checagem"
+        valor={f.checagem ?? ""}
+        onChange={(v) => set("checagem", v)}
+        ph="Conferência de quem recebe a ficha"
+      />
 
       <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Endereço</p>
       <div className="grid gap-3 sm:grid-cols-2">

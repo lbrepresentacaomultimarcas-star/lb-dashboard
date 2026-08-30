@@ -187,6 +187,7 @@ export function dicionarioCompleto(
     naturalidade: texto(f.naturalidade),
     nacionalidade: texto(f.nacionalidade),
     estado_civil: texto(f.estadoCivil),
+    checagem: texto(f.checagem),
     nome_mae: texto(f.nomeMae),
     nome_pai: texto(f.nomePai),
     // cônjuge
@@ -362,9 +363,9 @@ export const MODELO_FICHA_FINAL: ModeloFicha = {
       { celulas: [{ rotulo: "Naturalidade:", chave: "naturalidade" }, { rotulo: "Nacionalidade:", chave: "nacionalidade" }] },
       { celulas: [{ rotulo: "Estado Civil:", chave: "estado_civil" }] },
       { celulas: [{ rotulo: "Nome, CPF e Data de Nascimento do Cônjuge:", chave: "conjuge_completo" }] },
-      // CHECAGEM não tem origem no CRM: é a conferência de quem recebe a ficha,
-      // feita à mão. Sai em branco, como no papel.
-      { celulas: [{ rotulo: "CHECAGEM:" }] },
+      // A linha do papel que era preenchida à mão. Agora tem campo na tela de
+      // edição; sem preenchimento continua saindo em branco, como sempre saiu.
+      { celulas: [{ rotulo: "CHECAGEM:", chave: "checagem" }] },
       { celulas: [{ rotulo: "Nome da Mãe:", chave: "nome_mae" }] },
       { celulas: [{ rotulo: "Nome do Pai:", chave: "nome_pai" }] },
       {

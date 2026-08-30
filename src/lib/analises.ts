@@ -123,6 +123,8 @@ export type Analise = {
   analisePorNome?: string;
   criadoEm: string;
   atualizadoEm?: string;
+  /** Exclusão lógica: some da tela, continua no banco. */
+  excluidoEm?: string;
 };
 
 export type DocumentoAnalise = {
@@ -219,6 +221,7 @@ function fromDb(r: Row): Analise {
     analisePorNome: s(r.analise_por_nome),
     criadoEm: String(r.criado_em),
     atualizadoEm: s(r.atualizado_em),
+    excluidoEm: s(r.excluido_em),
   };
 }
 
@@ -313,6 +316,8 @@ export const analisesApi = {
     const { data, error } = await supabaseBrowser()
       .from("analises")
       .select("*")
+      // excluída some da lista; continua no banco para auditoria
+      .is("excluido_em", null)
       .order("criado_em", { ascending: false })
       .limit(2000);
     if (error) {
@@ -511,6 +516,23 @@ export const analisesApi = {
       .not("analise_fim", "is", null);
     if (error) throw error;
     await registrar(id, { tipo: "analise", detalhe: "Análise cancelada pelo administrador" }, quem.nome);
+  },
+
+  /**
+   * Exclusão LÓGICA da proposta.
+   *
+   * Não apaga: marca. O card some e não volta ao recarregar, mas a análise, a
+   * ficha e o histórico continuam no banco — apagar de verdade levaria tudo
+   * junto por cascade, e este módulo foi feito com "histórico não se apaga".
+   */
+  async excluir(id: string, quem: { nome?: string } = {}): Promise<void> {
+    const { error } = await supabaseBrowser()
+      .from("analises")
+      .update({ excluido_em: new Date().toISOString(), excluido_por_nome: quem.nome ?? null })
+      .eq("id", id)
+      .is("excluido_em", null);
+    if (error) throw error;
+    await registrar(id, { tipo: "excluida", detalhe: "Proposta excluída da lista" }, quem.nome);
   },
 
   async historico(analiseId: string): Promise<EventoAnalise[]> {

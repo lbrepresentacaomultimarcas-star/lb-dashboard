@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   XCircle,
 } from "lucide-react";
@@ -370,6 +371,26 @@ export default function AnalisesPage() {
     }
   }
 
+  /** Exclusão de uma proposta. Some da lista e não volta ao recarregar. */
+  async function excluirProposta(a: Analise) {
+    if (
+      !confirm(
+        `Excluir a proposta de "${a.nome}"?
+
+Ela sai da lista. O registro continua guardado no banco para auditoria.`,
+      )
+    )
+      return;
+    try {
+      await analisesApi.excluir(a.id, { nome: session?.nome });
+      if (aberta?.id === a.id) setAberta(null);
+      await recarregar();
+      notify.success("Proposta excluída", a.nome);
+    } catch (e) {
+      notify.error("Não consegui excluir", e instanceof Error ? e.message : undefined);
+    }
+  }
+
   /* Há análise correndo? A fonte é o banco: `analiseFim` preenchido significa
      análise pendente, e é isso que impede iniciar outra por cima. */
   const analiseRodando = !!aberta?.analiseFim;
@@ -467,14 +488,28 @@ export default function AnalisesPage() {
             {filtradas.map((a) => {
               const info = STATUS_ANALISE_INFO[a.status];
               return (
+                <div key={a.id} className="group relative">
+                  {admin && (
+                    <button
+                      type="button"
+                      onClick={() => void excluirProposta(a)}
+                      aria-label={`Excluir a proposta de ${a.nome}`}
+                      title="Excluir esta proposta"
+                      className="absolute right-2.5 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-lg text-[var(--color-muted)] opacity-0 transition-all hover:bg-[var(--color-danger)]/15 hover:text-[var(--color-danger)] focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 <button
-                  key={a.id}
                   onClick={() => void abrirFicha(a)}
-                  className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--color-brand)]/50"
+                  className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--color-brand)]/50"
                 >
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight">{a.nome}</p>
-                    <Badge tone={info.tone}>{info.curto}</Badge>
+                    {/* respiro à direita para a lixeira não cair sobre a etiqueta */}
+                    <span className={admin ? "mr-7" : ""}>
+                      <Badge tone={info.tone}>{info.curto}</Badge>
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                     <Linha rotulo="Objetivo" valor={a.objetivo || "—"} />
@@ -484,6 +519,7 @@ export default function AnalisesPage() {
                   </div>
                   <p className="mt-3 text-[11px] text-[var(--color-muted)]">Criada em {dataHora(a.criadoEm)}</p>
                 </button>
+                </div>
               );
             })}
           </div>
