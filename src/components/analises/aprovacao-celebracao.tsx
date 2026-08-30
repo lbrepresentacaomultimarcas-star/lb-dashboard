@@ -15,7 +15,7 @@
 // o caminho de sempre, sem cerimônia nenhuma.
 
 import { useEffect, useRef } from "react";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, FileText } from "lucide-react";
 
 const OURO = "#D4A72C";
 const OURO_CLARO = "#F4D67B";
@@ -48,7 +48,13 @@ function apoioDe(mensagem: string): string {
   return "Sua proposta foi aprovada com sucesso.";
 }
 
-const ETAPAS = ["Análise concluída", "Proposta aprovada", "Próxima etapa liberada"];
+// As frases são as que já estavam na tela; o que entra é o sub-status ao lado,
+// para o checklist ler como progresso e não como lista solta.
+const ETAPAS: { texto: string; estado: string }[] = [
+  { texto: "Análise concluída", estado: "Concluído" },
+  { texto: "Proposta aprovada", estado: "Concluído" },
+  { texto: "Próxima etapa liberada", estado: "Aprovado" },
+];
 
 /**
  * Confetes discretos: poucos, dourados, e param sozinhos.
@@ -94,10 +100,13 @@ export function AprovacaoCelebracao({
   nomeCliente,
   mensagem,
   onContinuar,
+  onVerFicha,
 }: {
   nomeCliente: string;
   mensagem: string;
   onContinuar: () => void;
+  /** Fecha e leva direto para a ficha final — o passo seguinte de verdade. */
+  onVerFicha?: () => void;
 }) {
   const botao = useRef<HTMLButtonElement | null>(null);
 
@@ -117,7 +126,10 @@ export function AprovacaoCelebracao({
       role="dialog"
       aria-modal="true"
       aria-label="Proposta aprovada"
-      className="lb-aprov-fundo fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto px-5 py-8"
+      /* items-start + my-auto no filho: centraliza quando sobra espaço e,
+         quando o conteúdo é mais alto que a tela, NÃO corta o topo.
+         Com items-center o começo fica acima do scroll e some. */
+      className="lb-aprov-fundo fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto px-5 py-8"
       style={{
         background:
           "radial-gradient(ellipse 80% 60% at 50% 8%, rgba(16,185,129,0.20), transparent 60%)," +
@@ -129,7 +141,14 @@ export function AprovacaoCelebracao({
 
       {/* z-10: o confete nunca passa por cima do nome do cliente — é o que
           ele mais vai olhar, e legibilidade ganha do enfeite. */}
-      <div className="relative z-10 w-full max-w-lg text-center">
+      <div className="relative z-10 my-auto w-full max-w-lg text-center">
+        <span
+          className="lb-aprov-sobe mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em]"
+          style={{ borderColor: `${VERDE}55`, background: `${VERDE}14`, color: VERDE }}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" /> Análise concluída
+        </span>
+
         {/* selo */}
         <div className="relative mx-auto mb-6 h-24 w-24 sm:h-28 sm:w-28">
           <span
@@ -203,22 +222,31 @@ export function AprovacaoCelebracao({
 
         {/* etapas cumpridas */}
         <div
-          className="lb-aprov-sobe mx-auto mt-7 w-full max-w-xs space-y-2.5 border-y py-5"
-          style={{ borderColor: "rgba(255,255,255,0.12)", animationDelay: "0.9s" }}
+          className="lb-aprov-sobe mx-auto mt-7 w-full max-w-xs space-y-2 rounded-xl border px-4 py-4"
+          style={{
+            borderColor: "rgba(255,255,255,0.1)",
+            background: "rgba(255,255,255,0.02)",
+            animationDelay: "0.9s",
+          }}
         >
           {ETAPAS.map((e, i) => (
             <div
-              key={e}
-              className="lb-aprov-sobe flex items-center justify-center gap-2.5 text-sm text-white/85"
+              key={e.texto}
+              className="lb-aprov-sobe flex items-center gap-3 text-left"
               style={{ animationDelay: `${1 + i * 0.12}s` }}
             >
               <span
-                className="grid h-5 w-5 shrink-0 place-items-center rounded-full"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-full"
                 style={{ background: `${VERDE}26`, border: `1px solid ${VERDE}66` }}
               >
-                <Check className="h-3 w-3" style={{ color: VERDE }} />
+                <Check className="h-3.5 w-3.5" style={{ color: VERDE }} />
               </span>
-              {e}
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-tight text-white/90">{e.texto}</span>
+                <span className="block text-[11px] leading-tight" style={{ color: VERDE }}>
+                  {e.estado}
+                </span>
+              </span>
             </div>
           ))}
         </div>
@@ -250,6 +278,16 @@ export function AprovacaoCelebracao({
         >
           Continuar <ArrowRight className="h-4 w-4" />
         </button>
+
+        {onVerFicha && (
+          <button
+            onClick={onVerFicha}
+            className="lb-aprov-sobe mt-3 inline-flex h-11 w-full max-w-xs items-center justify-center gap-2 rounded-xl border text-xs font-bold uppercase tracking-wider transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            style={{ borderColor: `${VERDE}55`, color: VERDE, animationDelay: "1.7s" }}
+          >
+            <FileText className="h-4 w-4" /> Ver ficha final da operação
+          </button>
+        )}
       </div>
     </div>
   );

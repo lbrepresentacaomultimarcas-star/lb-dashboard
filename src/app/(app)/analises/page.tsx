@@ -833,7 +833,7 @@ export default function AnalisesPage() {
             </section>
 
             {/* ficha final da operação — a ÚLTIMA etapa */}
-            <section>
+            <section id="ficha-final">
               <h3 className="mb-2 flex items-center gap-2 text-sm font-bold">
                 <FileText className="h-4 w-4" /> Ficha final da operação
               </h3>
@@ -882,6 +882,15 @@ export default function AnalisesPage() {
           nomeCliente={celebrar.nome}
           mensagem={celebrar.mensagem}
           onContinuar={() => setCelebrar(null)}
+          onVerFicha={() => {
+            setCelebrar(null);
+            // a seção já está aberta atrás da tela; só precisa entrar no campo
+            // de visão — sem isso o consultor fecha e procura onde clicar.
+            setTimeout(
+              () => document.getElementById("ficha-final")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+              80,
+            );
+          }}
         />
       )}
 

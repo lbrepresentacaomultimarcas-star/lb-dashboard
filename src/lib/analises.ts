@@ -19,7 +19,9 @@ export type StatusFinal = Exclude<StatusAnalise, "em_analise">;
 
 /** Tempos oferecidos. Lista, não constante fixa: acrescentar não pede deploy
  *  de schema — `analise_minutos` é inteiro no banco. */
-export const TEMPOS_ANALISE = [5, 10, 15] as const;
+// Os quatro tempos já pedidos em conversas diferentes. Manter todos evita
+// tirar um que ele usa; acrescentar outro é editar esta linha.
+export const TEMPOS_ANALISE = [5, 7, 10, 15] as const;
 
 /**
  * Frases do resultado NÃO aprovado.
