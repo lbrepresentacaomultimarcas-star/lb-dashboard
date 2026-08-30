@@ -18,7 +18,7 @@ import {
   type Analise,
 } from "../analises";
 import { telefoneBonito } from "../telefone";
-import type { Ficha } from "../fichas";
+import { rotuloChavePix, type Ficha } from "../fichas";
 
 /* --------------------------------- Descritor -------------------------------- */
 
@@ -45,6 +45,13 @@ export type SecaoFicha = {
  */
 export type CelulaFicha = {
   rotulo: string;
+  /**
+   * Rótulo dinâmico: quando existe, o texto vem do dicionário em vez de ser
+   * fixo. É o que permite a mesma linha do formulário dizer "Banco:" ou
+   * "Tipo de chave Pix:" conforme o que o cliente escolheu — sem duplicar
+   * modelo e sem rótulo mentindo sobre o valor ao lado.
+   */
+  rotuloChave?: string;
   /** Chave no dicionário. Vazio = campo que se preenche à mão (ex.: CHECAGEM). */
   chave?: string;
   extra?: { rotulo: string; chave?: string };
@@ -209,11 +216,35 @@ export function dicionarioCompleto(
         .filter(Boolean)
         .join(" · ") || "—",
     cidade_uf: [f.cidade ?? a.cidade, f.estado].filter(Boolean).join(" / ") || "—",
-    // bancários
+    // bancários — conta e PIX ocupam as MESMAS quatro caixas do formulário,
+    // cada uma com o rótulo certo para o que está escrito nela.
     banco_tipo_conta: texto(f.bancoTipoConta),
     banco_nome: texto(f.bancoNome),
     banco_agencia: texto(f.bancoAgencia),
     banco_conta: texto(f.bancoConta),
+    pix_tipo: rotuloChavePix(f.pixTipo) || "—",
+    pix_chave: texto(f.pixChave),
+    ...(f.bancoMeio === "pix"
+      ? {
+          rot_banco_1: "Recebimento:",
+          banco_v1: "PIX",
+          rot_banco_2: "Tipo de chave Pix:",
+          banco_v2: rotuloChavePix(f.pixTipo) || "—",
+          rot_banco_3: "Chave Pix:",
+          banco_v3: texto(f.pixChave),
+          rot_banco_4: "",
+          banco_v4: "",
+        }
+      : {
+          rot_banco_1: "Tipo de conta:",
+          banco_v1: texto(f.bancoTipoConta),
+          rot_banco_2: "Banco:",
+          banco_v2: texto(f.bancoNome),
+          rot_banco_3: "Agência:",
+          banco_v3: texto(f.bancoAgencia),
+          rot_banco_4: "Conta:",
+          banco_v4: texto(f.bancoConta),
+        }),
     // operação
     contrato: texto(f.contrato),
     cota: texto(f.cota),
@@ -343,8 +374,18 @@ export const MODELO_FICHA_FINAL: ModeloFicha = {
         ],
       },
       { celulas: [{ rotulo: "Cidade:", chave: "cidade" }, { rotulo: "Estado:", chave: "estado" }] },
-      { celulas: [{ rotulo: "Tipo de conta:", chave: "banco_tipo_conta" }, { rotulo: "Banco:", chave: "banco_nome" }] },
-      { celulas: [{ rotulo: "Agência:", chave: "banco_agencia" }, { rotulo: "Conta:", chave: "banco_conta" }] },
+      {
+        celulas: [
+          { rotulo: "Tipo de conta:", rotuloChave: "rot_banco_1", chave: "banco_v1" },
+          { rotulo: "Banco:", rotuloChave: "rot_banco_2", chave: "banco_v2" },
+        ],
+      },
+      {
+        celulas: [
+          { rotulo: "Agência:", rotuloChave: "rot_banco_3", chave: "banco_v3" },
+          { rotulo: "Conta:", rotuloChave: "rot_banco_4", chave: "banco_v4" },
+        ],
+      },
       { celulas: [{ rotulo: "CONTRATO:", chave: "contrato" }, { rotulo: "COTA:", chave: "cota" }] },
       {
         celulas: [

@@ -31,7 +31,11 @@ import {
   ESTADOS_BR,
   ESTADOS_CIVIS,
   FORMAS_PAGAMENTO,
+  MEIOS_BANCARIOS,
+  TIPOS_CHAVE_PIX,
   TIPOS_CONTA,
+  rotuloChavePix,
+  type MeioBancario,
   camposFaltando,
   fichasApi,
   podeCriarFicha,
@@ -299,10 +303,20 @@ export function FichaFinal({
 
           <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Bancários</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Ler rotulo="Tipo de conta" valor={ficha.bancoTipoConta} />
-            <Ler rotulo="Banco" valor={ficha.bancoNome} />
-            <Ler rotulo="Agência" valor={ficha.bancoAgencia} />
-            <Ler rotulo="Conta" valor={ficha.bancoConta} />
+            {ficha.bancoMeio === "pix" ? (
+              <>
+                <Ler rotulo="Recebimento" valor="PIX" />
+                <Ler rotulo="Tipo de chave" valor={rotuloChavePix(ficha.pixTipo)} />
+                <Ler rotulo="Chave Pix" valor={ficha.pixChave} />
+              </>
+            ) : (
+              <>
+                <Ler rotulo="Tipo de conta" valor={ficha.bancoTipoConta} />
+                <Ler rotulo="Banco" valor={ficha.bancoNome} />
+                <Ler rotulo="Agência" valor={ficha.bancoAgencia} />
+                <Ler rotulo="Conta" valor={ficha.bancoConta} />
+              </>
+            )}
           </div>
 
           <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Operação</p>
@@ -429,12 +443,72 @@ export function FichaFinal({
       </div>
 
       <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Dados bancários</p>
-      <Opcoes rotulo="Tipo de conta" opcoes={TIPOS_CONTA} valor={f.bancoTipoConta ?? ""} onChange={(v) => set("bancoTipoConta", v)} />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <C rotulo="Banco" valor={f.bancoNome ?? ""} onChange={(v) => set("bancoNome", v)} />
-        <C rotulo="Agência" valor={f.bancoAgencia ?? ""} onChange={(v) => set("bancoAgencia", v)} />
-        <C rotulo="Conta" valor={f.bancoConta ?? ""} onChange={(v) => set("bancoConta", v)} />
+      {/* ONDE O CLIENTE RECEBE. Não confundir com a forma de pagamento da
+          operação, logo abaixo — aquela é como ele PAGA, e não foi tocada. */}
+      <div>
+        <Label>Tipo de recebimento</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {MEIOS_BANCARIOS.map((m) => (
+            <button
+              key={m.chave}
+              type="button"
+              onClick={() => set("bancoMeio", m.chave as MeioBancario)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                f.bancoMeio === m.chave
+                  ? "border-[var(--color-brand)] bg-[var(--color-brand)]/15 text-[var(--color-brand)]"
+                  : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              {m.rotulo}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {f.bancoMeio === "pix" ? (
+        <>
+          <div>
+            <Label>Tipo de chave Pix</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TIPOS_CHAVE_PIX.map((t) => (
+                <button
+                  key={t.chave}
+                  type="button"
+                  onClick={() => set("pixTipo", f.pixTipo === t.chave ? "" : t.chave)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    f.pixTipo === t.chave
+                      ? "border-[var(--color-brand)] bg-[var(--color-brand)]/15 text-[var(--color-brand)]"
+                      : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                  }`}
+                >
+                  {t.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+          <C
+            rotulo="Chave Pix"
+            valor={f.pixChave ?? ""}
+            onChange={(v) => set("pixChave", v)}
+            ph={
+              f.pixTipo === "cpf" ? "000.000.000-00"
+              : f.pixTipo === "cnpj" ? "00.000.000/0000-00"
+              : f.pixTipo === "email" ? "cliente@exemplo.com"
+              : f.pixTipo === "telefone" ? "(79) 90000-0000"
+              : "chave aleatória"
+            }
+          />
+        </>
+      ) : (
+        <>
+          <Opcoes rotulo="Tipo de conta" opcoes={TIPOS_CONTA} valor={f.bancoTipoConta ?? ""} onChange={(v) => set("bancoTipoConta", v)} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <C rotulo="Banco" valor={f.bancoNome ?? ""} onChange={(v) => set("bancoNome", v)} />
+            <C rotulo="Agência" valor={f.bancoAgencia ?? ""} onChange={(v) => set("bancoAgencia", v)} />
+            <C rotulo="Conta" valor={f.bancoConta ?? ""} onChange={(v) => set("bancoConta", v)} />
+          </div>
+        </>
+      )}
 
       <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Operação</p>
       <div className="grid gap-3 sm:grid-cols-3">

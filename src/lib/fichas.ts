@@ -39,11 +39,14 @@ export type Ficha = {
   bairro?: string;
   cidade?: string;
   estado?: string;
-  // bancários
+  // bancários — como o consorciado RECEBE (devolução), não como ele paga
+  bancoMeio: MeioBancario;
   bancoTipoConta?: string;
   bancoNome?: string;
   bancoAgencia?: string;
   bancoConta?: string;
+  pixTipo?: string;
+  pixChave?: string;
   // operação
   contrato?: string;
   cota?: string;
@@ -68,6 +71,32 @@ export type Ficha = {
 export const ESTADOS_CIVIS = ["Solteiro(a)", "Casado(a)", "União estável", "Divorciado(a)", "Viúvo(a)"];
 
 export const TIPOS_CONTA = ["Conta corrente", "Conta poupança", "Conta salário", "Conta pagamento"];
+
+/**
+ * Onde o consorciado RECEBE.
+ *
+ * Não confundir com `formaPagamento`, que é como ele PAGA as parcelas. As duas
+ * podem dizer "PIX" ao mesmo tempo e estarem certas: uma é saída, a outra é
+ * entrada. Por isso são campos separados, e a forma de pagamento não foi
+ * tocada.
+ */
+export type MeioBancario = "conta" | "pix";
+
+export const MEIOS_BANCARIOS: { chave: MeioBancario; rotulo: string }[] = [
+  { chave: "conta", rotulo: "Conta bancária" },
+  { chave: "pix", rotulo: "Pix" },
+];
+
+export const TIPOS_CHAVE_PIX = [
+  { chave: "cpf", rotulo: "CPF" },
+  { chave: "cnpj", rotulo: "CNPJ" },
+  { chave: "email", rotulo: "E-mail" },
+  { chave: "telefone", rotulo: "Telefone" },
+  { chave: "aleatoria", rotulo: "Chave aleatória" },
+];
+
+export const rotuloChavePix = (c?: string) =>
+  TIPOS_CHAVE_PIX.find((t) => t.chave === c)?.rotulo ?? "";
 
 export const FORMAS_PAGAMENTO = ["Boleto", "Débito em conta", "PIX", "Cartão de crédito", "Outro"];
 
@@ -108,7 +137,12 @@ export function camposFaltando(a: Analise, f: Ficha | null): string[] {
   if (!f.nomeMae?.trim()) falta.push("Nome da mãe");
   if (!f.cep?.trim()) falta.push("CEP");
   if (!f.endereco?.trim()) falta.push("Endereço");
-  if (!f.bancoNome?.trim()) falta.push("Banco");
+  if (f.bancoMeio === "pix") {
+    if (!f.pixTipo) falta.push("Tipo de chave Pix");
+    if (!f.pixChave?.trim()) falta.push("Chave Pix");
+  } else if (!f.bancoNome?.trim()) {
+    falta.push("Banco");
+  }
   if (!f.contrato?.trim()) falta.push("Contrato");
   if (!f.grupo?.trim()) falta.push("Grupo");
   if (!f.cota?.trim()) falta.push("Cota");
@@ -143,10 +177,13 @@ function fromDb(r: Row): Ficha {
     bairro: s(r.bairro),
     cidade: s(r.cidade),
     estado: s(r.estado),
+    bancoMeio: (String(r.banco_meio ?? "conta") as MeioBancario),
     bancoTipoConta: s(r.banco_tipo_conta),
     bancoNome: s(r.banco_nome),
     bancoAgencia: s(r.banco_agencia),
     bancoConta: s(r.banco_conta),
+    pixTipo: s(r.pix_tipo),
+    pixChave: s(r.pix_chave),
     contrato: s(r.contrato),
     cota: s(r.cota),
     grupo: s(r.grupo),
@@ -179,6 +216,7 @@ function toDb(f: Partial<Ficha>): Row {
   põe("cidade", f.cidade); põe("estado", f.estado);
   põe("banco_tipo_conta", f.bancoTipoConta); põe("banco_nome", f.bancoNome);
   põe("banco_agencia", f.bancoAgencia); põe("banco_conta", f.bancoConta);
+  põe("banco_meio", f.bancoMeio); põe("pix_tipo", f.pixTipo); põe("pix_chave", f.pixChave);
   põe("contrato", f.contrato); põe("cota", f.cota); põe("grupo", f.grupo);
   põe("forma_pagamento", f.formaPagamento); põe("valor_entrada", f.valorEntrada);
   põe("mes_participacao", f.mesParticipacao);

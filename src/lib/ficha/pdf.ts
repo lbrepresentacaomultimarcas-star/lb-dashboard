@@ -168,8 +168,10 @@ async function desenharTabela(doc: Doc, modelo: ModeloFicha, dic: Record<string,
       doc.rect(x, y, w, h, "S");
 
       doc.setTextColor(...AZUL).setFont("helvetica", "bold").setFontSize(7.6);
-      const larguraRotulo = doc.getTextWidth(cel.rotulo);
-      doc.text(cel.rotulo, x + 2.5, y + 5);
+      // rótulo dinâmico quando o modelo pedir (bloco bancário: conta x PIX)
+      const rotulo = cel.rotuloChave !== undefined ? (dic[cel.rotuloChave] ?? cel.rotulo) : cel.rotulo;
+      const larguraRotulo = doc.getTextWidth(rotulo);
+      doc.text(rotulo, x + 2.5, y + 5);
 
       /*
        * O valor entra ao lado do rótulo, como quem preenche à mão. Mas o
