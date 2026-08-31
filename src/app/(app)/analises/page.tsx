@@ -30,8 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { notify } from "@/lib/notify";
-import { useLeadsEscopo, useSession, useVendedoresEscopo } from "@/lib/store";
-import { ehAdmin } from "@/lib/permissions";
+import { useEscopo, useLeadsEscopo, useSession, useVendedoresEscopo } from "@/lib/store";
+import { noEscopo } from "@/lib/scope";
 import { telefoneBonito } from "@/lib/telefone";
 import {
   AVISO_ANALISE_INTERNA,
@@ -111,7 +111,7 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
 
 export default function AnalisesPage() {
   const session = useSession();
-  const admin = ehAdmin(session);
+  const escopo = useEscopo();
   const leads = useLeadsEscopo();
   const vendedores = useVendedoresEscopo();
 
@@ -126,6 +126,21 @@ export default function AnalisesPage() {
   const [buscaLead, setBuscaLead] = useState("");
 
   const [aberta, setAberta] = useState<Analise | null>(null);
+  /*
+   * Quem responde por esta proposta.
+   *
+   * A análise é parte da negociação, e o consultor não pode ficar parado
+   * esperando o administrador estar disponível para fechar: quem é dono do
+   * negócio conduz a etapa inteira — decide, programa o tempo, mostra ao
+   * cliente e confere o resultado.
+   *
+   * O limite não é o CARGO, é o DONO: cada um só mexe nas próprias propostas
+   * (supervisor e líder, nas da equipe). Por isso a regra sai do mesmo motor
+   * de escopo do resto do CRM (`noEscopo`), que é o par de
+   * `pode_ver_vendedor()` no banco — o banco recusa o que sair disso, então
+   * tela e banco dizem a mesma coisa.
+   */
+  const conduzAberta = !!aberta && noEscopo(escopo, aberta.vendedorId);
   const [historico, setHistorico] = useState<EventoAnalise[]>([]);
   const [carregandoFicha, setCarregandoFicha] = useState(false);
   const [decisao, setDecisao] = useState<StatusAnalise | null>(null);
@@ -487,9 +502,13 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtradas.map((a) => {
               const info = STATUS_ANALISE_INFO[a.status];
+              // por card: cada um responde pelas SUAS propostas. A exclusão é
+              // lógica (some da lista, fica no banco) e o banco só aceita de
+              // quem está no escopo — ninguém apaga proposta de outro.
+              const conduz = noEscopo(escopo, a.vendedorId);
               return (
                 <div key={a.id} className="group relative">
-                  {admin && (
+                  {conduz && (
                     <button
                       type="button"
                       onClick={() => void excluirProposta(a)}
@@ -507,7 +526,7 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight">{a.nome}</p>
                     {/* respiro à direita para a lixeira não cair sobre a etiqueta */}
-                    <span className={admin ? "mr-7" : ""}>
+                    <span className={conduz ? "mr-7" : ""}>
                       <Badge tone={info.tone}>{info.curto}</Badge>
                     </span>
                   </div>
@@ -708,8 +727,10 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
                         {aberta.analiseMinutos} min · iniciada por {aberta.analisePorNome ?? "—"}
                       </span>
                     </div>
-                    {admin && (
+                    {conduzAberta && (
                       <div className="mt-2 flex flex-wrap gap-2">
+                        {/* quem está com o cliente na frente é o consultor: é
+                            ele que mostra o contador e confere o resultado. */}
                         <Button onClick={() => setMostrarRelogio(true)}>
                           <Hourglass className="h-4 w-4" /> Mostrar ao cliente
                         </Button>
@@ -717,7 +738,7 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
                       </div>
                     )}
                   </div>
-                ) : admin ? (
+                ) : conduzAberta ? (
                   <div className="mt-3 space-y-2">
                     <div className="flex flex-wrap gap-2">
                       {([
@@ -861,8 +882,11 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
                     )}
                   </div>
                 ) : (
+                  // Rede de segurança: com o escopo, uma proposta de outro
+                  // consultor nem chega a aparecer na lista. Se um dia chegar,
+                  // é para ficar claro POR QUE não há botão aqui.
                   <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-                    A decisão é do administrador. Você acompanha a situação por aqui.
+                    Esta proposta é de outro consultor. Você acompanha a situação por aqui.
                   </p>
                 )}
               </div>
