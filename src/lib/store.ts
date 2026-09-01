@@ -1207,6 +1207,19 @@ export const clientesApi = {
 // API — leads
 // ============================================================
 export const leadsApi = {
+  /**
+   * Reflete na tela uma mudança que o SERVIDOR já confirmou.
+   *
+   * Existe para quem gravou por outro caminho (a função `distribuir_leads`,
+   * por exemplo) e não precisa gravar de novo — só quer o card no lugar certo
+   * sem esperar o tempo real chegar. Nunca use isto antes de ter confirmação:
+   * mexer na tela sem certeza foi exatamente o que escondeu a transferência
+   * que falhava calada.
+   */
+  aplicarLocal(id: string, patch: Partial<Lead>) {
+    state.leads = state.leads.map((l) => (l.id === id ? { ...l, ...patch } : l));
+    notify();
+  },
   /** Devolve o lead criado (o fechamento direto no cadastro precisa do id). */
   async add(input: Omit<Lead, "id" | "criadoEm">): Promise<Lead> {
     let criado: Lead;
@@ -1228,8 +1241,29 @@ export const leadsApi = {
   async update(id: string, patch: Partial<Lead>) {
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb.from("leads").update(leadToDb(patch)).eq("id", id);
+      /*
+       * `.select("id")` não é enfeite: é o que transforma um fracasso mudo
+       * em erro.
+       *
+       * Quando a regra de acesso do banco recusa a alteração, ela não devolve
+       * ERRO — devolve "0 linhas alteradas". Sem pedir as linhas de volta,
+       * `error` vem nulo, o código dá a gravação como certa, a tela muda o
+       * card de lugar e aparece "transferido para Fulano". O negócio some da
+       * vista e não chegou em ninguém: nada foi gravado.
+       *
+       * Era assim que uma transferência recusada parecia ter funcionado.
+       */
+      const { data, error } = await sb
+        .from("leads")
+        .update(leadToDb(patch))
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error(
+          "A alteração não foi gravada. O banco recusou (permissão) ou este negócio não existe mais. Atualize a página.",
+        );
+      }
     }
     state.leads = state.leads.map((l) => (l.id === id ? { ...l, ...patch } : l));
     if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);

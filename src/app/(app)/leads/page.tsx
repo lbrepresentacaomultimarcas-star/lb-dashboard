@@ -17,6 +17,7 @@ import {
   GripVertical,
   History,
   Home,
+  Loader2,
   MessageCircle,
   MessageCircleOff,
   MoreVertical,
@@ -44,8 +45,15 @@ import {
   Zap,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
-import { leadsApi, useLeadsEscopo, useSession, useVendasAllEscopo, useVendedoresEscopo, vendasApi } from "@/lib/store";
+import { leadsApi, useLeadsEscopo, useRoster, useSession, useVendasAllEscopo, useVendedoresEscopo, vendasApi } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
+import {
+  consultoresQuePodemReceber,
+  motivoNaoRecebe,
+  negocioPreso,
+  previaDaDivisao,
+} from "@/lib/destinatarios";
+import { supabaseBrowser, supabaseEnabled } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
 import {
   LEAD_STATUS_INFO,
@@ -290,12 +298,36 @@ type LeadTag = {
   bg: string;
 };
 
+/** O que a função `distribuir_leads()` do banco devolve. */
+type ResultadoDistribuicao = {
+  distribuidos: number;
+  /** Quantos vieram da carteira parada de um consultor bloqueado. */
+  recuperados: number;
+  /** Quantos ficaram onde estavam por terem consultor ativo. */
+  jaTinhamDono: number;
+  porConsultor: { vendedorId: string; nome: string; quantos: number }[];
+};
+
 export default function LeadsPage() {
   const leads = useLeadsEscopo();
   const vendas = useVendasAllEscopo(); // idempotência do fechamento vê canceladas também
   const vendedores = useVendedoresEscopo();
+  const roster = useRoster();
   const session = useSession();
   const gestor = temPermissao(session, "supervisor");
+  const admin = temPermissao(session, "admin");
+
+  /*
+   * Quem pode receber negócio.
+   *
+   * A lista antiga mostrava a tabela de vendedores inteira — inclusive quem
+   * saiu da empresa e quem nunca teve login ligado ao cadastro. Escolher um
+   * desses fazia o negócio sumir: gravado no banco, invisível para todos.
+   */
+  const podemReceber = useMemo(
+    () => consultoresQuePodemReceber(vendedores, roster),
+    [vendedores, roster],
+  );
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");
   const [busca, setBusca] = useState("");
   // Digitar é instantâneo; redesenhar o quadro pode esperar um tick. É isso que
@@ -312,15 +344,54 @@ export default function LeadsPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<LeadStatus | null>(null);
 
+  /* ---------------------- distribuição em massa (admin) --------------------- */
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [distribuirAberto, setDistribuirAberto] = useState(false);
+  const [destinatarios, setDestinatarios] = useState<Set<string>>(new Set());
+  const [distribuindo, setDistribuindo] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoDistribuicao | null>(null);
+  /** Tirar negócio de quem está ATIVO exige marcar — nunca por acidente. */
+  const [incluirAtribuidos, setIncluirAtribuidos] = useState(false);
+
   const filtrados = useMemo(
     () =>
       filtroVendedor === "todos"
         ? leads
         : filtroVendedor === "sem-vendedor"
           ? leads.filter((l) => !l.vendedorId)
-          : leads.filter((l) => l.vendedorId === filtroVendedor),
-    [leads, filtroVendedor],
+          : // achar de uma vez a carteira de quem foi bloqueado: são negócios
+            // com responsável no papel e ninguém trabalhando de verdade
+            filtroVendedor === "parados"
+            ? leads.filter((l) => negocioPreso(l.vendedorId, roster))
+            : leads.filter((l) => l.vendedorId === filtroVendedor),
+    [leads, filtroVendedor, roster],
   );
+
+  /** Quantos negócios estão parados com consultor bloqueado. */
+  const totalParados = useMemo(
+    () => leads.filter((l) => negocioPreso(l.vendedorId, roster)).length,
+    [leads, roster],
+  );
+
+  /** A seleção atual, separada pelos três casos que a distribuição trata. */
+  const selecaoPorSituacao = useMemo(() => {
+    let livres = 0,
+      presos = 0,
+      comDonoAtivo = 0;
+    for (const l of leads) {
+      if (!selecionados.has(l.id)) continue;
+      if (!l.vendedorId) livres++;
+      else if (negocioPreso(l.vendedorId, roster)) presos++;
+      else comDonoAtivo++;
+    }
+    return { livres, presos, comDonoAtivo };
+  }, [leads, selecionados, roster]);
+
+  /** Quantos realmente vão sair do lugar com as opções atuais. */
+  const quantosVaoMover =
+    selecaoPorSituacao.livres +
+    selecaoPorSituacao.presos +
+    (incluirAtribuidos ? selecaoPorSituacao.comDonoAtivo : 0);
 
   const colunas = useMemo(() => agrupar(filtrados), [filtrados]);
 
@@ -671,6 +742,58 @@ export default function LeadsPage() {
     if (l && l.status !== s) mudarStatus(l, s);
   }
 
+  /* ------------------------ distribuição em massa ------------------------- */
+
+  function alternarSelecao(id: string) {
+    setSelecionados((antes) => {
+      const novo = new Set(antes);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  /**
+   * Executa a distribuição.
+   *
+   * Quem divide é o BANCO, não esta tela. A função `distribuir_leads()` roda
+   * tudo numa transação só: ou os 30 entram, ou nenhum entra. Ela também
+   * refaz por conta própria as conferências que aqui são só cortesia (quem é
+   * admin, quem está bloqueado, quem já tem dono) — porque a tela pode ser
+   * burlada e o banco não.
+   */
+  async function executarDistribuicao() {
+    if (distribuindo) return; // trava do duplo clique
+    const leadIds = [...selecionados];
+    const vendIds = [...destinatarios];
+    if (leadIds.length === 0 || vendIds.length === 0) return;
+    if (!supabaseEnabled) {
+      notify.error("Distribuição exige o banco conectado");
+      return;
+    }
+    setDistribuindo(true);
+    try {
+      const { data, error } = await supabaseBrowser().rpc("distribuir_leads", {
+        p_lead_ids: leadIds,
+        p_vendedor_ids: vendIds,
+        p_incluir_atribuidos: incluirAtribuidos,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as ResultadoDistribuicao & { erro?: string };
+      if (r?.erro) {
+        notify.error("Não foi possível distribuir", r.erro);
+        return;
+      }
+      setResultado(r);
+      setSelecionados(new Set());
+      setDestinatarios(new Set());
+    } catch (e) {
+      notify.error("Erro ao distribuir", e instanceof Error ? e.message : undefined);
+    } finally {
+      setDistribuindo(false);
+    }
+  }
+
   function abrirCompartilhar(l: Lead) {
     setCompartilhar(l);
     setNovoVendedorId(l.vendedorId ?? "");
@@ -686,12 +809,38 @@ export default function LeadsPage() {
       return;
     }
     try {
-      await leadsApi.update(compartilhar.id, { vendedorId: novoVendedorId });
+      /*
+       * Passa pela MESMA função do banco que a distribuição em massa usa.
+       *
+       * Antes isto era um UPDATE direto do navegador. Quando a regra de
+       * acesso recusava, o banco não devolvia erro — devolvia "0 linhas" —,
+       * o código dava como certo e a tela anunciava "transferido". O negócio
+       * sumia da vista do admin e não chegava em ninguém.
+       *
+       * A função roda no servidor com autoridade própria e confere quem
+       * pediu, se o destinatário pode receber e devolve o que realmente
+       * aconteceu. Um caminho só para os dois modos — sem lógica paralela.
+       */
+      if (!supabaseEnabled) throw new Error("Transferência exige o banco conectado");
+      const { data, error } = await supabaseBrowser().rpc("distribuir_leads", {
+        p_lead_ids: [compartilhar.id],
+        p_vendedor_ids: [novoVendedorId],
+        p_incluir_atribuidos: true, // transferência individual é ato explícito
+      });
+      if (error) throw new Error(error.message);
+      const r = data as ResultadoDistribuicao & { erro?: string };
+      if (r?.erro) throw new Error(r.erro);
+      if (!r || r.distribuidos < 1) {
+        throw new Error("O negócio não foi transferido. Atualize a página e tente de novo.");
+      }
       const novo = vendedores.find((v) => v.id === novoVendedorId);
       notify.success(`Negócio transferido para ${novo?.nome ?? "vendedor"}`);
       setCompartilhar(null);
+      // agora sim a tela pode mudar: o servidor CONFIRMOU a gravação.
+      // (a assinatura em tempo real do store recarrega logo em seguida)
+      leadsApi.aplicarLocal(compartilhar.id, { vendedorId: novoVendedorId });
     } catch (e) {
-      notify.error("Erro", e instanceof Error ? e.message : undefined);
+      notify.error("Não foi possível transferir", e instanceof Error ? e.message : undefined);
     }
   }
 
@@ -780,6 +929,12 @@ export default function LeadsPage() {
               >
                 <option className="bg-[#0b0d16]" value="todos">Todos vendedores</option>
                 <option className="bg-[#0b0d16]" value="sem-vendedor">Sem vendedor</option>
+                {/* a carteira de quem foi bloqueado, num clique */}
+                {admin && totalParados > 0 && (
+                  <option className="bg-[#0b0d16]" value="parados">
+                    Parados com bloqueado ({totalParados})
+                  </option>
+                )}
                 {vendedores.map((v) => (
                   <option className="bg-[#0b0d16]" key={v.id} value={v.id}>
                     {v.nome}
@@ -1024,6 +1179,24 @@ export default function LeadsPage() {
                                 {/* topo: grip + tipo + tempo */}
                                 <div className="relative mb-1.5 flex items-start justify-between gap-1">
                                   <div className="flex min-w-0 items-center gap-1.5">
+                                    {/* seleção para distribuir em massa — só admin, e só
+                                        em negócio SEM dono: quem já tem responsável não
+                                        se move sem uma decisão explícita. */}
+                                    {admin && (
+                                      <input
+                                        type="checkbox"
+                                        checked={selecionados.has(l.id)}
+                                        onChange={() => alternarSelecao(l.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={`Selecionar ${l.nome} para distribuir`}
+                                        title={
+                                          negocioPreso(l.vendedorId, roster)
+                                            ? "Parado com consultor bloqueado — selecione para recuperar"
+                                            : "Selecionar para distribuir"
+                                        }
+                                        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)]"
+                                      />
+                                    )}
                                     <button
                                       type="button"
                                       draggable
@@ -1573,13 +1746,22 @@ export default function LeadsPage() {
               className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
             >
               <option value="">— selecione —</option>
-              {vendedores.map((v) => (
+              {/* só quem realmente vai enxergar o negócio: cadastro ativo e
+                  login ligado a ele. Antes a lista trazia a tabela inteira e
+                  dava para transferir para alguém que nunca receberia. */}
+              {podemReceber.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.nome}
                   {v.id === compartilhar?.vendedorId ? " (atual)" : ""}
                 </option>
               ))}
             </select>
+            {podemReceber.length < vendedores.length && (
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                {vendedores.length - podemReceber.length} vendedor(es) fora da lista por
+                estarem inativos ou sem login vinculado — eles não conseguiriam ver o negócio.
+              </p>
+            )}
           </div>
           {compartilhar?.vendedorId && (
             <p className="rounded-md bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-text-dim)]">
@@ -1596,6 +1778,186 @@ export default function LeadsPage() {
             <Button type="button" onClick={confirmarCompartilhar}>
               Transferir
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ===================== DISTRIBUIÇÃO EM MASSA ===================== */}
+
+      {/* Barra de ação: só aparece quando há seleção. Sem seleção, a tela
+          continua exatamente como era. */}
+      {admin && selecionados.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 py-3 backdrop-blur md:bottom-0">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-semibold">
+              {selecionados.size} {selecionados.size === 1 ? "negócio selecionado" : "negócios selecionados"}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setSelecionados(new Set())}>
+                Limpar
+              </Button>
+              <Button onClick={() => setDistribuirAberto(true)}>
+                <Users className="h-4 w-4" /> Compartilhar negócios
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        open={distribuirAberto}
+        onClose={() => setDistribuirAberto(false)}
+        title="Distribuir negócios"
+        subtitle={`${selecionados.size} selecionado(s) — escolha os consultores`}
+        icon={<Users className="h-5 w-5" />}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label>Consultores</Label>
+            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-[var(--color-border)] p-2">
+              {podemReceber.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-[var(--color-text-dim)]">
+                  Nenhum consultor disponível. Só recebe quem tem cadastro ativo e login liberado.
+                </p>
+              ) : (
+                podemReceber.map((v) => (
+                  <label
+                    key={v.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--color-surface-2)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={destinatarios.has(v.id)}
+                      onChange={() =>
+                        setDestinatarios((antes) => {
+                          const novo = new Set(antes);
+                          if (novo.has(v.id)) novo.delete(v.id);
+                          else novo.add(v.id);
+                          return novo;
+                        })
+                      }
+                      className="h-3.5 w-3.5 accent-[var(--color-brand)]"
+                    />
+                    <span>{v.nome}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            {/* quem ficou de fora e por quê — em vez de a pessoa sumir da lista
+                sem explicação */}
+            {vendedores
+              .filter((v) => !podemReceber.some((p) => p.id === v.id))
+              .map((v) => ({ v, motivo: motivoNaoRecebe(v, roster) }))
+              .filter((x) => x.motivo)
+              .slice(0, 5)
+              .map(({ v, motivo }) => (
+                <p key={v.id} className="mt-1 text-[11px] text-[var(--color-muted)]">
+                  {v.nome} não aparece: {motivo}.
+                </p>
+              ))}
+          </div>
+
+          {/* o que exatamente está selecionado — sem isso o admin não sabe o
+              que vai acontecer com cada negócio */}
+          <div className="space-y-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs">
+            {selecaoPorSituacao.livres > 0 && (
+              <p>
+                <span className="font-semibold text-[var(--color-text)]">{selecaoPorSituacao.livres}</span> sem
+                responsável — serão distribuídos.
+              </p>
+            )}
+            {selecaoPorSituacao.presos > 0 && (
+              <p>
+                <span className="font-semibold text-[var(--color-warning,#f59e0b)]">{selecaoPorSituacao.presos}</span>{" "}
+                parados com consultor bloqueado — serão <strong>recuperados</strong>. Um consultor
+                bloqueado não trabalha mais o contato; deixá-lo lá é ver o cliente esfriar.
+              </p>
+            )}
+            {selecaoPorSituacao.comDonoAtivo > 0 && (
+              <label className="flex cursor-pointer items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  checked={incluirAtribuidos}
+                  onChange={(e) => setIncluirAtribuidos(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-brand)]"
+                />
+                <span>
+                  <span className="font-semibold text-[var(--color-text)]">{selecaoPorSituacao.comDonoAtivo}</span>{" "}
+                  já estão com consultor ativo. Marque para tirar deles também — do contrário
+                  ficam onde estão.
+                </span>
+              </label>
+            )}
+          </div>
+
+          {destinatarios.size > 0 && (
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm">
+              <p className="font-semibold">
+                Você está distribuindo {quantosVaoMover}{" "}
+                {quantosVaoMover === 1 ? "negócio" : "negócios"} entre {destinatarios.size}{" "}
+                {destinatarios.size === 1 ? "consultor" : "consultores"}.
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                Fica{" "}
+                {[...new Set(previaDaDivisao(quantosVaoMover, destinatarios.size))].join(" ou ")}{" "}
+                para cada.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setDistribuirAberto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void executarDistribuicao().then(() => setDistribuirAberto(false))}
+              disabled={distribuindo || destinatarios.size === 0 || selecionados.size === 0}
+            >
+              {distribuindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+              Distribuir automaticamente
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!resultado}
+        onClose={() => setResultado(null)}
+        title="Distribuição concluída"
+        icon={<CheckCircle2 className="h-5 w-5" />}
+      >
+        <div className="space-y-3">
+          <p className="text-sm font-semibold">
+            {resultado?.distribuidos ?? 0}{" "}
+            {resultado?.distribuidos === 1 ? "negócio distribuído" : "negócios distribuídos"}.
+          </p>
+          <ul className="space-y-1">
+            {(resultado?.porConsultor ?? []).map((c) => (
+              <li
+                key={c.vendedorId}
+                className="flex justify-between rounded-md bg-[var(--color-surface-2)] px-3 py-1.5 text-sm"
+              >
+                <span>{c.nome}</span>
+                <span className="font-semibold tabular-nums">{c.quantos}</span>
+              </li>
+            ))}
+          </ul>
+          {!!resultado?.recuperados && resultado.recuperados > 0 && (
+            <p className="rounded-md bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-text-dim)]">
+              {resultado.recuperados}{" "}
+              {resultado.recuperados === 1 ? "veio da carteira parada" : "vieram de carteiras paradas"} de
+              consultor bloqueado — de volta à ativa.
+            </p>
+          )}
+          {!!resultado?.jaTinhamDono && resultado.jaTinhamDono > 0 && (
+            <p className="rounded-md bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-text-dim)]">
+              {resultado.jaTinhamDono}{" "}
+              {resultado.jaTinhamDono === 1 ? "negócio ficou onde estava" : "negócios ficaram onde estavam"}{" "}
+              porque estão com consultor ativo.
+            </p>
+          )}
+          <div className="flex justify-end pt-1">
+            <Button onClick={() => setResultado(null)}>Fechar</Button>
           </div>
         </div>
       </Modal>

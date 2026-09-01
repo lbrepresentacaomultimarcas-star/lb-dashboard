@@ -27,15 +27,50 @@ export async function syncVendedor(input: {
   const admin = supabaseAdmin();
   const email = input.email.trim().toLowerCase();
 
-  // 1) Já existe vendedor com esse e-mail nesta empresa?
-  const { data: existente } = await admin
+  /*
+   * 0) O vínculo que JÁ existe manda.
+   *
+   * Sem isto, cada passada por aqui podia religar a pessoa a um registro
+   * diferente — e os negócios que ela já tinha recebido ficavam presos no
+   * registro antigo, invisíveis para ela. Uma vez ligado, fica ligado.
+   */
+  const { data: perfil } = await admin
+    .from("profiles")
+    .select("vendedor_ref")
+    .eq("id", input.profileId)
+    .maybeSingle();
+
+  const refAtual = (perfil?.vendedor_ref as string | null | undefined) ?? null;
+  if (refAtual) {
+    const { data: aindaExiste } = await admin
+      .from("vendedores")
+      .select("id")
+      .eq("id", refAtual)
+      .eq("org_id", input.orgId)
+      .maybeSingle();
+    if (aindaExiste) return refAtual;
+  }
+
+  /*
+   * 1) Já existe vendedor com esse e-mail nesta empresa?
+   *
+   * NÃO usar `.maybeSingle()` aqui: com dois cadastros para o mesmo e-mail
+   * ele devolve ERRO em vez de linha — e o erro sendo ignorado virava
+   * "não achei nada", que fazia o código criar MAIS um duplicado. Era assim
+   * que a mesma pessoa acabava com dois e três cadastros de mesmo nome na
+   * lista de compartilhar.
+   *
+   * Pegando o MAIS ANTIGO: é o que costuma carregar o histórico de vendas.
+   */
+  const { data: candidatos } = await admin
     .from("vendedores")
     .select("id")
     .eq("org_id", input.orgId)
     .ilike("email", email)
-    .maybeSingle();
+    .order("criado_em", { ascending: true })
+    .limit(1);
 
-  let vendedorId: string | null = (existente?.id as string | undefined) ?? null;
+  let vendedorId: string | null = (candidatos?.[0]?.id as string | undefined) ?? null;
 
   // 2) Sem registro e cargo Vendedor → cria (isolado por org).
   if (!vendedorId && input.papel === "vendedor") {
