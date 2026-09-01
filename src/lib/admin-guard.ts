@@ -3,6 +3,7 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { clientIdFromRequest, rateLimit } from "./rate-limit";
+import { BLOQUEADO } from "./mensagens-acesso";
 
 /**
  * Valida que o caller está logado, é admin do org e está dentro do rate limit.
@@ -32,11 +33,17 @@ export async function requireAdmin(
   const admin = supabaseAdmin();
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id, papel, vendedor_id, email")
+    .select("id, papel, vendedor_id, email, ativo")
     .eq("id", user.id)
     .single();
   if (error || !profile) {
     return Response.json({ error: "Profile não encontrado" }, { status: 403 });
+  }
+  // Conta bloqueada não opera, nem sendo admin. Vem antes da checagem de
+  // cargo: quem foi bloqueado está bloqueado. (NULL = ativo; bloquear é
+  // sempre explícito.)
+  if (profile.ativo === false) {
+    return Response.json({ error: BLOQUEADO, bloqueado: true }, { status: 403 });
   }
   if (profile.papel !== "admin") {
     return Response.json({ error: "Apenas admin pode acessar" }, { status: 403 });

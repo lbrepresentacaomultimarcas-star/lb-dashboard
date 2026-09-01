@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReady, useSession } from "@/lib/store";
+import { SentinelaAcesso } from "@/components/sentinela-acesso";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const session = useSession();
@@ -20,5 +21,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  return <>{children}</>;
+  return (
+    <>
+      {/* vigia o bloqueio numa aba que já estava aberta */}
+      <SentinelaAcesso />
+      {children}
+    </>
+  );
 }

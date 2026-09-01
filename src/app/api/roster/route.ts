@@ -1,5 +1,5 @@
-import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requireSessao } from "@/lib/sessao-guard";
 
 /**
  * Roster (elenco) da EMPRESA do usuário logado — qualquer cargo pode ler.
@@ -12,22 +12,15 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * SQL security-definer / policies, sem mudar o consumo no store.
  */
 export async function GET() {
-  const sb = await supabaseServer();
-  const { data: userRes } = await sb.auth.getUser();
-  const user = userRes.user;
-  if (!user) return Response.json({ error: "Não autenticado" }, { status: 401 });
+  // Passa pela guarda comum em vez de conferir o login por conta própria: ela
+  // já resolve org e, principalmente, recusa quem está bloqueado. Esta rota
+  // devolve o elenco inteiro da empresa (nome, email, cargo) — não é coisa
+  // para uma conta bloqueada continuar lendo.
+  const sessao = await requireSessao();
+  if (sessao instanceof Response) return sessao;
+  const orgId = sessao.orgId;
 
   const admin = supabaseAdmin();
-  const { data: me } = await admin
-    .from("profiles")
-    .select("id, vendedor_id")
-    .eq("id", user.id)
-    .single();
-  if (!me) return Response.json({ error: "Profile não encontrado" }, { status: 403 });
-
-  // org = UUID do dono (vendedor_id do profile) ou o próprio id (admin dono).
-  const orgId = (me.vendedor_id as string | null) ?? me.id;
-
   const [rosterRes, equipesRes] = await Promise.all([
     admin
       .from("profiles")

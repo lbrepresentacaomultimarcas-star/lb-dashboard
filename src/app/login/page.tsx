@@ -10,6 +10,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
 import { BrandBar } from "@/components/marca-dupla";
 import { KeyRound, LogIn, UserPlus } from "lucide-react";
+import { BLOQUEADO } from "@/lib/mensagens-acesso";
 
 type Mode = "entrar" | "criar" | "recuperar";
 
@@ -26,6 +27,17 @@ export default function LoginPage() {
   useEffect(() => {
     if (session) router.replace("/dashboard");
   }, [session, router]);
+
+  // Quem chegou aqui expulso por bloqueio precisa saber o motivo — senão
+  // tenta entrar de novo, dá errado, e acha que o sistema quebrou.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("bloqueado") === "1") {
+        setErro(BLOQUEADO);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

@@ -1,6 +1,7 @@
 import { supabaseServer } from "./supabase/server";
 import { supabaseAdmin } from "./supabase/admin";
 import type { Papel } from "./types";
+import { BLOQUEADO } from "./mensagens-acesso";
 
 /**
  * Guarda para rotas que QUALQUER usuário logado pode chamar — diferente de
@@ -28,7 +29,7 @@ export async function requireSessao(): Promise<Sessao | Response> {
   const admin = supabaseAdmin();
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id, nome, papel, vendedor_id, vendedor_ref, email")
+    .select("id, nome, papel, vendedor_id, vendedor_ref, email, ativo")
     .eq("id", user.id)
     .single();
   if (error || !profile) return Response.json({ error: "Profile não encontrado" }, { status: 403 });
@@ -40,7 +41,18 @@ export async function requireSessao(): Promise<Sessao | Response> {
     vendedor_id: string | null;
     vendedor_ref: string | null;
     email: string;
+    ativo: boolean | null;
   };
+
+  // Bloqueio tem efeito AGORA, não no próximo login.
+  //
+  // Esta rota usa a chave de serviço, que passa por cima da RLS — então a
+  // conferência precisa acontecer aqui, explicitamente. Sem ela, uma aba já
+  // aberta (ou uma chamada direta pelo DevTools) continuaria operando com um
+  // token que ainda não expirou.
+  //
+  // NULL conta como ativo: bloquear é sempre um ato explícito do admin.
+  if (p.ativo === false) return Response.json({ error: BLOQUEADO, bloqueado: true }, { status: 403 });
   return {
     userId: user.id,
     orgId: p.vendedor_id ?? p.id,

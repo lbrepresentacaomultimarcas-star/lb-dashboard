@@ -42,6 +42,14 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Bloqueio agora tem efeito de verdade — então bloquear a si mesmo virou uma
+  // forma de perder o acesso ao sistema sem ter como voltar pela tela.
+  if (body.userId === auth.userId && body.ativo === false) {
+    return Response.json(
+      { error: "Você não pode bloquear a própria conta" },
+      { status: 400 },
+    );
+  }
   const admin = supabaseAdmin();
   const { data: target, error: terr } = await admin
     .from("profiles")
@@ -63,6 +71,27 @@ export async function PATCH(req: NextRequest) {
   if (body.nome !== undefined) patch.nome = body.nome;
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+
+  /*
+   * Derruba (ou devolve) a sessão no Supabase Auth.
+   *
+   * O `profiles.ativo` já barra tudo na hora — RLS e rotas conferem a cada
+   * requisição. Isto aqui fecha a última porta: banir impede que o token seja
+   * RENOVADO e impede login novo, então a sessão morre de vez em pouco tempo
+   * em vez de ficar viva até alguém fechar o navegador.
+   *
+   * Não derruba a atualização se falhar: o bloqueio que importa (o do banco)
+   * já foi gravado, e é ele que decide a cada requisição.
+   */
+  if (body.ativo !== undefined) {
+    try {
+      await admin.auth.admin.updateUserById(body.userId, {
+        ban_duration: body.ativo ? "none" : "876000h", // ~100 anos = até reativar
+      });
+    } catch {
+      /* o bloqueio no banco já vale por si */
+    }
+  }
 
   // Mudança de cargo re-sincroniza o vínculo colaborador↔vendedor: mantém
   // histórico/metas/comissão; cria registro se virou "Vendedor" sem ter. Nunca apaga.
