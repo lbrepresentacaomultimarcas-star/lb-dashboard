@@ -942,6 +942,24 @@ export default function LeadsPage() {
                 ))}
               </select>
             )}
+            {/* Marcar 270 caixinhas na mão não é opção: seleciona de uma vez
+                tudo o que está aparecendo agora (filtro + busca aplicados). */}
+            {admin && visiveis.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setSelecionados((antes) =>
+                    antes.size === visiveis.length
+                      ? new Set()
+                      : new Set(visiveis.map((l) => l.id)),
+                  )
+                }
+              >
+                {selecionados.size === visiveis.length
+                  ? "Limpar seleção"
+                  : `Selecionar todos (${visiveis.length})`}
+              </Button>
+            )}
             <Button onClick={() => abrirNovo()}>
               <Plus className="h-4 w-4" />
               Criar negócio
