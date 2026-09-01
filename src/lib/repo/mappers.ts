@@ -136,6 +136,10 @@ export type DbLead = {
   tentativas_count?: number | null;
   ultima_tentativa_em?: string | null;
   ultima_tentativa_acao?: string | null;
+  // Marca de compartilhamento (aditivas — quem grava é a função do banco)
+  compartilhado_em?: string | null;
+  compartilhado_por?: string | null;
+  compartilhado_modo?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -161,6 +165,9 @@ export const leadFromDb = (r: DbLead): Lead => ({
   tentativas: r.tentativas_count ?? 0,
   ultimaTentativaEm: r.ultima_tentativa_em ?? undefined,
   ultimaTentativaAcao: r.ultima_tentativa_acao ?? undefined,
+  compartilhadoEm: r.compartilhado_em ?? undefined,
+  compartilhadoPor: r.compartilhado_por ?? undefined,
+  compartilhadoModo: (r.compartilhado_modo as Lead["compartilhadoModo"]) ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {

@@ -102,6 +102,13 @@ export type Lead = {
   ultimaTentativaEm?: string;
   /** Resumo da última ação feita (ex.: "WhatsApp · Última tentativa"). */
   ultimaTentativaAcao?: string;
+  // ---- Marca de compartilhamento (aditivos; quem grava é a função do banco) ----
+  /** Quando foi compartilhado/redistribuído pela última vez. Sem isto = nunca. */
+  compartilhadoEm?: string;
+  /** E-mail de quem fez o último compartilhamento. */
+  compartilhadoPor?: string;
+  /** Como chegou ao responsável atual. */
+  compartilhadoModo?: "individual" | "massa" | "recuperado";
 };
 
 export type AuditLog = {

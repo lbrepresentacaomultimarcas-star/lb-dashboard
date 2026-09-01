@@ -298,6 +298,34 @@ type LeadTag = {
   bg: string;
 };
 
+/**
+ * A história do compartilhamento em uma linha, para o `title` da etiqueta.
+ *
+ * Fica no atributo `title` de propósito: o card já é denso, e essa
+ * informação é consultada de vez em quando — não precisa ocupar espaço
+ * permanente. Passar o mouse (ou tocar e segurar no celular) mostra tudo.
+ */
+function detalheCompartilhamento(l: Lead, responsavel?: string): string {
+  if (!l.compartilhadoEm) return "";
+  const quando = new Date(l.compartilhadoEm).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const como =
+    l.compartilhadoModo === "recuperado"
+      ? " (recuperado de consultor bloqueado)"
+      : l.compartilhadoModo === "massa"
+        ? " (distribuição em massa)"
+        : "";
+  const linhas = [`Compartilhado em ${quando}${como}`];
+  if (l.compartilhadoPor) linhas.push(`Compartilhado por: ${l.compartilhadoPor}`);
+  if (responsavel) linhas.push(`Responsável atual: ${responsavel}`);
+  return linhas.join("\n");
+}
+
 /** O que a função `distribuir_leads()` do banco devolve. */
 type ResultadoDistribuicao = {
   distribuidos: number;
@@ -329,6 +357,10 @@ export default function LeadsPage() {
     [vendedores, roster],
   );
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");
+  /** Recorte rápido do topo: todos / novos / meus / compartilhados. */
+  const [recorte, setRecorte] = useState<"todos" | "novos" | "meus" | "compartilhados">("todos");
+  /** Janela de tempo — só faz sentido junto com "compartilhados". */
+  const [periodo, setPeriodo] = useState<"sempre" | "hoje" | "7" | "30">("sempre");
   const [busca, setBusca] = useState("");
   // Digitar é instantâneo; redesenhar o quadro pode esperar um tick. É isso que
   // segura a resposta quando o funil tiver centenas de cards.
@@ -353,19 +385,51 @@ export default function LeadsPage() {
   /** Tirar negócio de quem está ATIVO exige marcar — nunca por acidente. */
   const [incluirAtribuidos, setIncluirAtribuidos] = useState(false);
 
+  /*
+   * Recorte rápido, por cima do filtro de vendedor que já existia.
+   *
+   * Os dois se combinam de propósito: "Compartilhados" + o vendedor Juliana
+   * responde "quais negócios compartilhados estão com ela agora?" sem
+   * precisar de um seletor novo só para isso.
+   */
+  const recortados = useMemo(() => {
+    const agora = Date.now();
+    const dias = (iso?: string) => (iso ? (agora - new Date(iso).getTime()) / 86_400_000 : Infinity);
+    let base = leads;
+    if (recorte === "novos") base = leads.filter((l) => dias(l.criadoEm) <= 7);
+    else if (recorte === "meus") base = leads.filter((l) => l.vendedorId === session?.vendedorId);
+    else if (recorte === "compartilhados") base = leads.filter((l) => !!l.compartilhadoEm);
+
+    if (recorte !== "compartilhados" || periodo === "sempre") return base;
+    const limite = periodo === "hoje" ? 1 : periodo === "7" ? 7 : 30;
+    return base.filter((l) => dias(l.compartilhadoEm) <= limite);
+  }, [leads, recorte, periodo, session?.vendedorId]);
+
   const filtrados = useMemo(
     () =>
       filtroVendedor === "todos"
-        ? leads
+        ? recortados
         : filtroVendedor === "sem-vendedor"
-          ? leads.filter((l) => !l.vendedorId)
+          ? recortados.filter((l) => !l.vendedorId)
           : // achar de uma vez a carteira de quem foi bloqueado: são negócios
             // com responsável no papel e ninguém trabalhando de verdade
             filtroVendedor === "parados"
-            ? leads.filter((l) => negocioPreso(l.vendedorId, roster))
-            : leads.filter((l) => l.vendedorId === filtroVendedor),
-    [leads, filtroVendedor, roster],
+            ? recortados.filter((l) => negocioPreso(l.vendedorId, roster))
+            : recortados.filter((l) => l.vendedorId === filtroVendedor),
+    [recortados, filtroVendedor, roster],
   );
+
+  /** Contadores dos recortes — sempre sobre o total, nunca número fixo. */
+  const contagens = useMemo(() => {
+    const agora = Date.now();
+    const dias = (iso?: string) => (iso ? (agora - new Date(iso).getTime()) / 86_400_000 : Infinity);
+    return {
+      todos: leads.length,
+      novos: leads.filter((l) => dias(l.criadoEm) <= 7).length,
+      meus: leads.filter((l) => l.vendedorId === session?.vendedorId).length,
+      compartilhados: leads.filter((l) => !!l.compartilhadoEm).length,
+    };
+  }, [leads, session?.vendedorId]);
 
   /** Quantos negócios estão parados com consultor bloqueado. */
   const totalParados = useMemo(
@@ -1010,6 +1074,46 @@ export default function LeadsPage() {
             que ele filtra. Vale para todas as etapas de uma vez — o Kanban já
             mostra o funil inteiro, então achar em qualquer etapa é o padrão,
             não um caso especial. */}
+        {/* Recortes rápidos. Rolam na horizontal no celular em vez de
+            quebrar em várias linhas e empurrar o quadro para baixo. */}
+        <div className="lb-fade-up -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+          {(
+            [
+              { k: "todos" as const, r: "Todos", n: contagens.todos },
+              { k: "novos" as const, r: "Novos", n: contagens.novos },
+              { k: "meus" as const, r: "Meus negócios", n: contagens.meus },
+              { k: "compartilhados" as const, r: "Compartilhados", n: contagens.compartilhados },
+            ]
+          ).map(({ k, r, n }) => (
+            <button
+              key={k}
+              onClick={() => setRecorte(k)}
+              className={cn(
+                "shrink-0 rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors",
+                recorte === k
+                  ? "border-white/40 bg-white/15 text-white"
+                  : "border-white/12 text-white/55 hover:text-white",
+              )}
+            >
+              {r} <span className="tabular-nums opacity-70">({n})</span>
+            </button>
+          ))}
+          {/* a janela de tempo só aparece quando faz sentido */}
+          {recorte === "compartilhados" && (
+            <select
+              value={periodo}
+              onChange={(e) => setPeriodo(e.target.value as typeof periodo)}
+              aria-label="Período do compartilhamento"
+              className="h-8 shrink-0 rounded-lg border border-white/15 bg-white/5 px-2 text-xs text-white"
+            >
+              <option className="bg-[#0b0d16]" value="sempre">Qualquer data</option>
+              <option className="bg-[#0b0d16]" value="hoje">Hoje</option>
+              <option className="bg-[#0b0d16]" value="7">Últimos 7 dias</option>
+              <option className="bg-[#0b0d16]" value="30">Últimos 30 dias</option>
+            </select>
+          )}
+        </div>
+
         <div className="lb-fade-up flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="relative w-full min-w-0 sm:w-auto sm:max-w-lg sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -1151,6 +1255,14 @@ export default function LeadsPage() {
                         const prioridade = ativo && altoTicket && (l.status === "reuniao" || l.status === "acompanhamento");
                         const fechamentoProx = l.status === "acompanhamento";
                         const tags: LeadTag[] = [];
+                        // entra primeiro: é a etiqueta que o admin está caçando
+                        if (l.compartilhadoEm)
+                          tags.push({
+                            icon: Share2,
+                            label: "Compartilhado",
+                            color: "#93c5fd",
+                            bg: "rgba(59,130,246,.16)",
+                          });
                         if (quente) tags.push({ icon: Flame, label: "Quente", color: "#fda4af", bg: "rgba(244,63,94,.16)" });
                         if (altoTicket) tags.push({ icon: Star, label: "Alto ticket", color: "#fcd34d", bg: "rgba(245,158,11,.16)" });
                         if (prioridade) tags.push({ icon: Zap, label: "Prioridade", color: "#c4b5fd", bg: "rgba(139,92,246,.16)" });
@@ -1275,6 +1387,13 @@ export default function LeadsPage() {
                                     {tags.map((t) => (
                                       <span
                                         key={t.label}
+                                        // no "Compartilhado", passar o mouse conta a história
+                                        // toda sem ocupar espaço nenhum no card
+                                        title={
+                                          t.label === "Compartilhado"
+                                            ? detalheCompartilhamento(l, vendedor?.nome)
+                                            : undefined
+                                        }
                                         className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
                                         style={{ background: t.bg, color: t.color }}
                                       >
