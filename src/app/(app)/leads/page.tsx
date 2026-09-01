@@ -357,8 +357,14 @@ export default function LeadsPage() {
     [vendedores, roster],
   );
   const [filtroVendedor, setFiltroVendedor] = useState<string>("todos");
-  /** Recorte rápido do topo: todos / novos / meus / compartilhados. */
-  const [recorte, setRecorte] = useState<"todos" | "novos" | "meus" | "compartilhados">("todos");
+  /**
+   * Recorte rápido do topo. Igual para todos os cargos — o que muda é o
+   * CONTEÚDO, não os botões: os dados já chegam filtrados pelo escopo do
+   * usuário (`useLeadsEscopo`) e, antes disso, pela regra do banco. Então
+   * o mesmo botão "Compartilhados" mostra 270 para o admin e 6 para a
+   * consultora, sem nenhuma condição de cargo aqui.
+   */
+  const [recorte, setRecorte] = useState<"todos" | "novos" | "recentes" | "compartilhados">("todos");
   /** Janela de tempo — só faz sentido junto com "compartilhados". */
   const [periodo, setPeriodo] = useState<"sempre" | "hoje" | "7" | "30">("sempre");
   const [busca, setBusca] = useState("");
@@ -396,14 +402,17 @@ export default function LeadsPage() {
     const agora = Date.now();
     const dias = (iso?: string) => (iso ? (agora - new Date(iso).getTime()) / 86_400_000 : Infinity);
     let base = leads;
+    // "Novos" = entraram agora. "Recentes" = tiveram MOVIMENTO agora (podem
+    // ser antigos que voltaram a andar). São perguntas diferentes.
     if (recorte === "novos") base = leads.filter((l) => dias(l.criadoEm) <= 7);
-    else if (recorte === "meus") base = leads.filter((l) => l.vendedorId === session?.vendedorId);
+    else if (recorte === "recentes")
+      base = leads.filter((l) => dias(l.atualizadoEm ?? l.criadoEm) <= 7);
     else if (recorte === "compartilhados") base = leads.filter((l) => !!l.compartilhadoEm);
 
     if (recorte !== "compartilhados" || periodo === "sempre") return base;
     const limite = periodo === "hoje" ? 1 : periodo === "7" ? 7 : 30;
     return base.filter((l) => dias(l.compartilhadoEm) <= limite);
-  }, [leads, recorte, periodo, session?.vendedorId]);
+  }, [leads, recorte, periodo]);
 
   const filtrados = useMemo(
     () =>
@@ -423,13 +432,15 @@ export default function LeadsPage() {
   const contagens = useMemo(() => {
     const agora = Date.now();
     const dias = (iso?: string) => (iso ? (agora - new Date(iso).getTime()) / 86_400_000 : Infinity);
+    // `leads` aqui já é o que ESTE usuário pode ver — por isso o número sai
+    // certo para cada um sem nenhuma conta especial por cargo.
     return {
       todos: leads.length,
       novos: leads.filter((l) => dias(l.criadoEm) <= 7).length,
-      meus: leads.filter((l) => l.vendedorId === session?.vendedorId).length,
+      recentes: leads.filter((l) => dias(l.atualizadoEm ?? l.criadoEm) <= 7).length,
       compartilhados: leads.filter((l) => !!l.compartilhadoEm).length,
     };
-  }, [leads, session?.vendedorId]);
+  }, [leads]);
 
   /** Quantos negócios estão parados com consultor bloqueado. */
   const totalParados = useMemo(
@@ -1081,7 +1092,7 @@ export default function LeadsPage() {
             [
               { k: "todos" as const, r: "Todos", n: contagens.todos },
               { k: "novos" as const, r: "Novos", n: contagens.novos },
-              { k: "meus" as const, r: "Meus negócios", n: contagens.meus },
+              { k: "recentes" as const, r: "Recentes", n: contagens.recentes },
               { k: "compartilhados" as const, r: "Compartilhados", n: contagens.compartilhados },
             ]
           ).map(({ k, r, n }) => (
