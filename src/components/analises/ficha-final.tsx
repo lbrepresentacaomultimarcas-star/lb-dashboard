@@ -527,6 +527,15 @@ export function FichaFinal({
         <C rotulo="Contrato" valor={f.contrato ?? ""} onChange={(v) => set("contrato", v)} />
         <C rotulo="Grupo" valor={f.grupo ?? ""} onChange={(v) => set("grupo", v)} />
         <C rotulo="Cota" valor={f.cota ?? ""} onChange={(v) => set("cota", v)} />
+        {/* O papel tem "Grupo: ___ Crédito: ___" na mesma caixa, mas não
+            havia onde digitar: o PDF puxava da análise e saía em branco
+            quando ela vinha sem valor. Fica ao lado do Grupo, como no papel. */}
+        <C
+          rotulo="Crédito"
+          valor={f.credito != null ? String(f.credito) : ""}
+          onChange={(v) => set("credito", soNum(v))}
+          ph="Valor do crédito"
+        />
         <C rotulo="Valor de entrada" valor={f.valorEntrada != null ? String(f.valorEntrada) : ""} onChange={(v) => set("valorEntrada", soNum(v))} />
         <C rotulo="Mês de participação" valor={f.mesParticipacao ?? ""} onChange={(v) => set("mesParticipacao", v)} ph="Setembro/2026" />
       </div>

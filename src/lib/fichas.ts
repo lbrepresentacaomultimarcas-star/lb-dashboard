@@ -53,6 +53,18 @@ export type Ficha = {
   contrato?: string;
   cota?: string;
   grupo?: string;
+  /**
+   * Valor do crédito contratado.
+   *
+   * O formulário de papel tem "Grupo: ___ Crédito: ___" na mesma caixa, mas
+   * não havia onde digitar: o PDF puxava o crédito da ANÁLISE, e quando a
+   * análise vinha sem valor a linha saía em branco na ficha impressa.
+   *
+   * Fica aqui junto de contrato/cota/grupo porque é dado da OPERAÇÃO
+   * fechada — e não sobrescreve a análise, que é o registro de como a
+   * proposta foi avaliada. Vazio aqui = usa o da análise.
+   */
+  credito?: number;
   formaPagamento?: string;
   valorEntrada?: number;
   mesParticipacao?: string;
@@ -190,6 +202,7 @@ function fromDb(r: Row): Ficha {
     contrato: s(r.contrato),
     cota: s(r.cota),
     grupo: s(r.grupo),
+    credito: n(r.credito),
     formaPagamento: s(r.forma_pagamento),
     valorEntrada: n(r.valor_entrada),
     mesParticipacao: s(r.mes_participacao),
@@ -222,6 +235,7 @@ function toDb(f: Partial<Ficha>): Row {
   põe("banco_agencia", f.bancoAgencia); põe("banco_conta", f.bancoConta);
   põe("banco_meio", f.bancoMeio); põe("pix_tipo", f.pixTipo); põe("pix_chave", f.pixChave);
   põe("contrato", f.contrato); põe("cota", f.cota); põe("grupo", f.grupo);
+  põe("credito", f.credito);
   põe("forma_pagamento", f.formaPagamento); põe("valor_entrada", f.valorEntrada);
   põe("mes_participacao", f.mesParticipacao);
   põe("status", f.status);

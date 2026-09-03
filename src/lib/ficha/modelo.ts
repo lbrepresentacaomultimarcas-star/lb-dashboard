@@ -250,6 +250,9 @@ export function dicionarioCompleto(
     contrato: texto(f.contrato),
     cota: texto(f.cota),
     grupo: texto(f.grupo),
+    // o que foi digitado na ficha manda; sem isso, vale o da análise.
+    // (é a mesma ideia já usada em `cidade` logo acima)
+    credito: f.credito != null ? brlOuTraco(f.credito) : base.credito,
     forma_pagamento: texto(f.formaPagamento),
     valor_entrada: brlOuTraco(f.valorEntrada),
     mes_participacao: texto(f.mesParticipacao),
