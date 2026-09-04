@@ -44,9 +44,8 @@ import {
 import { MODELO_FICHA_FINAL } from "@/lib/ficha/modelo";
 import { baixarFicha, gerarFichaPdf, visualizarFicha } from "@/lib/ficha/pdf";
 import { telefoneBonito } from "@/lib/telefone";
+import { formatNumBR, parseNumBR } from "@/lib/utils";
 
-const soNum = (t: string) =>
-  Number(t.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || undefined;
 const dataHora = (iso?: string) =>
   iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
@@ -60,6 +59,48 @@ function C({
     <div className={span}>
       <Label>{rotulo}</Label>
       <Input type={tipo} value={valor} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
+    </div>
+  );
+}
+
+/**
+ * Campo de VALOR (R$).
+ *
+ * Por que não usa o `C` comum: ali o campo é controlado pelo número já
+ * convertido, então a cada tecla o texto virava número e voltava como texto.
+ * O ponto e a vírgula sumiam no instante em que eram digitados — "65.908,14"
+ * era impossível de escrever, saía "6590814".
+ *
+ * Aqui o TEXTO é do usuário enquanto ele digita; o número é só o que sai
+ * daqui para fora. Não há re-sincronização durante a edição de propósito:
+ * quem manda no que está escrito é quem está escrevendo. O formulário
+ * desmonta ao sair da edição, então na próxima abertura o valor salvo
+ * reaparece formatado.
+ */
+function Moeda({
+  rotulo, valor, onChange, ph, span = "",
+}: {
+  rotulo: string;
+  valor?: number;
+  onChange: (v: number | undefined) => void;
+  ph?: string;
+  span?: string;
+}) {
+  const [texto, setTexto] = useState(valor != null ? formatNumBR(valor) : "");
+  return (
+    <div className={span}>
+      <Label>{rotulo}</Label>
+      <Input
+        // `decimal` faz o celular abrir o teclado numérico COM vírgula
+        inputMode="decimal"
+        value={texto}
+        placeholder={ph}
+        onChange={(e) => {
+          const cru = e.target.value;
+          setTexto(cru);
+          onChange(parseNumBR(cru) || undefined);
+        }}
+      />
     </div>
   );
 }
@@ -530,13 +571,18 @@ export function FichaFinal({
         {/* O papel tem "Grupo: ___ Crédito: ___" na mesma caixa, mas não
             havia onde digitar: o PDF puxava da análise e saía em branco
             quando ela vinha sem valor. Fica ao lado do Grupo, como no papel. */}
-        <C
+        <Moeda
           rotulo="Crédito"
-          valor={f.credito != null ? String(f.credito) : ""}
-          onChange={(v) => set("credito", soNum(v))}
-          ph="Valor do crédito"
+          valor={f.credito}
+          onChange={(v) => set("credito", v)}
+          ph="65.908,14"
         />
-        <C rotulo="Valor de entrada" valor={f.valorEntrada != null ? String(f.valorEntrada) : ""} onChange={(v) => set("valorEntrada", soNum(v))} />
+        <Moeda
+          rotulo="Valor de entrada"
+          valor={f.valorEntrada}
+          onChange={(v) => set("valorEntrada", v)}
+          ph="8.036,00"
+        />
         <C rotulo="Mês de participação" valor={f.mesParticipacao ?? ""} onChange={(v) => set("mesParticipacao", v)} ph="Setembro/2026" />
       </div>
       <Opcoes rotulo="Forma de pagamento" opcoes={FORMAS_PAGAMENTO} valor={f.formaPagamento ?? ""} onChange={(v) => set("formaPagamento", v)} />
