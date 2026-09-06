@@ -10,6 +10,7 @@ import {
   BrainCircuit,
   CalendarClock,
   ClipboardList,
+  IdCard,
   ChevronDown,
   History,
   Inbox,
@@ -68,6 +69,7 @@ const NAV: (NavItem | NavGroup)[] = [
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   { href: "/trafego", label: "Central de Tráfego", icon: Megaphone, minimo: "admin" },
   { href: "/analises", label: "Análise de Propostas", icon: ClipboardList },
+  { href: "/perfil", label: "Meu Perfil", icon: IdCard },
   {
     label: "Gameficação",
     icon: Trophy,

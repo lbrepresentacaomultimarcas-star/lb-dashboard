@@ -265,6 +265,9 @@ export type DbProfile = {
   equipe_id: string | null;
   vendedor_ref?: string | null;
   ativo: boolean;
+  // Código de acesso (aditivas — quem gera é o banco)
+  codigo_acesso?: string | null;
+  codigo_liberado?: boolean | null;
   criado_em: string;
 };
 
@@ -277,6 +280,8 @@ export const profileFromDb = (r: DbProfile): Profile => ({
   equipeId: r.equipe_id ?? undefined,
   vendedorRef: r.vendedor_ref ?? undefined,
   ativo: r.ativo ?? true,
+  codigoAcesso: r.codigo_acesso ?? undefined,
+  codigoLiberado: r.codigo_liberado ?? undefined,
   criadoEm: r.criado_em,
 });
 

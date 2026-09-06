@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   CalendarClock,
   ClipboardList,
+  IdCard,
   History,
   Inbox,
   Landmark,
@@ -53,6 +54,7 @@ export const NAV: (NavItem | NavGroup)[] = [
   { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   { href: "/analises", label: "Análise de Propostas", icon: ClipboardList },
+  { href: "/perfil", label: "Meu Perfil", icon: IdCard },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   {
     label: "Gameficação",

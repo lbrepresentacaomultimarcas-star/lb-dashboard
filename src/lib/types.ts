@@ -138,7 +138,10 @@ export const PAPEL_INFO: Record<
   { label: string; tone: "brand" | "warn" | "success" | "neutral"; ordem: number }
 > = {
   admin: { label: "Admin", tone: "brand", ordem: 0 },
-  coordenador: { label: "Coordenador", tone: "warn", ordem: 1 },
+  // "Representante" e o topo da trilha comercial (ver lib/jornada.ts). Usa o
+  // papel `coordenador`, que ja existia e estava sem uso: o nome muda, a
+  // engrenagem de permissao continua exatamente a mesma.
+  coordenador: { label: "Representante", tone: "warn", ordem: 1 },
   supervisor: { label: "Supervisor", tone: "success", ordem: 2 },
   lider: { label: "Líder", tone: "success", ordem: 3 },
   vendedor: { label: "Vendedor", tone: "neutral", ordem: 4 },
@@ -155,6 +158,10 @@ export type Profile = {
   /** Link REAL com a tabela vendedores (vendedores.id). Preenchido pelo auto-sync. */
   vendedorRef?: string;
   ativo: boolean;
+  /** Código de acesso do dia a dia. NÃO define permissão — quem define é `papel`. */
+  codigoAcesso?: string;
+  /** O admin já autorizou o acesso desta pessoa? */
+  codigoLiberado?: boolean;
   criadoEm: string;
 };
 
