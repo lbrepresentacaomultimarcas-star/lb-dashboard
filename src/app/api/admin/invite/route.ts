@@ -53,11 +53,32 @@ export async function POST(req: NextRequest) {
     userId = data.user.id;
   }
 
+  /*
+   * Código de acesso do dia a dia.
+   *
+   * Quem gera é o banco (`proximo_codigo_acesso`), não este código: a conta do
+   * próximo número tem que olhar todos os colaboradores de uma vez, e dois
+   * cadastros simultâneos não podem receber o mesmo. Se falhar, o colaborador
+   * é criado assim mesmo — ele ainda entra por e-mail, e o admin gera o código
+   * depois. Perder o cadastro por causa do código seria pior que não ter
+   * código.
+   */
+  let codigo: string | null = null;
+  try {
+    const { data: cod } = await admin.rpc("proximo_codigo_acesso", { p_papel: papel });
+    codigo = (cod as string | null) ?? null;
+  } catch {
+    /* segue sem código; o admin resolve na tela do Administrativo */
+  }
+
   // Atualiza profile: papel, equipe, org owner
   const patch: Record<string, unknown> = {
     papel,
     nome,
     vendedor_id: papel === "admin" ? null : auth.orgId,
+    // Cadastrar e LIBERAR são coisas diferentes: nasce aguardando o admin.
+    codigo_liberado: false,
+    ...(codigo ? { codigo_acesso: codigo } : {}),
   };
   if (body.equipeId !== undefined) patch.equipe_id = body.equipeId;
 

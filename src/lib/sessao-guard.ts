@@ -29,7 +29,7 @@ export async function requireSessao(): Promise<Sessao | Response> {
   const admin = supabaseAdmin();
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id, nome, papel, vendedor_id, vendedor_ref, email, ativo")
+    .select("id, nome, papel, vendedor_id, vendedor_ref, email, ativo, codigo_liberado")
     .eq("id", user.id)
     .single();
   if (error || !profile) return Response.json({ error: "Profile não encontrado" }, { status: 403 });
@@ -42,6 +42,7 @@ export async function requireSessao(): Promise<Sessao | Response> {
     vendedor_ref: string | null;
     email: string;
     ativo: boolean | null;
+    codigo_liberado: boolean | null;
   };
 
   // Bloqueio tem efeito AGORA, não no próximo login.
@@ -53,6 +54,13 @@ export async function requireSessao(): Promise<Sessao | Response> {
   //
   // NULL conta como ativo: bloquear é sempre um ato explícito do admin.
   if (p.ativo === false) return Response.json({ error: BLOQUEADO, bloqueado: true }, { status: 403 });
+  // Cadastrado mas ainda sem a liberação do admin: mesma porta fechada.
+  if (p.codigo_liberado === false) {
+    return Response.json(
+      { error: "Seu acesso ainda não foi liberado pelo administrador.", bloqueado: true },
+      { status: 403 },
+    );
+  }
   return {
     userId: user.id,
     orgId: p.vendedor_id ?? p.id,

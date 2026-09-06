@@ -33,7 +33,7 @@ export async function requireAdmin(
   const admin = supabaseAdmin();
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id, papel, vendedor_id, email, ativo")
+    .select("id, papel, vendedor_id, email, ativo, codigo_liberado")
     .eq("id", user.id)
     .single();
   if (error || !profile) {
@@ -44,6 +44,12 @@ export async function requireAdmin(
   // sempre explícito.)
   if (profile.ativo === false) {
     return Response.json({ error: BLOQUEADO, bloqueado: true }, { status: 403 });
+  }
+  if (profile.codigo_liberado === false) {
+    return Response.json(
+      { error: "Seu acesso ainda não foi liberado pelo administrador.", bloqueado: true },
+      { status: 403 },
+    );
   }
   if (profile.papel !== "admin") {
     return Response.json({ error: "Apenas admin pode acessar" }, { status: 403 });

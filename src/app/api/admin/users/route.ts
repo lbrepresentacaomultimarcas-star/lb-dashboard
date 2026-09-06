@@ -28,6 +28,7 @@ export async function PATCH(req: NextRequest) {
     equipeId?: string | null;
     vendedorRef?: string | null;
     ativo?: boolean;
+    codigoLiberado?: boolean;
     nome?: string;
   };
   if (!body.userId) {
@@ -50,6 +51,13 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Revogar o próprio acesso tranca do mesmo jeito que bloquear.
+  if (body.userId === auth.userId && body.codigoLiberado === false) {
+    return Response.json(
+      { error: "Você não pode revogar o próprio acesso" },
+      { status: 400 },
+    );
+  }
   const admin = supabaseAdmin();
   const { data: target, error: terr } = await admin
     .from("profiles")
@@ -68,6 +76,7 @@ export async function PATCH(req: NextRequest) {
   // guarda o UUID do dono da org p/ a current_org_id() da RLS multi-tenant).
   if (body.vendedorRef !== undefined) patch.vendedor_ref = body.vendedorRef;
   if (body.ativo !== undefined) patch.ativo = body.ativo;
+  if (body.codigoLiberado !== undefined) patch.codigo_liberado = body.codigoLiberado;
   if (body.nome !== undefined) patch.nome = body.nome;
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);
   if (error) return Response.json({ error: error.message }, { status: 400 });

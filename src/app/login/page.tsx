@@ -20,6 +20,15 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("entrar");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [codigo, setCodigo] = useState("");
+  /**
+   * Porta dos fundos, de propósito.
+   *
+   * O dia a dia é por código. Mas se algo der errado na geração ou liberação
+   * dos códigos, ninguém — nem o administrador — pode ficar trancado do lado
+   * de fora do próprio sistema. Fica discreto, não escondido.
+   */
+  const [porEmail, setPorEmail] = useState(false);
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -44,6 +53,32 @@ export default function LoginPage() {
     setErro(null);
     setLoading(true);
     try {
+      /*
+       * Entrada por CÓDIGO.
+       *
+       * Quem autentica é o servidor: ele descobre o e-mail a partir do código
+       * e faz o login por lá, para o e-mail da equipe nunca ficar exposto a
+       * quem só testa códigos. A sessão volta nos cookies.
+       *
+       * Depois, recarrega a página inteira de propósito: o app sobe lendo a
+       * sessão do cookie pelo caminho normal de sempre, em vez de eu repetir
+       * aqui os quinze carregamentos que a entrada por e-mail já faz.
+       */
+      if (mode === "entrar" && !porEmail) {
+        if (!codigo.trim() || senha.length < 4) {
+          throw new Error("Informe o código de acesso e a senha.");
+        }
+        const r = await fetch("/api/auth/codigo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codigo: codigo.trim(), senha }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        if (!r.ok) throw new Error(j.error ?? "Não foi possível entrar.");
+        window.location.assign("/dashboard");
+        return;
+      }
+
       if (mode === "recuperar") {
         if (!email.includes("@")) throw new Error("Informe um email válido.");
         await sessionApi.resetPasswordForEmail(email.trim());
@@ -83,10 +118,12 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold">LB Representações</h1>
           <p className="mt-1 text-sm text-[var(--color-text-dim)]">
             {mode === "entrar"
-              ? "Entre para acessar o sistema"
+              ? porEmail
+                ? "Entre com seu e-mail e senha"
+                : "Acesso ao sistema"
               : mode === "criar"
                 ? "Crie sua conta"
-                : "Recupere o acesso à sua conta"}
+                : "Informe o e-mail cadastrado para receber o link"}
           </p>
         </div>
         <form
@@ -105,17 +142,33 @@ export default function LoginPage() {
               />
             </div>
           )}
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
+          {mode === "entrar" && !porEmail ? (
+            <div>
+              <Label htmlFor="codigo">Código de acesso</Label>
+              <Input
+                id="codigo"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+                placeholder="V015"
+                autoComplete="username"
+                autoCapitalize="characters"
+                spellCheck={false}
+                required
+              />
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+          )}
           {mode !== "recuperar" && (
             <div>
               <Label htmlFor="senha">Senha</Label>
@@ -160,16 +213,28 @@ export default function LoginPage() {
                 {mode === "entrar" ? "Não tem conta? Criar agora" : "Já tem conta? Entrar"}
               </button>
               {mode === "entrar" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErro(null);
-                    setMode("recuperar");
-                  }}
-                  className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
-                >
-                  Esqueci minha senha
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErro(null);
+                      setPorEmail((v) => !v);
+                    }}
+                    className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                  >
+                    {porEmail ? "Entrar com código de acesso" : "Entrar com e-mail"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErro(null);
+                      setMode("recuperar");
+                    }}
+                    className="block w-full text-center text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </>
               )}
             </div>
           )}

@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Crown,
+  Lock,
   Mail,
   Search,
   Shield,
   Trash2,
+  Unlock,
   UserCheck,
   UserMinus,
   UserPlus,
@@ -31,6 +33,8 @@ type DbProfile = {
   vendedor_id: string | null;
   equipe_id: string | null;
   ativo: boolean;
+  codigo_acesso: string | null;
+  codigo_liberado: boolean;
   criado_em: string;
 };
 type DbEquipe = { id: string; nome: string; cor: string | null };
@@ -168,6 +172,29 @@ export default function ColaboradoresPage() {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
     }
   }
+  /**
+   * Libera (ou revoga) o acesso do colaborador.
+   *
+   * Cadastrar e LIBERAR sao coisas diferentes, de proposito: o cadastro cria
+   * a conta e manda o convite; a liberacao e a sua decisao de quando aquela
+   * pessoa comeca a trabalhar. Revogar aqui fecha a porta em todas as
+   * camadas, igual ao bloqueio -- nao e so a tela.
+   */
+  async function toggleLiberado(u: DbProfile) {
+    try {
+      const r = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id, codigoLiberado: !u.codigo_liberado }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      notify.success(u.codigo_liberado ? "Acesso revogado" : "Acesso liberado");
+      carregar();
+    } catch (e) {
+      notify.error("Erro", e instanceof Error ? e.message : undefined);
+    }
+  }
   async function toggleAtivo(u: DbProfile) {
     try {
       const r = await fetch("/api/admin/users", {
@@ -261,6 +288,7 @@ export default function ColaboradoresPage() {
               <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
                 <th className="px-5 py-3">Colaborador</th>
                 <th className="px-5 py-3">Cargo</th>
+                <th className="px-5 py-3">Código</th>
                 <th className="px-5 py-3">Equipe</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="hidden px-5 py-3 lg:table-cell">Criado</th>
@@ -349,6 +377,20 @@ export default function ColaboradoresPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs font-bold tracking-wider text-white">
+                            {u.codigo_acesso ?? "—"}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              u.codigo_liberado ? "text-emerald-400" : "text-amber-300"
+                            }`}
+                          >
+                            {u.codigo_liberado ? "Acesso liberado" : "Aguardando liberação"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
                         <span
                           className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold"
                           style={{ color: sc, borderColor: `${sc}66`, background: `${sc}1a` }}
@@ -364,6 +406,18 @@ export default function ColaboradoresPage() {
                         <div className="flex justify-end gap-1.5">
                           {!isMe && (
                             <>
+                              <button
+                                onClick={() => toggleLiberado(u)}
+                                title={u.codigo_liberado ? "Revogar acesso" : "Liberar acesso"}
+                                aria-label={u.codigo_liberado ? "Revogar acesso" : "Liberar acesso"}
+                                className={`grid h-8 w-8 place-items-center rounded-lg border transition-transform duration-150 hover:scale-110 ${
+                                  u.codigo_liberado
+                                    ? "border-white/15 bg-white/5 text-white/60 hover:bg-white/10"
+                                    : "border-emerald-400/40 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
+                                }`}
+                              >
+                                {u.codigo_liberado ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                              </button>
                               <button
                                 onClick={() => toggleAtivo(u)}
                                 title={u.ativo ? "Desativar" : "Reativar"}
