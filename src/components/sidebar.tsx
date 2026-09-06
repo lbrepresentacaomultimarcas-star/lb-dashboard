@@ -64,7 +64,9 @@ const NAV: (NavItem | NavGroup)[] = [
       { href: "/central/painel", label: "Painel do Gestor", icon: BarChart3, minimo: "supervisor" },
     ],
   },
-  { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "lider" },
+  // "Minha Equipe" mostra a carteira dos outros: exige SUPERVISOR.
+  // O Líder é cargo de formação, não de gestão -- ver lib/scope.ts.
+  { href: "/equipe", label: "Minha Equipe", icon: UsersRound, minimo: "supervisor" },
   { href: "/analise", label: "Análise Comercial", icon: BrainCircuit, minimo: "admin" },
   { href: "/ia", label: "Central de IA", icon: Bot, minimo: "admin" },
   { href: "/trafego", label: "Central de Tráfego", icon: Megaphone, minimo: "admin" },

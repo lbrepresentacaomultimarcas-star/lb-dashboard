@@ -16,6 +16,7 @@ import {
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { PremiumStage } from "@/components/premium-stage";
+import { RoleGuard } from "@/components/role-guard";
 import { Avatar } from "@/components/avatar";
 import { AnimatedNum } from "@/components/ui/spark";
 
@@ -42,7 +43,23 @@ function PapelBadge({ papel }: { papel: Papel }) {
 
 const MEDAL = ["#FACC15", "#CBD5E1", "#D8894B"]; // ouro / prata / bronze
 
+/*
+ * Esta tela mostra a carteira dos OUTROS: exige Supervisor.
+ *
+ * Esconder o item do menu não protege nada -- bastaria digitar o endereço.
+ * A guarda tem que estar na rota. (E, mesmo assim, o que realmente protege
+ * são as regras do banco: se alguém contornar as duas, ainda assim não
+ * recebe linha nenhuma.)
+ */
 export default function MinhaEquipePage() {
+  return (
+    <RoleGuard minimo="supervisor">
+      <MinhaEquipeConteudo />
+    </RoleGuard>
+  );
+}
+
+function MinhaEquipeConteudo() {
   const session = useSession();
   const escopo = useEscopo();
   const roster = useRoster();

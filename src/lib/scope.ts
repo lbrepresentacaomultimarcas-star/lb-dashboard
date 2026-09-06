@@ -62,10 +62,23 @@ export function calcularEscopo(
     };
   }
 
-  // Supervisor e Líder → apenas a própria equipe (mesmo escopo; o Líder é
-  // acompanhamento/gestão, sem poderes administrativos — isso é tratado no RBAC
-  // de AÇÕES, não no de visibilidade).
-  if ((papel === "supervisor" || papel === "lider") && session?.equipeId) {
+  /*
+   * SUPERVISOR com equipe → a equipe dele. E só ele.
+   *
+   * O LÍDER foi retirado daqui de propósito, por decisão da operação: neste
+   * momento o cargo é de FORMAÇÃO, não de gestão. Ele desenvolve postura de
+   * liderança ajudando os consultores presencialmente — e isso não exige que
+   * o login dele passe a enxergar a carteira dos outros o tempo todo.
+   *
+   * Virar Líder deixou de ser uma porta para os dados alheios; passa a ser
+   * um degrau da carreira. O escopo só muda de verdade quando o cargo virar
+   * Supervisor E houver equipe vinculada — as duas coisas, não uma.
+   *
+   * Isto aqui é a camada do app. A mesma regra está em `pode_ver_vendedor()`
+   * no banco, que é quem realmente protege: sem ela, bastaria chamar a API
+   * direto para contornar a tela.
+   */
+  if (papel === "supervisor" && session?.equipeId) {
     const ids = new Set(vendedoresDaEquipe(session.equipeId, profiles));
     if (session.vendedorId) ids.add(session.vendedorId); // se o gestor também vende
     return {
