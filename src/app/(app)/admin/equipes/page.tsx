@@ -18,6 +18,7 @@ type DbEquipe = {
   cor: string | null;
   lider_id: string | null;
   supervisor_id: string | null;
+  representante_id: string | null;
   criado_em: string;
 };
 type DbProfile = {
@@ -63,6 +64,65 @@ function PapelBadge({ papel }: { papel: Papel }) {
   );
 }
 
+/**
+ * Um degrau da cadeia de comando.
+ *
+ * Só oferece quem tem o cargo daquele degrau. Mas quem JÁ ESTÁ apontado
+ * continua na lista mesmo depois de mudar de cargo, marcado como "cargo
+ * mudou" — some-lo em silêncio faria o organograma parecer certo enquanto
+ * o campo estaria, na prática, vazio. Quem promoveu precisa ver que ficou
+ * uma ponta solta para arrumar.
+ */
+function CampoChefia({
+  id, rotulo, vazio, valor, onChange, elegivel, users,
+}: {
+  id: string;
+  rotulo: string;
+  vazio: string;
+  valor: string;
+  onChange: (v: string) => void;
+  elegivel: (u: DbProfile) => boolean;
+  users: DbProfile[];
+}) {
+  const aptos = users.filter(elegivel);
+  const atual = users.find((u) => u.id === valor);
+  const saiuDoCargo = !!atual && !elegivel(atual);
+
+  return (
+    <div>
+      <Label htmlFor={id}>{rotulo}</Label>
+      <select
+        id={id}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
+      >
+        <option value="">{vazio}</option>
+        {saiuDoCargo && atual && (
+          <option value={atual.id}>
+            {atual.nome} — agora {PAPEL_INFO[atual.papel].label}
+          </option>
+        )}
+        {aptos.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.nome} — {PAPEL_INFO[u.papel].label}
+          </option>
+        ))}
+      </select>
+      {saiuDoCargo && atual && (
+        <p className="mt-1 text-[11px] text-amber-300">
+          {atual.nome} mudou de cargo e não ocupa mais esta função. Escolha outra pessoa.
+        </p>
+      )}
+      {!saiuDoCargo && aptos.length === 0 && (
+        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+          Ninguém com esse cargo ainda. Defina o cargo em Administrativo → Colaboradores.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function EquipesPage() {
   const [equipes, setEquipes] = useState<DbEquipe[]>([]);
   const [users, setUsers] = useState<DbProfile[]>([]);
@@ -71,7 +131,7 @@ export default function EquipesPage() {
   const [editing, setEditing] = useState<DbEquipe | null>(null);
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [form, setForm] = useState({ nome: "", cor: CORES[0], liderId: "", supervisorId: "" });
+  const [form, setForm] = useState({ nome: "", cor: CORES[0], liderId: "", supervisorId: "", representanteId: "" });
   const refreshTick = useRefreshTick();
 
   async function carregar() {
@@ -111,12 +171,12 @@ export default function EquipesPage() {
 
   function abrirNovo() {
     setEditing(null);
-    setForm({ nome: "", cor: CORES[Math.floor(Math.random() * CORES.length)], liderId: "", supervisorId: "" });
+    setForm({ nome: "", cor: CORES[Math.floor(Math.random() * CORES.length)], liderId: "", supervisorId: "", representanteId: "" });
     setOpen(true);
   }
   function abrirEditar(e: DbEquipe) {
     setEditing(e);
-    setForm({ nome: e.nome, cor: e.cor ?? CORES[0], liderId: e.lider_id ?? "", supervisorId: e.supervisor_id ?? "" });
+    setForm({ nome: e.nome, cor: e.cor ?? CORES[0], liderId: e.lider_id ?? "", supervisorId: e.supervisor_id ?? "", representanteId: e.representante_id ?? "" });
     setOpen(true);
   }
   async function salvar(e: React.FormEvent) {
@@ -130,6 +190,7 @@ export default function EquipesPage() {
         cor: form.cor,
         liderId: form.liderId || null,
         supervisorId: form.supervisorId || null,
+        representanteId: form.representanteId || null,
       });
       const r = await fetch("/api/admin/equipes", {
         method: editing ? "PATCH" : "POST",
@@ -367,53 +428,54 @@ export default function EquipesPage() {
               ))}
             </div>
           </div>
-          <div>
-            <Label htmlFor="supervisor">Supervisor (opcional)</Label>
-            <select
+          {/* CADEIA DE COMANDO
+              Representante → Supervisor → Líder → Vendedores.
+
+              Cada campo lista SÓ quem tem aquele cargo. Antes os três
+              ofereciam a mesma lista frouxa (admin, representante, supervisor
+              e líder em todos), então dava para pôr um líder no lugar do
+              supervisor e o organograma virava ficção.
+
+              A elegibilidade sai do cargo ATUAL: promoveu alguém de Líder
+              para Supervisor, ele sai de uma lista e entra na outra sozinho.
+
+              ISTO É ORGANOGRAMA, NÃO PERMISSÃO — quem manda no que a pessoa
+              pode fazer continua sendo o cargo dela, não este campo. */}
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              Cadeia de comando
+            </p>
+            <CampoChefia
+              id="representante"
+              rotulo="Administrativo / Representante"
+              vazio="— sem representante —"
+              valor={form.representanteId}
+              onChange={(v) => setForm({ ...form, representanteId: v })}
+              elegivel={(u) => u.papel === "admin" || u.papel === "coordenador"}
+              users={users}
+            />
+            <CampoChefia
               id="supervisor"
-              value={form.supervisorId}
-              onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
-              className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
-            >
-              <option value="">— sem supervisor —</option>
-              {users
-                .filter(
-                  (u) =>
-                    u.papel === "admin" ||
-                    u.papel === "coordenador" ||
-                    u.papel === "supervisor" ||
-                    u.papel === "lider",
-                )
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nome} — {PAPEL_INFO[u.papel].label}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="lider">Líder (opcional)</Label>
-            <select
+              rotulo="Supervisor"
+              vazio="— sem supervisor —"
+              valor={form.supervisorId}
+              onChange={(v) => setForm({ ...form, supervisorId: v })}
+              elegivel={(u) => u.papel === "supervisor"}
+              users={users}
+            />
+            <CampoChefia
               id="lider"
-              value={form.liderId}
-              onChange={(e) => setForm({ ...form, liderId: e.target.value })}
-              className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm"
-            >
-              <option value="">— sem líder —</option>
-              {users
-                .filter(
-                  (u) =>
-                    u.papel === "admin" ||
-                    u.papel === "coordenador" ||
-                    u.papel === "supervisor" ||
-                    u.papel === "lider",
-                )
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nome} — {PAPEL_INFO[u.papel].label}
-                  </option>
-                ))}
-            </select>
+              rotulo="Líder"
+              vazio="— sem líder —"
+              valor={form.liderId}
+              onChange={(v) => setForm({ ...form, liderId: v })}
+              elegivel={(u) => u.papel === "lider"}
+              users={users}
+            />
+            <p className="text-[11px] text-[var(--color-text-dim)]">
+              Os vendedores da equipe entram pelo cadastro de cada colaborador, em Administrativo →
+              Colaboradores.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
