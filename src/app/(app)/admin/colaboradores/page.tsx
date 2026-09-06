@@ -406,17 +406,33 @@ export default function ColaboradoresPage() {
                         <div className="flex justify-end gap-1.5">
                           {!isMe && (
                             <>
+                              {/* Texto, não ícone: um cadeado sozinho é ambíguo
+                                  (o desenho mostra o estado atual ou o que o
+                                  clique faz?). Num botão que decide quem entra
+                                  no sistema, essa dúvida custa caro. Aqui está
+                                  escrito o que vai acontecer. */}
                               <button
                                 onClick={() => toggleLiberado(u)}
-                                title={u.codigo_liberado ? "Revogar acesso" : "Liberar acesso"}
-                                aria-label={u.codigo_liberado ? "Revogar acesso" : "Liberar acesso"}
-                                className={`grid h-8 w-8 place-items-center rounded-lg border transition-transform duration-150 hover:scale-110 ${
+                                title={
+                                  u.codigo_liberado
+                                    ? `Revogar o acesso de ${u.nome} — o código para de funcionar`
+                                    : `Liberar o acesso de ${u.nome} — o código passa a funcionar`
+                                }
+                                className={`inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border px-2.5 text-[11px] font-bold uppercase tracking-wider transition-transform duration-150 hover:scale-105 ${
                                   u.codigo_liberado
                                     ? "border-white/15 bg-white/5 text-white/60 hover:bg-white/10"
                                     : "border-emerald-400/40 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
                                 }`}
                               >
-                                {u.codigo_liberado ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                                {u.codigo_liberado ? (
+                                  <>
+                                    <Lock className="h-3.5 w-3.5" /> Revogar
+                                  </>
+                                ) : (
+                                  <>
+                                    <Unlock className="h-3.5 w-3.5" /> Liberar
+                                  </>
+                                )}
                               </button>
                               <button
                                 onClick={() => toggleAtivo(u)}
