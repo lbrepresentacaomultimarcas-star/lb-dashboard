@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Crown,
+  IdCard,
   Lock,
   Mail,
   Search,
@@ -406,6 +407,17 @@ export default function ColaboradoresPage() {
                         <div className="flex justify-end gap-1.5">
                           {!isMe && (
                             <>
+                              {/* Abre o MESMO mapa que o colaborador vê --
+                                  um componente só, para gestor e consultor
+                                  nunca lerem diagnósticos diferentes do
+                                  mesmo funil. */}
+                              <a
+                                href={`/perfil?de=${u.id}`}
+                                title={`Ver o mapa de evolução de ${u.nome}`}
+                                className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/60 transition-transform duration-150 hover:scale-110 hover:bg-white/10"
+                              >
+                                <IdCard className="h-3.5 w-3.5" />
+                              </a>
                               {/* Texto, não ícone: um cadeado sozinho é ambíguo
                                   (o desenho mostra o estado atual ou o que o
                                   clique faz?). Num botão que decide quem entra
