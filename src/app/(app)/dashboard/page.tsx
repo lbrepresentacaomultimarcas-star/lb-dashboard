@@ -30,6 +30,7 @@ import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
 import { PeriodFilter } from "@/components/period-filter";
 import { PainelInteligente } from "@/components/dashboard/painel-inteligente";
+import { EventoDestaqueCard } from "@/components/dashboard/evento-destaque";
 import { AnimatedBRL, AnimatedNum } from "@/components/ui/spark";
 
 function StatPremium({
@@ -123,6 +124,9 @@ export default function DashboardPage() {
   return (
     <PremiumStage>
       <PainelInteligente />
+      {/* Só aparece quando há campanha ativa dentro do período; sem evento,
+          devolve null e o Dashboard segue exatamente como era. */}
+      <EventoDestaqueCard />
       <header className="lb-fade-up flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="lb-orb h-11 w-11" style={{ ["--orb" as string]: "#2563FF" }}>

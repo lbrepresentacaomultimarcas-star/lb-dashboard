@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  Flame,
   Award,
   BarChart3,
   Bot,
@@ -101,6 +102,7 @@ const NAV: (NavItem | NavGroup)[] = [
     items: [
       { href: "/admin/colaboradores", label: "Colaboradores", icon: Shield, minimo: "admin" },
       { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
+      { href: "/admin/eventos", label: "Evento em destaque", icon: Flame, minimo: "admin" },
       { href: "/admin/producoes", label: "Produções", icon: BarChart3, minimo: "admin" },
       { href: "/admin/fechamento", label: "Fechamento", icon: CalendarClock, minimo: "admin" },
       { href: "/admin/performance", label: "Índice de Performance", icon: Trophy, minimo: "admin" },
