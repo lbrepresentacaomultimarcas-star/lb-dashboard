@@ -17,7 +17,7 @@ export const GRAPH_BASE = () => process.env.META_GRAPH_BASE?.trim() || "https://
 const g = (caminho: string) => `${GRAPH_BASE()}/${GRAPH_VERSION()}${caminho}`;
 
 /** Permissões pedidas na autorização. Cada uma tem um motivo — nada a mais. */
-export const ESCOPOS = [
+export const ESCOPOS_LEADS = [
   "pages_show_list", // listar as Páginas que você administra
   "pages_read_engagement", // ler nome/categoria/foto da Página
   "pages_manage_metadata", // inscrever o LB CRM nos leads da Página
@@ -26,6 +26,33 @@ export const ESCOPOS = [
   "ads_read", // SOMENTE LEITURA de investimento e desempenho (Central de Trafego)
   "pages_manage_ads", // listar os formulários da Página (a tela de Integrações depende dela)
 ] as const;
+
+export const ESCOPOS_WHATSAPP = [
+  "whatsapp_business_management", // ler WABA/números e inscrever o CRM nos webhooks
+  "whatsapp_business_messaging", // receber as mensagens (e responder, quando houver número)
+] as const;
+
+/**
+ * As duas listas vão juntas na autorização, mas ficam SEPARADAS de propósito.
+ *
+ * Cada tela só pode cobrar o que ela mesma usa. Misturadas, o cartão dos
+ * formulários — que está funcionando — passaria a exibir "faltou autorizar" por
+ * causa de permissão do WhatsApp, e um aviso desses num fluxo saudável ensina a
+ * ignorar aviso.
+ */
+export const ESCOPOS = [...ESCOPOS_LEADS, ...ESCOPOS_WHATSAPP] as const;
+
+/**
+ * As duas permissões acima são o ESPELHO exato do que já faz o formulário
+ * funcionar. Vale a comparação, porque é a mesma ideia dos dois lados:
+ *
+ *   FORMULÁRIO   pages_manage_metadata  ->  POST /{page-id}/subscribed_apps
+ *   WHATSAPP     whatsapp_business_...  ->  POST /{waba-id}/subscribed_apps
+ *
+ * Em ambos, quem liga o webhook é o CRM pela Graph API — não o painel do Meta
+ * Developers. Por isso o formulário nunca precisou de configuração manual, e o
+ * WhatsApp também não precisa.
+ */
 
 export function appId(): string {
   const v = process.env.META_APP_ID?.trim();
@@ -536,4 +563,124 @@ export async function criarFormulario(
     params,
   });
   return r.id;
+}
+
+/* ------------------------------- WhatsApp -------------------------------- */
+/*
+ * O MESMO PRINCÍPIO DO FORMULÁRIO, DO OUTRO LADO.
+ *
+ * O leadgen funciona porque o CRM chama `POST /{page-id}/subscribed_apps` e a
+ * Página passa a mandar os leads para cá. O WhatsApp tem o gêmeo disso:
+ * `POST /{waba-id}/subscribed_apps`. Mesma autorização, mesma Graph API, mesmo
+ * webhook de chegada — muda só o recurso vinculado.
+ *
+ * Nada aqui escreve em número de telefone. Inscrever um app numa WABA não
+ * registra, não migra e não remove número nenhum: só diz para a Meta "mande os
+ * eventos desta conta para este app".
+ */
+
+export type WabaMeta = {
+  id: string;
+  name?: string;
+  currency?: string;
+  account_review_status?: string;
+  business_verification_status?: string;
+  owner_business_info?: { id?: string; name?: string };
+};
+
+export type NumeroWaba = {
+  id: string;
+  display_phone_number?: string;
+  verified_name?: string;
+  quality_rating?: string;
+  code_verification_status?: string;
+  /** CLOUD_API | ON_PREMISE | NOT_APPLICABLE — diz onde o número está de fato. */
+  platform_type?: string;
+  status?: string;
+};
+
+/** O que a Meta REALMENTE concedeu. Pedir não é o mesmo que receber. */
+export async function permissoesConcedidas(
+  token: string,
+): Promise<{ permission: string; status: string }[]> {
+  const r = await chamar<{ data?: { permission: string; status: string }[] }>("/me/permissions", {
+    token,
+  });
+  return r.data ?? [];
+}
+
+/** Portfólios empresariais que este usuário administra. */
+export async function listarNegocios(token: string): Promise<{ id: string; name?: string }[]> {
+  const r = await chamar<{ data?: { id: string; name?: string }[] }>("/me/businesses", {
+    token,
+    params: { fields: "id,name", limit: "50" },
+  });
+  return r.data ?? [];
+}
+
+const CAMPOS_WABA =
+  "id,name,currency,account_review_status,business_verification_status,owner_business_info";
+
+/**
+ * As contas do WhatsApp do portfólio.
+ *
+ * São duas listas na Meta: as que a empresa POSSUI e as que ela apenas
+ * administra para clientes. Ler as duas evita concluir "não tem nenhuma"
+ * quando a conta está do outro lado.
+ */
+export async function wabasDoNegocio(businessId: string, token: string): Promise<WabaMeta[]> {
+  const achadas: WabaMeta[] = [];
+  for (const borda of ["owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"]) {
+    try {
+      const r = await chamar<{ data?: WabaMeta[] }>(`/${businessId}/${borda}`, {
+        token,
+        params: { fields: CAMPOS_WABA, limit: "50" },
+      });
+      achadas.push(...(r.data ?? []));
+    } catch {
+      // uma borda pode ser negada sem que a outra seja — seguir é o certo
+    }
+  }
+  // a mesma conta pode aparecer nas duas listas
+  return [...new Map(achadas.map((w) => [w.id, w])).values()];
+}
+
+/** Números de uma conta do WhatsApp — com o estado real de cada um. */
+export async function numerosDaWaba(wabaId: string, token: string): Promise<NumeroWaba[]> {
+  const r = await chamar<{ data?: NumeroWaba[] }>(`/${wabaId}/phone_numbers`, {
+    token,
+    params: {
+      fields:
+        "id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,status",
+      limit: "50",
+    },
+  });
+  return r.data ?? [];
+}
+
+/** Quais apps já recebem os eventos desta conta do WhatsApp. */
+export async function appsInscritosNaWaba(
+  wabaId: string,
+  token: string,
+): Promise<{ id: string; name?: string; link?: string }[]> {
+  const r = await chamar<{
+    data?: { whatsapp_business_api_data?: { id?: string; name?: string; link?: string } }[];
+  }>(`/${wabaId}/subscribed_apps`, { token });
+  return (r.data ?? [])
+    .map((a) => a.whatsapp_business_api_data)
+    .filter((a): a is { id?: string; name?: string; link?: string } => !!a)
+    .map((a) => ({ id: a.id ?? "", name: a.name, link: a.link }));
+}
+
+/**
+ * LIGA o webhook desta conta do WhatsApp no LB CRM.
+ * É o gêmeo de `assinarLeadgen`. Não toca em número de telefone.
+ */
+export async function assinarWaba(wabaId: string, token: string): Promise<void> {
+  await chamar(`/${wabaId}/subscribed_apps`, { token, metodo: "POST" });
+}
+
+/** Desliga. Também não mexe em número — só para de receber os eventos. */
+export async function desassinarWaba(wabaId: string, token: string): Promise<void> {
+  await chamar(`/${wabaId}/subscribed_apps`, { token, metodo: "DELETE" });
 }

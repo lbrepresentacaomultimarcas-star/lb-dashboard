@@ -18,6 +18,7 @@ import { dashboardConfigApi, useDashboardConfig } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MetaLeadAdsCard } from "@/components/integracoes/meta-lead-ads";
+import { WhatsappMetaCard } from "@/components/integracoes/whatsapp-meta";
 import { Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 
@@ -562,6 +563,7 @@ export default function ConfiguracoesPage() {
           Integrações
         </h2>
         <MetaLeadAdsCard />
+        <WhatsappMetaCard />
         <ConexaoMetaCard />
       </section>
 

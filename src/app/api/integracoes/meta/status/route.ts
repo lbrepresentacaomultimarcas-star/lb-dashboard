@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { siteBaseUrl } from "@/lib/site-url";
-import { credenciaisPresentes, ESCOPOS, appsInscritos, modoLogin } from "@/lib/server/meta-api";
+import { credenciaisPresentes, ESCOPOS_LEADS, appsInscritos, modoLogin } from "@/lib/server/meta-api";
 import { cofrePronto } from "@/lib/server/meta-crypto";
 import {
   conexaoDaOrg,
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   // permissões que a Meta ainda não concedeu — explica falha antes de acontecer
   const faltamEscopos = conexao
-    ? ESCOPOS.filter((e) => !conexao.escopos.includes(e))
+    ? ESCOPOS_LEADS.filter((e) => !conexao.escopos.includes(e))
     : [];
 
   // quem mais está recebendo os leads desta Página (revela app antigo grudado)
