@@ -344,6 +344,8 @@ type MetaStatus = {
   pronto: boolean;
   callbackUrl: string;
   totalRecebidos: number;
+  /** O número da empresa que recebeu a última mensagem, direto do webhook. */
+  numero: { display: string; ehTesteMeta: boolean } | null;
   ultimo: {
     nome: string;
     telefone: string | null;
@@ -395,6 +397,11 @@ function ConexaoMetaCard() {
 
   const Item = ChecagemItem;
 
+  // Configuração pronta NÃO é o mesmo que estar recebendo: enquanto o número
+  // ligado à Meta for o de teste, o anúncio real não traz ninguém.
+  const numeroOk = !!status?.numero && !status.numero.ehTesteMeta;
+  const recebendo = !!status?.pronto && numeroOk;
+
   return (
     <Card>
       <div className="flex items-start justify-between gap-4">
@@ -423,19 +430,31 @@ function ConexaoMetaCard() {
         <div className="mt-4 space-y-4">
           <div
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-              status.pronto
+              recebendo
                 ? "bg-[var(--color-success,#22c55e)]/12 text-[var(--color-success,#22c55e)]"
                 : "bg-[var(--color-warn,#f59e0b)]/12 text-[var(--color-warn,#f59e0b)]"
             }`}
           >
-            {status.pronto ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-            {status.pronto ? "Pronto para receber" : "Falta configuração"}
+            {recebendo ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+            {recebendo
+              ? "Recebendo leads do WhatsApp"
+              : status.pronto
+                ? "Falta conectar o número da empresa"
+                : "Falta configuração"}
           </div>
 
           <ul className="space-y-1.5">
             <Item ok={status.config.verifyToken} label="Token de verificação configurado" />
             <Item ok={status.config.appSecret} label="Chave secreta do app (App Secret) configurada" />
             <Item ok={status.config.orgId} label="Empresa vinculada" />
+            <Item
+              ok={numeroOk}
+              label={
+                status.numero
+                  ? `Número da empresa na Meta: ${status.numero.display}${status.numero.ehTesteMeta ? " (número de teste)" : ""}`
+                  : "Número da empresa conectado à Meta"
+              }
+            />
           </ul>
 
           {!status.pronto ? (
@@ -447,6 +466,17 @@ function ConexaoMetaCard() {
                   : !status.config.verifyToken
                     ? "Cadastre META_VERIFY_TOKEN nas variáveis de ambiente da Vercel."
                     : "Cadastre LB_ORG_ID nas variáveis de ambiente da Vercel."}
+              </p>
+            </div>
+          ) : !numeroOk ? (
+            <div className="rounded-lg border border-[var(--color-warn,#f59e0b)]/35 bg-[var(--color-warn,#f59e0b)]/8 p-3">
+              <p className="text-xs font-semibold">
+                {status.numero ? "O número ligado é o de teste da Meta" : "Falta conectar o número da empresa"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                {status.numero
+                  ? `O CRM está recebendo mensagens, mas de ${status.numero.display} — o número de teste que a Meta cria sozinha. Cliente nenhum escreve para ele. Enquanto o WhatsApp da empresa não estiver na plataforma oficial (Cloud API), o anúncio abre a conversa no celular e ela não chega aqui.`
+                  : "Este lado está configurado e aguardando. Os leads só começam a cair aqui depois que o WhatsApp da empresa estiver ativo na plataforma oficial do WhatsApp (Cloud API)."}
               </p>
             </div>
           ) : status.totalRecebidos === 0 ? (
