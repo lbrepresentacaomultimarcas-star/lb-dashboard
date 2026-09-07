@@ -181,9 +181,27 @@ export default function AnalisesPage() {
   }, []);
 
   /* ------------------------------ lista filtrada ---------------------------- */
+  /**
+   * Só as propostas que esta pessoa pode ver.
+   *
+   * Quem protege de verdade é a regra do banco — sem ela, uma chamada direta
+   * à API traria tudo, e apagar este filtro pelo DevTools não devolveria
+   * linha nenhuma. Mas o filtro fica aqui do mesmo jeito, pelo mesmo motivo
+   * que o Pipeline tem o dele: se um dia a policy cair, a tela não vira uma
+   * vitrine da carteira alheia enquanto ninguém percebe.
+   *
+   * Vem ANTES da busca e do filtro de situação de propósito: assim "Todas",
+   * "Em análise", "Aprovadas" e a pesquisa por cliente já nascem dentro do
+   * escopo — não há combinação de filtros que escape.
+   */
+  const visiveis = useMemo(
+    () => analises.filter((a) => noEscopo(escopo, a.vendedorId)),
+    [analises, escopo],
+  );
+
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return analises
+    return visiveis
       .filter((a) => (fStatus === "todas" ? true : a.status === fStatus))
       .filter((a) =>
         !q
@@ -194,16 +212,19 @@ export default function AnalisesPage() {
               .toLowerCase()
               .includes(q),
       );
-  }, [analises, busca, fStatus]);
+  }, [visiveis, busca, fStatus]);
 
+  // Contadores sobre `visiveis`, não sobre a lista crua: um número que conta
+  // propostas que a pessoa não pode abrir já entrega quantas existem — e é
+  // exatamente o tipo de vazamento que passa despercebido.
   const contagem = useMemo(
     () => ({
-      todas: analises.length,
-      em_analise: analises.filter((a) => a.status === "em_analise").length,
-      aprovado: analises.filter((a) => a.status === "aprovado").length,
-      nao_aprovado: analises.filter((a) => a.status === "nao_aprovado").length,
+      todas: visiveis.length,
+      em_analise: visiveis.filter((a) => a.status === "em_analise").length,
+      aprovado: visiveis.filter((a) => a.status === "aprovado").length,
+      nao_aprovado: visiveis.filter((a) => a.status === "nao_aprovado").length,
     }),
-    [analises],
+    [visiveis],
   );
 
   /* --------------------------- criar a partir do lead ----------------------- */
