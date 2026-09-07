@@ -170,5 +170,150 @@ export function montarConversa(lead: CentralLead, eventos: CentralLeadEvento[]):
   };
 }
 
-/** A origem é de anúncio pago? Vale para o selo Meta Ads → Click-to-WhatsApp. */
+/** A origem é de anúncio pago? Vale para o destaque visual do selo. */
 export const origemDeAnuncio = (origem?: string) => !!origem && origem.startsWith("Meta Ads");
+
+/**
+ * O rótulo do selo de origem.
+ *
+ * "Click-to-WhatsApp" só quando FOI Click-to-WhatsApp. Lead de formulário chega
+ * como "Meta Ads · Instagram" e chamá-lo de Click-to-WhatsApp mentiria sobre o
+ * caminho que trouxe o cliente — e é por esse caminho que se decide onde
+ * investir.
+ */
+export function rotuloDaOrigem(origem?: string): string {
+  if (!origem) return "";
+  return origem.includes("Click-to-WhatsApp") ? "Meta Ads → Click-to-WhatsApp" : origem;
+}
+
+/* ------------------------------------------------------------------ atribuição */
+
+export type Atribuicao = {
+  campanha?: string;
+  conjunto?: string;
+  anuncio?: string;
+  idAnuncio?: string;
+  link?: string;
+};
+
+const CHAVE_DO_ROTULO: Record<string, keyof Atribuicao> = {
+  Campanha: "campanha",
+  Conjunto: "conjunto",
+  "Anúncio": "anuncio",
+  "ID do anúncio": "idAnuncio",
+  Link: "link",
+};
+
+const RE_ROTULO = /^(Campanha|Conjunto|Anúncio|ID do anúncio|Link):\s*(.+)$/;
+
+/**
+ * De qual anúncio este cliente veio.
+ *
+ * A ingestão já grava isso em texto, tanto nas observações do lead quanto no
+ * detalhe do evento — então não há consulta nova, nem coluna nova: é leitura do
+ * que já está no CRM.
+ *
+ * O trecho entre aspas (`Mensagem: “…”`) é removido antes de procurar os
+ * rótulos. Sem isso, um cliente que escrevesse uma linha começando com
+ * "Anúncio:" apareceria como se fosse a campanha dele.
+ *
+ * NADA é inventado: campo que a Meta não mandou simplesmente não volta daqui.
+ * No Click-to-WhatsApp a Meta manda só o anúncio (headline e id) — campanha e
+ * conjunto não existem nesse caminho, e por isso não aparecem.
+ */
+export function atribuicao(lead: CentralLead, eventos: CentralLeadEvento[]): Atribuicao {
+  const fontes = [lead.observacoes, ...eventos.map((e) => e.detalhe)].filter(
+    (x): x is string => !!x,
+  );
+  const achado: Atribuicao = {};
+  for (const fonte of fontes) {
+    for (const linha of fonte.replace(RE_MENSAGEM, "").split("\n")) {
+      const m = linha.trim().match(RE_ROTULO);
+      if (!m) continue;
+      const chave = CHAVE_DO_ROTULO[m[1]];
+      if (chave && !achado[chave]) achado[chave] = m[2].trim();
+    }
+  }
+  return achado;
+}
+
+/* ---------------------------------------------------------------- interesse */
+
+const EMOJI_PRODUTO: Record<string, string> = {
+  Carro: "🚗",
+  Moto: "🏍️",
+  "Imóvel": "🏠",
+  "Caminhão": "🚚",
+  "Maquinário": "🚜",
+  "Energia Solar": "☀️",
+  Investimento: "💰",
+};
+
+/** Só ilustra o produto que o CRM já identificou — não identifica nada. */
+export const emojiDoProduto = (p?: string) => (p && EMOJI_PRODUTO[p]) || "🎯";
+
+/* ------------------------------------------------------------- próxima ação */
+
+export type ProximaAcao = {
+  titulo: string;
+  detalhe: string;
+  /** Sugere ligar? Só então os atalhos de contato aparecem. */
+  contato: boolean;
+};
+
+/**
+ * O que fazer agora, deduzido dos estados que a Central JÁ tem.
+ *
+ * Não existe fluxo novo aqui: nenhum estado é criado, nenhum é gravado. É uma
+ * leitura de `status` e dos marcos (`ligacaoIniciadaEm`, `atendidoEm`) para
+ * dizer em uma frase o que o consultor deveria fazer em seguida.
+ */
+export function proximaAcao(lead: CentralLead): ProximaAcao {
+  if (lead.status === "convertido")
+    return {
+      titulo: "Já virou negócio",
+      detalhe: "O acompanhamento deste cliente continua no Pipeline.",
+      contato: false,
+    };
+  if (lead.status === "perdido")
+    return {
+      titulo: "Atendimento encerrado",
+      detalhe: lead.motivoPerda ? `Motivo: ${lead.motivoPerda}` : "Lead marcado como perdido.",
+      contato: false,
+    };
+  if (!lead.vendedorId)
+    return {
+      titulo: "Distribuir para um consultor",
+      detalhe: "Ninguém foi designado ainda — e o cliente já mandou mensagem.",
+      contato: false,
+    };
+  if (lead.status === "nao_atendeu")
+    return {
+      titulo: "Tentar de novo",
+      detalhe: "A última tentativa não foi atendida. Mandar mensagem costuma funcionar melhor que insistir na ligação.",
+      contato: true,
+    };
+  if (lead.status === "aguardando_resposta")
+    return {
+      titulo: "Aguardando o cliente responder",
+      detalhe: "A bola está com o cliente. Se demorar, retome pela última mensagem dele.",
+      contato: true,
+    };
+  if (lead.status === "em_atendimento")
+    return {
+      titulo: "Retomar a conversa",
+      detalhe: "Atendimento em andamento — responda a última mensagem do cliente.",
+      contato: true,
+    };
+  if (lead.ligacaoIniciadaEm && !lead.atendidoEm)
+    return {
+      titulo: "Registrar o resultado da ligação",
+      detalhe: "A ligação foi iniciada e ainda não tem desfecho marcado no card.",
+      contato: true,
+    };
+  return {
+    titulo: "Entrar em contato com o cliente",
+    detalhe: "Lead novo e ainda sem contato registrado.",
+    contato: true,
+  };
+}

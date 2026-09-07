@@ -1645,6 +1645,8 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
             consultor={nomeVend(timelineDe.vendedorId)}
             status={CENTRAL_STATUS_INFO[timelineDe.status].label}
             prioridade={PRIORIDADE_INFO[timelineDe.prioridade].label}
+            whatsappUrl={waLink(timelineDe.telefone)}
+            telefoneUrl={telLink(timelineDe.telefone)}
           />
         )}
       </Modal>
