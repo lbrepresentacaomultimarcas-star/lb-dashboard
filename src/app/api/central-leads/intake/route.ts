@@ -72,15 +72,66 @@ export async function GET(req: NextRequest) {
  * NÃO pode parar de receber lead — perder lead pago é pior do que deixar
  * passar um duplicado por algumas horas.
  */
+type LeadAtivo = {
+  id: string;
+  produto: string | null;
+  origem: string | null;
+  observacoes: string | null;
+};
+
+/** A origem ja aponta para um anuncio? Entao ela nunca pode ser rebaixada. */
+const veioDeAnuncio = (origem: string | null | undefined) =>
+  !!origem && origem.startsWith("Meta Ads");
+
+/**
+ * Grava UMA mensagem no historico do lead. Regra: 1 CLIENTE = 1 LEAD ATIVO,
+ * e cada mensagem dele e uma linha no historico desse mesmo lead.
+ *
+ * O TEXTO vai no `detalhe`. Sem isso, da segunda mensagem em diante o historico
+ * dizia so "Novo contato via WhatsApp" e o que o cliente escreveu se perdia --
+ * justamente o que o consultor precisa ler antes de ligar.
+ *
+ * O 23505 e ignorado de proposito: e o indice unico
+ * (org_id, campo, valor_novo) recusando a MESMA mensagem da Meta duas vezes.
+ * A Meta reenvia o webhook quando demora a receber o 200, e duas entregas
+ * simultaneas passariam as duas pelo SELECT de conferencia -- quem garante
+ * "uma mensagem = um registro" e o banco, nao o codigo.
+ */
+async function registrarMensagem(
+  db: ReturnType<typeof supabaseAdmin>,
+  orgId: string,
+  leadId: string,
+  lead: LeadExtraido,
+  tipo: "criado" | "observacao",
+): Promise<void> {
+  const texto = lead.observacoes?.trim();
+  const { error } = await db.from("central_leads_eventos").insert({
+    org_id: orgId,
+    central_lead_id: leadId,
+    tipo,
+    campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
+    valor_novo: lead.mensagemId ?? null,
+    detalhe:
+      texto ||
+      (lead.anuncio ? `Contato do anuncio: ${lead.anuncio}` : `Contato via ${lead.origem}`),
+    autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
+  });
+  if (error && error.code !== "23505") {
+    console.error("[intake] falha ao registrar mensagem:", error.message);
+  }
+}
+
 async function procurarAtivoMesmoTelefone(
   db: ReturnType<typeof supabaseAdmin>,
   orgId: string,
   telefone: string | undefined,
-): Promise<{ id: string; produto: string | null }[] | null> {
+): Promise<LeadAtivo[] | null> {
   const base = () =>
     db
       .from("central_leads")
-      .select("id, produto")
+      // origem e observacoes vem junto: sao o que decide se uma mensagem
+      // posterior traz o anuncio que a primeira nao tinha
+      .select("id, produto, origem, observacoes")
       .eq("org_id", orgId)
       .is("encerrado_em", null)
       // lead EXCLUÍDO não pode bloquear lead novo: ele some da tela, então
@@ -92,11 +143,11 @@ async function procurarAtivoMesmoTelefone(
   const chave = chaveTelefone(telefone);
   if (chave) {
     const r = await base().eq("telefone_chave", chave);
-    if (!r.error) return (r.data ?? []) as { id: string; produto: string | null }[];
+    if (!r.error) return (r.data ?? []) as LeadAtivo[];
     console.warn("[intake] telefone_chave indisponível, comparando pelo texto:", r.error.message);
   }
   const r2 = await base().eq("telefone", telefone ?? "");
-  return (r2.data ?? []) as { id: string; produto: string | null }[];
+  return (r2.data ?? []) as LeadAtivo[];
 }
 
 export async function POST(req: NextRequest) {
@@ -154,14 +205,34 @@ export async function POST(req: NextRequest) {
         }
 
         if (existente) {
+          // MESMO CLIENTE, MENSAGEM NOVA. Nunca nasce card: atualiza o que existe.
+          const agora = new Date().toISOString();
+          const patch: Record<string, unknown> = { atualizado_em: agora };
+
           // Caso real: o cliente responde o interesse ("1", "carro"…) NUMA MENSAGEM
           // SEGUINTE, quando o lead já existe. Se ainda não temos o produto e a
           // mensagem revela o interesse, preenchemos agora.
-          if (lead.produto && !existente.produto) {
-            await db
-              .from("central_leads")
-              .update({ produto: lead.produto, atualizado_em: new Date().toISOString() })
-              .eq("id", existente.id);
+          if (lead.produto && !existente.produto) patch.produto = lead.produto;
+
+          // O ANÚNCIO PODE CHEGAR DEPOIS. Quem manda "oi" e só então volta pelo
+          // anúncio gera a primeira mensagem sem referral: a origem sobe agora.
+          // E nunca desce — origem de anúncio não vira "WhatsApp" puro por causa
+          // de uma mensagem seguinte, senão o lead perde a atribuição do que foi pago.
+          const promove = veioDeAnuncio(lead.origem) && !veioDeAnuncio(existente.origem);
+          if (promove) {
+            patch.origem = lead.origem;
+            if (lead.anuncio) {
+              patch.observacoes = [existente.observacoes, `Anúncio: ${lead.anuncio}`]
+                .filter(Boolean)
+                .join("\n");
+            }
+          }
+
+          // Nome do cliente fica intocado de propósito: quem já está no card foi
+          // identificado na primeira mensagem, e o perfil do WhatsApp muda.
+          await db.from("central_leads").update(patch).eq("id", existente.id);
+
+          if (patch.produto) {
             await db.from("central_leads_eventos").insert({
               org_id: orgId,
               central_lead_id: existente.id,
@@ -173,15 +244,23 @@ export async function POST(req: NextRequest) {
               autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
             });
           }
-          await db.from("central_leads_eventos").insert({
-            org_id: orgId,
-            central_lead_id: existente.id,
-            tipo: "observacao",
-            campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
-            valor_novo: lead.mensagemId ?? null,
-            detalhe: `Novo contato via ${lead.origem}${lead.anuncio ? ` (anúncio: ${lead.anuncio})` : ""}.`,
-            autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
-          });
+          if (promove) {
+            await db.from("central_leads_eventos").insert({
+              org_id: orgId,
+              central_lead_id: existente.id,
+              tipo: "editado",
+              campo: "origem",
+              valor_anterior: existente.origem,
+              valor_novo: lead.origem,
+              detalhe: lead.anuncio
+                ? `Cliente voltou pelo anúncio: ${lead.anuncio}`
+                : "Cliente voltou por um anúncio.",
+              autor_nome: "Meta · Click-to-WhatsApp",
+            });
+          }
+
+          // A mensagem em si — com o texto — entra no histórico deste mesmo lead.
+          await registrarMensagem(db, orgId, existente.id, lead, "observacao");
           continue;
         }
 
@@ -232,15 +311,11 @@ export async function POST(req: NextRequest) {
 
           if (agora?.[0]) {
             // (a) corrida — só registra a mensagem no lead que venceu
-            await db.from("central_leads_eventos").insert({
-              org_id: orgId,
-              central_lead_id: agora[0].id,
-              tipo: "observacao",
-              campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
-              valor_novo: lead.mensagemId ?? null,
-              detalhe: `Novo contato via ${lead.origem}.`,
-              autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
-            });
+            await db
+              .from("central_leads")
+              .update({ atualizado_em: new Date().toISOString() })
+              .eq("id", agora[0].id);
+            await registrarMensagem(db, orgId, agora[0].id, lead, "observacao");
             continue;
           }
 
@@ -257,17 +332,7 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        await db.from("central_leads_eventos").insert({
-          org_id: orgId,
-          central_lead_id: criado.id,
-          tipo: "criado",
-          campo: lead.mensagemId ? (lead.idCampo ?? "wamid") : null,
-          valor_novo: lead.mensagemId ?? null,
-          detalhe: lead.anuncio
-            ? `Lead recebido do anúncio: ${lead.anuncio}`
-            : `Lead recebido via ${lead.origem}`,
-          autor_nome: lead.idCampo === "leadgen" ? "Meta · Formulário" : "Meta · Click-to-WhatsApp",
-        });
+        await registrarMensagem(db, orgId, criado.id, lead, "criado");
 
         // avisa quem distribui — a Central já escuta `notificacoes` em tempo real,
         // então o sino acende sozinho, sem ninguém ficar olhando a tela

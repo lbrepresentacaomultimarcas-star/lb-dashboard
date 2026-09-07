@@ -1680,7 +1680,12 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                     <span className="font-semibold capitalize">{ev.tipo.replace(/_/g, " ")}</span>
                     {ev.detalhe ? <span className="text-[var(--color-text-dim)]"> — {ev.detalhe}</span> : null}
                   </p>
-                  {ev.campo && (
+                  {/*
+                    O id da mensagem da Meta (wamid/leadgen) e trinco tecnico, nao
+                    historico: impresso aqui, cada mensagem do cliente ganhava uma
+                    linha "wamid: - > HBgNNTU3OTk..." no meio da conversa.
+                  */}
+                  {ev.campo && ev.campo !== "wamid" && ev.campo !== "leadgen" && (
                     <p className="text-[11px] text-[var(--color-text-dim)]">
                       {ev.campo}: {ev.valorAnterior ?? "—"} → {ev.valorNovo ?? "—"}
                     </p>
