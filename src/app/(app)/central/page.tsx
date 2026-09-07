@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  MessageSquare,
   FileSpreadsheet,
   Inbox,
   MessageCircle,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
 import { ehAdmin } from "@/lib/permissions";
+import { FichaConversa } from "@/components/central/ficha-conversa";
 import {
   CENTRAL_STATUS_INFO,
   LEAD_STATUS_INFO,
@@ -287,6 +289,8 @@ export default function CentralLeadsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [timelineDe, setTimelineDe] = useState<CentralLead | null>(null);
   const [eventos, setEventos] = useState<CentralLeadEvento[] | null>(null);
+  /** Quantas mensagens cada lead recebeu — o card mostra isso no botao. */
+  const [msgs, setMsgs] = useState<Record<string, number>>({});
 
   // admin: distribuição + cadastro + importação
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -571,6 +575,30 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
     setEventos(null);
     setEventos(await centralLeadsApi.historico(lead.id));
   }
+
+  /*
+   * Contagem de mensagens da lista inteira, numa consulta so.
+   *
+   * A chave e a lista de ids, nao o array: `leads` e recriado a cada render do
+   * store e um efeito dependente dele giraria sem parar. Assinatura em texto
+   * so muda quando a lista realmente muda.
+   *
+   * O disparo sai do corpo do efeito (setTimeout 0) porque o React 19 proibe
+   * setState sincrono dentro de efeito.
+   */
+  const assinaturaDosLeads = useMemo(() => leads.map((l) => l.id).join(","), [leads]);
+  useEffect(() => {
+    if (!assinaturaDosLeads) return;
+    let vivo = true;
+    const t = setTimeout(async () => {
+      const c = await centralLeadsApi.contagemMensagens(assinaturaDosLeads.split(","));
+      if (vivo) setMsgs(c);
+    }, 0);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [assinaturaDosLeads]);
 
   // --- admin: distribuição ---
   /**
@@ -1104,14 +1132,24 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
                       <Phone className="h-3.5 w-3.5" /> Discar
                     </a>
                   )}
-                  <button
-                    onClick={() => abrirTimeline(l)}
-                    title="Ficha completa — respostas do formulário e histórico"
-                    className="grid h-8 w-9 shrink-0 place-items-center rounded-lg border border-white/12 bg-white/[0.04] text-white/70 transition-colors hover:bg-white/[0.08]"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                  </button>
                 </div>
+
+                {/*
+                  Era um icone de 9px sem rotulo, e a conversa do cliente ficava
+                  atras dele. Agora e uma acao de largura inteira, com a
+                  contagem: o consultor ve que existe mensagem para ler sem
+                  precisar abrir card por card.
+                */}
+                <button
+                  onClick={() => abrirTimeline(l)}
+                  title="Conversa completa e ficha do cliente"
+                  className="flex h-9 items-center justify-center gap-2 rounded-lg border border-[var(--color-brand)]/40 bg-[var(--color-brand)]/10 text-xs font-semibold text-[var(--color-brand)] transition-colors hover:bg-[var(--color-brand)]/20"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {(msgs[l.id] ?? 0) > 0
+                    ? `Ver conversa · ${msgs[l.id]} ${msgs[l.id] === 1 ? "mensagem" : "mensagens"}`
+                    : "Ver ficha completa"}
+                </button>
 
                 {admin && l.vendedorId && (
                   <button
@@ -1598,106 +1636,16 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
         title="Ficha do lead"
         subtitle={timelineDe?.nome}
         icon={<FileText className="h-5 w-5" />}
+        size="lg"
       >
-        {/* identificação */}
         {timelineDe && (
-          <div className="mb-4 space-y-3">
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/50 p-3">
-              <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2">
-                {[
-                  ["Produto", timelineDe.produto],
-                  ["Telefone", timelineDe.telefone],
-                  ["Origem", timelineDe.origem],
-                  ["Entrou em", `${fmtData(timelineDe.recebidoEm)} · ${fmtHora(timelineDe.recebidoEm)}`],
-                  ["Consultor", nomeVend(timelineDe.vendedorId)],
-                  ["Status", CENTRAL_STATUS_INFO[timelineDe.status].label],
-                  ["Prioridade (CRM)", PRIORIDADE_INFO[timelineDe.prioridade].label],
-                  ["Subproduto", timelineDe.subproduto],
-                  ["Faixa de crédito", timelineDe.faixaCredito],
-                  ["Objetivo", timelineDe.objetivo],
-                  ["Prazo (cliente)", timelineDe.prazoInteresse],
-                ].map(([rot, val]) =>
-                  val ? (
-                    <div key={rot as string} className="flex min-w-0 gap-1.5">
-                      <dt className="shrink-0 text-[var(--color-text-dim)]">{rot}:</dt>
-                      <dd className="min-w-0 break-words font-medium">{val}</dd>
-                    </div>
-                  ) : null,
-                )}
-              </dl>
-            </div>
-
-            {/* Informações do formulário — respostas originais, sem interpretação */}
-            <section>
-              <h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
-                Informações do formulário
-              </h4>
-              {timelineDe.formulario && timelineDe.formulario.length > 0 ? (
-                <dl className="space-y-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
-                  {timelineDe.formulario.map((c, i) => (
-                    <div key={`${c.pergunta}-${i}`} className="min-w-0">
-                      <dt className="break-words text-[11px] text-[var(--color-text-dim)]">{c.pergunta}</dt>
-                      <dd className="break-words text-sm font-medium">{c.resposta}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p className="rounded-xl border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-dim)]">
-                  Este lead não veio de formulário da Meta — não há respostas para mostrar.
-                  {timelineDe.observacoes ? " O que foi informado está nas observações abaixo." : ""}
-                </p>
-              )}
-            </section>
-
-            {timelineDe.observacoes && (
-              <section>
-                <h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
-                  Observações
-                </h4>
-                <p className="whitespace-pre-wrap break-words rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3 text-xs leading-relaxed">
-                  {timelineDe.observacoes}
-                </p>
-              </section>
-            )}
-
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-dim)]">
-              Histórico da negociação
-            </h4>
-          </div>
-        )}
-
-        {eventos === null ? (
-          <p className="py-6 text-center text-sm text-[var(--color-text-dim)]">Carregando…</p>
-        ) : eventos.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--color-text-dim)]">Sem eventos registrados.</p>
-        ) : (
-          <ol className="lb-scroll max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-            {eventos.map((ev) => (
-              <li key={ev.id} className="flex gap-3">
-                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#3B82F6]" style={{ boxShadow: "0 0 8px #3B82F6" }} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-[var(--color-text)]">
-                    <span className="font-semibold capitalize">{ev.tipo.replace(/_/g, " ")}</span>
-                    {ev.detalhe ? <span className="text-[var(--color-text-dim)]"> — {ev.detalhe}</span> : null}
-                  </p>
-                  {/*
-                    O id da mensagem da Meta (wamid/leadgen) e trinco tecnico, nao
-                    historico: impresso aqui, cada mensagem do cliente ganhava uma
-                    linha "wamid: - > HBgNNTU3OTk..." no meio da conversa.
-                  */}
-                  {ev.campo && ev.campo !== "wamid" && ev.campo !== "leadgen" && (
-                    <p className="text-[11px] text-[var(--color-text-dim)]">
-                      {ev.campo}: {ev.valorAnterior ?? "—"} → {ev.valorNovo ?? "—"}
-                    </p>
-                  )}
-                  <p className="text-[11px] text-[var(--color-text-dim)]">
-                    {fmtDataHora(ev.criadoEm)}
-                    {ev.autorNome ? ` · ${ev.autorNome}` : ""}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <FichaConversa
+            lead={timelineDe}
+            eventos={eventos}
+            consultor={nomeVend(timelineDe.vendedorId)}
+            status={CENTRAL_STATUS_INFO[timelineDe.status].label}
+            prioridade={PRIORIDADE_INFO[timelineDe.prioridade].label}
+          />
         )}
       </Modal>
     </PremiumStage>

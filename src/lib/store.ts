@@ -1868,6 +1868,29 @@ export const centralLeadsApi = {
     void logEventoCentral(id, { tipo: "observacao", detalhe: t });
   },
 
+  /**
+   * Quantas mensagens do cliente cada lead tem — para o card mostrar "3 mensagens".
+   *
+   * UMA consulta para a lista inteira, e so os ids visiveis. Contar por lead
+   * seria uma consulta por card. Le so a coluna do vinculo: nao traz texto de
+   * mensagem para a listagem.
+   */
+  async contagemMensagens(ids: string[]): Promise<Record<string, number>> {
+    if (!supabaseEnabled || ids.length === 0) return {};
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from("central_leads_eventos")
+      .select("central_lead_id")
+      .in("central_lead_id", ids)
+      .in("campo", ["wamid", "leadgen"]);
+    if (error || !data) return {};
+    const conta: Record<string, number> = {};
+    for (const r of data as { central_lead_id: string }[]) {
+      conta[r.central_lead_id] = (conta[r.central_lead_id] ?? 0) + 1;
+    }
+    return conta;
+  },
+
   /** Timeline completa de um lead (lida sob demanda). */
   async historico(centralLeadId: string): Promise<CentralLeadEvento[]> {
     if (!supabaseEnabled) return [];

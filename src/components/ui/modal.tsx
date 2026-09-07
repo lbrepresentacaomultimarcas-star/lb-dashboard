@@ -10,6 +10,7 @@ export function Modal({
   title,
   subtitle,
   icon,
+  size = "md",
   children,
 }: {
   open: boolean;
@@ -17,6 +18,8 @@ export function Modal({
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
+  /** "lg" para conteudo que precisa de largura (conversa, tabelas). Padrao: "md". */
+  size?: "md" | "lg";
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -48,7 +51,7 @@ export function Modal({
         aria-hidden
       />
       <div
-        className="lb-scroll lb-fade-up relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[rgba(80,120,255,0.22)] bg-[var(--color-surface)] p-6"
+        className={`lb-scroll lb-fade-up relative max-h-[90vh] w-full ${size === "lg" ? "max-w-4xl" : "max-w-2xl"} overflow-y-auto rounded-2xl border border-[rgba(80,120,255,0.22)] bg-[var(--color-surface)] p-6`}
         style={{
           boxShadow:
             "0 30px 80px rgba(0,0,0,.6), 0 0 44px -12px rgba(37,99,255,.45), inset 0 1px 0 rgba(255,255,255,.06)",
