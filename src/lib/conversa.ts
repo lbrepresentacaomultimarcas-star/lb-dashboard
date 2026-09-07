@@ -132,14 +132,21 @@ export function montarConversa(lead: CentralLead, eventos: CentralLeadEvento[]):
    * ("Lead recebido via WhatsApp") e a mensagem ficava apenas em `observacoes`.
    * O dado existe: é só mostrá-lo no lugar certo.
    *
-   * A regra é estreita de propósito — só vale quando `observacoes` está no
-   * formato que a própria ingestão escreve (`Mensagem: “…”`). Anotação digitada
-   * por consultor nunca tem esse formato, então nunca é confundida com fala do
-   * cliente.
+   * A regra é estreita por dois lados. Primeiro, só vale quando `observacoes`
+   * está no formato que a própria ingestão escreve (`Mensagem: “…”`) — anotação
+   * digitada por consultor nunca tem esse formato. Segundo, o resgate é pulado
+   * quando aquele mesmo texto já aparece como fala do cliente, para lead novo
+   * (que já grava o texto no evento) não mostrar a primeira mensagem duas vezes.
+   *
+   * A condição NÃO pode ser "não existe nenhuma fala do cliente": no lead
+   * antigo que recebeu mensagens depois do deploy, as seguintes existem e a
+   * primeira continuaria sumida — foi exatamente o que o teste mostrou.
    */
-  const jaTemFalaDoCliente = falas.some((f) => f.quem === "cliente");
   const resgatada = textoDaFala(lead.observacoes);
-  if (!jaTemFalaDoCliente && resgatada.texto) {
+  const jaApareceu = resgatada.texto
+    ? falas.some((f) => f.quem === "cliente" && f.texto === resgatada.texto)
+    : true;
+  if (!jaApareceu) {
     const chegada = falas.findIndex((f) => f.rotulo === "Lead recebido");
     const fala: Fala = {
       id: `${lead.id}-primeira`,

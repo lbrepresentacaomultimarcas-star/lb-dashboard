@@ -22,6 +22,11 @@ const fmtData = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("pt-BR
 const fmtHora = (iso?: string) =>
   iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
 const fmtDataHora = (iso?: string) => (iso ? `${fmtData(iso)} · ${fmtHora(iso)}` : "—");
+/** Para os indicadores: sem o ano, para caber em celular sem virar reticências. */
+const fmtCurto = (iso?: string) =>
+  iso
+    ? `${new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · ${fmtHora(iso)}`
+    : "—";
 
 /** Iniciais para o avatar — duas letras bastam e cabem sempre. */
 function iniciais(nome: string): string {
@@ -71,7 +76,11 @@ function Balao({ fala, destaque }: { fala: Fala; destaque: boolean }) {
     return (
       <li className="flex items-center gap-3 py-0.5">
         <span className="h-px flex-1 bg-[var(--color-border)]" />
-        <span className="shrink-0 text-[11px] text-[var(--color-text-dim)]">
+        {/*
+          Sem `min-w-0` (e com `shrink-0`) o texto do evento nao quebrava e
+          vazava pela direita no celular — o fim da frase ficava fora da tela.
+        */}
+        <span className="min-w-0 text-center text-[11px] text-[var(--color-text-dim)]">
           {fala.rotulo}
           {fala.texto ? ` — ${fala.texto}` : ""} · {fmtHora(fala.em)}
         </span>
@@ -175,8 +184,8 @@ export function FichaConversa({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Dado rotulo="Primeiro contato" valor={fmtDataHora(conversa.primeiroContatoEm ?? undefined)} />
-          <Dado rotulo="Última mensagem" valor={fmtDataHora(conversa.ultimaMensagemEm ?? undefined)} />
+          <Dado rotulo="Primeiro contato" valor={fmtCurto(conversa.primeiroContatoEm ?? undefined)} />
+          <Dado rotulo="Última mensagem" valor={fmtCurto(conversa.ultimaMensagemEm ?? undefined)} />
           <Dado
             rotulo="Mensagens"
             valor={conversa.total === 1 ? "1 mensagem" : `${conversa.total} mensagens`}
