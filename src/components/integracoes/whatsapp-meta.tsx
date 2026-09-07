@@ -153,8 +153,24 @@ export function WhatsappMetaCard() {
               </ul>
               <p className="mt-2 text-xs text-[var(--color-text-dim)]">
                 {dados.modoLogin === "empresas"
-                  ? "A conexão está no modo Login para Empresas: a lista de permissões fica numa configuração dentro do painel da Meta. Acrescente as duas lá e clique em Conectar de novo."
-                  : "Clique em Conectar de novo em Integrações e aceite as duas permissões novas."}
+                  ? "A conexão está no modo Login para Empresas: a lista de permissões fica numa configuração dentro do painel da Meta. Acrescente as duas lá e depois use o botão abaixo."
+                  : "Use o botão abaixo e aceite as duas permissões novas."}
+              </p>
+              {/*
+                NÃO mandar o admin usar "Desconectar" para reautorizar: aquele
+                botão apaga a Página e os formulários escolhidos, e derrubaria o
+                fluxo de leads que já funciona. Este link vai direto para a
+                autorização — a conexão é regravada por cima (upsert por org) e
+                Página e formulários ficam intactos.
+              */}
+              <a
+                href="/api/integracoes/meta/conectar"
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                Autorizar o WhatsApp na Meta
+              </a>
+              <p className="mt-1.5 text-[11px] text-[var(--color-text-dim)]">
+                Não desconecta nada: a Página e os formulários continuam como estão.
               </p>
             </div>
           ) : null}
