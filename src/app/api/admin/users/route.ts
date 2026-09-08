@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { syncVendedor } from "@/lib/server/sync-vendedor";
 import type { Papel } from "@/lib/types";
+import { montarCodigo, normalizarNumeroCodigo, numeroDoCodigo } from "@/lib/jornada";
 
 const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "lider", "vendedor"];
 
@@ -29,6 +30,11 @@ export async function PATCH(req: NextRequest) {
     vendedorRef?: string | null;
     ativo?: boolean;
     codigoLiberado?: boolean;
+    /**
+     * O NÚMERO do código profissional, escolhido pelo admin. O prefixo é do
+     * cargo e é posto aqui no servidor — a tela nunca manda o código pronto.
+     */
+    codigoNumero?: string | number;
     nome?: string;
   };
   if (!body.userId) {
@@ -61,7 +67,7 @@ export async function PATCH(req: NextRequest) {
   const admin = supabaseAdmin();
   const { data: target, error: terr } = await admin
     .from("profiles")
-    .select("id, nome, email, papel, vendedor_id")
+    .select("id, nome, email, papel, vendedor_id, codigo_acesso")
     .eq("id", body.userId)
     .single();
   if (terr || !target) return Response.json({ error: "Usuário não encontrado" }, { status: 404 });
@@ -78,8 +84,82 @@ export async function PATCH(req: NextRequest) {
   if (body.ativo !== undefined) patch.ativo = body.ativo;
   if (body.codigoLiberado !== undefined) patch.codigo_liberado = body.codigoLiberado;
   if (body.nome !== undefined) patch.nome = body.nome;
+
+  /* ------------------------------------------------- código profissional
+   *
+   * O admin escolhe o NÚMERO; o prefixo sai do cargo, aqui no servidor. A tela
+   * mostra a prévia usando as MESMAS funções (`lib/jornada`), mas quem grava é
+   * este trecho: código montado no cliente não é aceito.
+   */
+  const papelFinal = (body.papel ?? target.papel) as Papel;
+  let codigoNovo: string | null = null;
+
+  if (body.codigoNumero !== undefined) {
+    const numero = normalizarNumeroCodigo(body.codigoNumero);
+    if (!numero) {
+      return Response.json(
+        { error: "Informe o número do código profissional (somente dígitos)." },
+        { status: 400 },
+      );
+    }
+    codigoNovo = montarCodigo(papelFinal, numero);
+  } else if (body.papel !== undefined && body.papel !== target.papel) {
+    /*
+     * Mudou de cargo e o admin não informou número: o PREFIXO acompanha o cargo
+     * novo e o número que ele já havia escolhido é preservado. Sem isto, um
+     * Líder continuaria carregando um código "V002" — a inconsistência que esta
+     * correção existe para acabar.
+     */
+    const numero = numeroDoCodigo(target.codigo_acesso as string | null);
+    if (numero) codigoNovo = montarCodigo(papelFinal, numero);
+  }
+
+  if (codigoNovo) {
+    const { data: ocupado } = await admin
+      .from("profiles")
+      .select("id, nome")
+      .ilike("codigo_acesso", codigoNovo) // sem curinga = igualdade sem acentuar maiúsculas
+      .neq("id", body.userId)
+      .maybeSingle();
+
+    if (ocupado) {
+      /*
+       * Conflito. Quando o admin DIGITOU o número, recusar é o certo — ele
+       * escolheu e precisa saber que aquele já é de outra pessoa.
+       *
+       * Quando o conflito nasceu da troca de cargo (ninguém digitou nada),
+       * recusar deixaria a pessoa com o código do cargo antigo — justamente a
+       * inconsistência que se quer eliminar. Aí o sistema pega o próximo número
+       * livre do cargo novo.
+       */
+      if (body.codigoNumero !== undefined) {
+        return Response.json(
+          {
+            error: `O código ${codigoNovo} já é de ${(ocupado as { nome?: string }).nome ?? "outro colaborador"}. Escolha outro número.`,
+          },
+          { status: 409 },
+        );
+      }
+      const { data: proximo } = await admin.rpc("proximo_codigo_acesso", { p_papel: papelFinal });
+      codigoNovo = (proximo as string | null) ?? null;
+    }
+    if (codigoNovo) patch.codigo_acesso = codigoNovo;
+  }
+
   const { error } = await admin.from("profiles").update(patch).eq("id", body.userId);
-  if (error) return Response.json({ error: error.message }, { status: 400 });
+  if (error) {
+    // 23505 = o índice único do banco barrou. Só chega aqui em corrida entre
+    // dois admins salvando o mesmo número ao mesmo tempo.
+    const duplicado = (error as { code?: string }).code === "23505";
+    return Response.json(
+      {
+        error: duplicado
+          ? `O código ${codigoNovo} acabou de ser usado por outra pessoa. Escolha outro número.`
+          : error.message,
+      },
+      { status: duplicado ? 409 : 400 },
+    );
+  }
 
   /*
    * Derruba (ou devolve) a sessão no Supabase Auth.

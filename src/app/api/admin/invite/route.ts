@@ -4,12 +4,15 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { siteBaseUrl } from "@/lib/site-url";
 import { syncVendedor } from "@/lib/server/sync-vendedor";
 import type { Papel } from "@/lib/types";
+import { montarCodigo, normalizarNumeroCodigo } from "@/lib/jornada";
 
 type Body = {
   email?: string;
   nome?: string;
   senha?: string;
   papel?: Papel;
+  /** Número do código profissional escolhido pelo admin (opcional). */
+  codigoNumero?: string | number;
   equipeId?: string | null;
   /** Se true, envia email com magic link (sem senha). */
   enviarEmail?: boolean;
@@ -53,22 +56,53 @@ export async function POST(req: NextRequest) {
     userId = data.user.id;
   }
 
-  /*
-   * Código de acesso do dia a dia.
-   *
-   * Quem gera é o banco (`proximo_codigo_acesso`), não este código: a conta do
-   * próximo número tem que olhar todos os colaboradores de uma vez, e dois
-   * cadastros simultâneos não podem receber o mesmo. Se falhar, o colaborador
-   * é criado assim mesmo — ele ainda entra por e-mail, e o admin gera o código
-   * depois. Perder o cadastro por causa do código seria pior que não ter
-   * código.
-   */
+  /* Código profissional do dia a dia: prefixo do cargo + número. */
   let codigo: string | null = null;
-  try {
-    const { data: cod } = await admin.rpc("proximo_codigo_acesso", { p_papel: papel });
-    codigo = (cod as string | null) ?? null;
-  } catch {
-    /* segue sem código; o admin resolve na tela do Administrativo */
+
+  /*
+   * Quando o admin ESCOLHE o número, é ele que manda — o prefixo do cargo é
+   * posto aqui no servidor. Código já ocupado é recusado antes de criar
+   * qualquer coisa, para o admin corrigir o número em vez de descobrir o
+   * problema com o colaborador já cadastrado.
+   */
+  if (body.codigoNumero !== undefined && String(body.codigoNumero).trim() !== "") {
+    const numero = normalizarNumeroCodigo(body.codigoNumero);
+    if (!numero) {
+      return Response.json(
+        { error: "Informe o número do código profissional (somente dígitos)." },
+        { status: 400 },
+      );
+    }
+    const escolhido = montarCodigo(papel, numero);
+    const { data: ocupado } = await admin
+      .from("profiles")
+      .select("id, nome")
+      .ilike("codigo_acesso", escolhido!)
+      .maybeSingle();
+    if (ocupado) {
+      return Response.json(
+        {
+          error: `O código ${escolhido} já é de ${(ocupado as { nome?: string }).nome ?? "outro colaborador"}. Escolha outro número.`,
+        },
+        { status: 409 },
+      );
+    }
+    codigo = escolhido;
+  } else {
+    /*
+     * Sem número informado, quem gera é o banco (`proximo_codigo_acesso`): a
+     * conta do próximo número tem que olhar todos os colaboradores de uma vez,
+     * e dois cadastros simultâneos não podem receber o mesmo. Se falhar, o
+     * colaborador é criado assim mesmo — ele ainda entra por e-mail, e o admin
+     * define o código depois. Perder o cadastro por causa do código seria pior
+     * que não ter código.
+     */
+    try {
+      const { data: cod } = await admin.rpc("proximo_codigo_acesso", { p_papel: papel });
+      codigo = (cod as string | null) ?? null;
+    } catch {
+      /* segue sem código; o admin resolve na tela do Administrativo */
+    }
   }
 
   // Atualiza profile: papel, equipe, org owner

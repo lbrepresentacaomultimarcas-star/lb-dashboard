@@ -84,3 +84,49 @@ export function proximoDegrau(papel: Papel | undefined | null): Degrau | null {
 export function prefixoDe(papel: Papel | undefined | null): string {
   return degrauDe(papel)?.prefixo ?? "ADM";
 }
+
+/* ------------------------------------------------------- código profissional */
+/*
+ * A REGRA: o ADMINISTRADOR escolhe o NÚMERO, o sistema põe o PREFIXO do cargo.
+ *
+ *   Vendedor      005  ->  V005
+ *   Líder         001  ->  LID001
+ *   Supervisor    001  ->  SUP001
+ *   Representante 001  ->  REP001
+ *   Administrador 001  ->  ADM001
+ *
+ * O colaborador não escolhe nem altera o próprio código: é identificação
+ * profissional, como um crachá. E continua sem decidir permissão nenhuma —
+ * quem decide é `papel` (ver `permissions.ts`).
+ *
+ * Estas funções são a fonte única da montagem. A tela usa para mostrar a prévia
+ * e a API usa para gravar, então o que aparece na tela é exatamente o que vai
+ * para o banco — não duas contas parecidas que um dia divergem.
+ */
+
+/**
+ * O número, limpo. `null` quando não sobrou dígito nenhum.
+ *
+ * Três dígitos é o padrão da casa (001), então "5" vira "005". Número maior
+ * mantém o próprio tamanho: quem já passou de 999 não volta atrás.
+ */
+export function normalizarNumeroCodigo(entrada: string | number | null | undefined): string | null {
+  const so = String(entrada ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  return so ? so.padStart(3, "0") : null;
+}
+
+/** O código final para este cargo e este número. `null` se o número não vale. */
+export function montarCodigo(papel: Papel | undefined | null, numero: string | number): string | null {
+  const n = normalizarNumeroCodigo(numero);
+  return n ? `${prefixoDe(papel)}${n}` : null;
+}
+
+/**
+ * O número de dentro de um código já existente ("LID001" -> "001").
+ *
+ * Serve para trocar o cargo preservando o número que o admin escolheu: muda o
+ * prefixo, o número continua sendo dele.
+ */
+export function numeroDoCodigo(codigo: string | null | undefined): string {
+  return (codigo ?? "").match(/(\d+)$/)?.[1] ?? "";
+}

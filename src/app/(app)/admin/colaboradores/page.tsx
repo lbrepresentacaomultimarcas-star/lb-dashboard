@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useSession } from "@/lib/store";
 import { PAPEL_INFO, type Papel } from "@/lib/types";
+import { montarCodigo, normalizarNumeroCodigo, numeroDoCodigo, prefixoDe } from "@/lib/jornada";
 import { notify } from "@/lib/notify";
 import { useRefreshTick } from "@/lib/refresh";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,56 @@ const PAPEIS: Papel[] = ["admin", "coordenador", "supervisor", "lider", "vendedo
 const selCls =
   "h-8 rounded-md border border-white/12 bg-white/5 px-2 text-xs text-white outline-none focus:border-[#3B82F6] disabled:opacity-60";
 
+/**
+ * O CÓDIGO PROFISSIONAL na tabela.
+ *
+ * O PREFIXO é do cargo e não se digita — ele acompanha o perfil sozinho. O
+ * admin escolhe só o NÚMERO, e a prévia mostra o código final antes de salvar.
+ *
+ * O colaborador não passa por aqui: esta tela é do Administrativo. E o código
+ * segue sem decidir permissão nenhuma — quem decide é o cargo.
+ */
+function CodigoCell({ u, onSalvar }: { u: DbProfile; onSalvar: (numero: string) => void }) {
+  const [num, setNum] = useState(numeroDoCodigo(u.codigo_acesso));
+  const prefixo = prefixoDe(u.papel);
+  const final = montarCodigo(u.papel, num);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <span
+          title={`Prefixo de ${PAPEL_INFO[u.papel].label} — definido pelo cargo`}
+          className="rounded-md border border-white/12 bg-white/[0.07] px-1.5 py-1 font-mono text-[11px] font-bold tracking-wider text-white/60"
+        >
+          {prefixo}
+        </span>
+        <input
+          value={num}
+          inputMode="numeric"
+          placeholder="001"
+          aria-label={`Número do código de ${u.nome}`}
+          onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+          onBlur={() => onSalvar(num)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="w-16 rounded-md border border-white/12 bg-white/[0.04] px-2 py-1 text-center font-mono text-xs font-bold tracking-wider text-white outline-none focus:border-[var(--color-brand)]"
+        />
+      </div>
+      <span className="font-mono text-[11px] font-bold tracking-wider text-white">
+        {final ?? "—"}
+      </span>
+      <span
+        className={`text-[10px] font-semibold ${
+          u.codigo_liberado ? "text-emerald-400" : "text-amber-300"
+        }`}
+      >
+        {u.codigo_liberado ? "Acesso liberado" : "Aguardando liberação"}
+      </span>
+    </div>
+  );
+}
+
 export default function ColaboradoresPage() {
   const session = useSession();
   const [users, setUsers] = useState<DbProfile[]>([]);
@@ -59,6 +110,7 @@ export default function ColaboradoresPage() {
     email: "",
     senha: "",
     papel: "vendedor" as Papel,
+    codigoNumero: "",
     equipeId: "",
   });
   const refreshTick = useRefreshTick();
@@ -121,6 +173,7 @@ export default function ColaboradoresPage() {
           nome: form.nome,
           email: form.email,
           papel: form.papel,
+          codigoNumero: form.codigoNumero,
           equipeId: form.equipeId || null,
           ...(metodo === "senha" ? { senha: form.senha } : { enviarEmail: true }),
         }),
@@ -134,7 +187,7 @@ export default function ColaboradoresPage() {
           : `${form.email} pode entrar com a senha definida`,
       );
       setOpen(false);
-      setForm({ nome: "", email: "", senha: "", papel: "vendedor", equipeId: "" });
+      setForm({ nome: "", email: "", senha: "", papel: "vendedor", equipeId: "", codigoNumero: "" });
       carregar();
     } catch (e) {
       notify.error("Erro ao convidar", e instanceof Error ? e.message : undefined);
@@ -196,6 +249,38 @@ export default function ColaboradoresPage() {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
     }
   }
+  /**
+   * Grava o NÚMERO do código profissional escolhido pelo admin.
+   *
+   * O prefixo NÃO vai daqui: quem o coloca é o servidor, a partir do cargo.
+   * Assim a tela não tem como gravar um código que não combine com o perfil —
+   * e é o servidor que recusa número repetido, não o navegador.
+   */
+  async function salvarCodigo(u: DbProfile, numero: string) {
+    const n = normalizarNumeroCodigo(numero);
+    if (!n) {
+      notify.error("Informe o número do código profissional");
+      carregar();
+      return;
+    }
+    // nada mudou: não gasta uma gravação nem um aviso à toa
+    if (montarCodigo(u.papel, n) === u.codigo_acesso) return;
+    try {
+      const r = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id, codigoNumero: n }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      notify.success("Código atualizado", montarCodigo(u.papel, n) ?? undefined);
+      carregar();
+    } catch (e) {
+      notify.error("Não foi possível salvar o código", e instanceof Error ? e.message : undefined);
+      carregar(); // devolve o valor que está no banco
+    }
+  }
+
   async function toggleAtivo(u: DbProfile) {
     try {
       const r = await fetch("/api/admin/users", {
@@ -378,18 +463,16 @@ export default function ColaboradoresPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-mono text-xs font-bold tracking-wider text-white">
-                            {u.codigo_acesso ?? "—"}
-                          </span>
-                          <span
-                            className={`text-[10px] font-semibold ${
-                              u.codigo_liberado ? "text-emerald-400" : "text-amber-300"
-                            }`}
-                          >
-                            {u.codigo_liberado ? "Acesso liberado" : "Aguardando liberação"}
-                          </span>
-                        </div>
+                        {/*
+                          `key` no código: depois de salvar (ou de trocar o cargo)
+                          o componente renasce já com o valor do banco. Evita o
+                          setState-dentro-de-efeito que o React 19 proíbe.
+                        */}
+                        <CodigoCell
+                          key={u.codigo_acesso ?? "sem-codigo"}
+                          u={u}
+                          onSalvar={(n) => void salvarCodigo(u, n)}
+                        />
                       </td>
                       <td className="px-5 py-3">
                         <span
@@ -568,6 +651,33 @@ export default function ColaboradoresPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            {/*
+              O admin escolhe o NÚMERO; o prefixo vem do cargo escolhido acima e
+              muda sozinho se ele trocar o cargo. Deixando em branco, o sistema
+              usa o próximo número livre daquele cargo.
+            */}
+            <div>
+              <Label htmlFor="codnum">Código profissional</Label>
+              <div className="flex items-center gap-2">
+                <span className="grid h-10 shrink-0 place-items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 font-mono text-sm font-bold tracking-wider text-[var(--color-text-dim)]">
+                  {prefixoDe(form.papel)}
+                </span>
+                <Input
+                  id="codnum"
+                  value={form.codigoNumero}
+                  inputMode="numeric"
+                  placeholder="001"
+                  onChange={(e) =>
+                    setForm({ ...form, codigoNumero: e.target.value.replace(/[^0-9]/g, "").slice(0, 6) })
+                  }
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--color-text-dim)]">
+                {form.codigoNumero
+                  ? `Código final: ${montarCodigo(form.papel, form.codigoNumero)}`
+                  : "Em branco = o sistema usa o próximo número livre deste cargo."}
+              </p>
             </div>
             <div>
               <Label htmlFor="eq">Equipe (opcional)</Label>
