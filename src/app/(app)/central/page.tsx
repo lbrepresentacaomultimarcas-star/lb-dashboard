@@ -27,6 +27,7 @@ import {
 import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
 import { ehAdmin } from "@/lib/permissions";
 import { FichaConversa } from "@/components/central/ficha-conversa";
+import { FilaAutomatica } from "@/components/central/fila-automatica";
 import {
   CENTRAL_STATUS_INFO,
   LEAD_STATUS_INFO,
@@ -791,6 +792,9 @@ Eles saem da fila e das métricas, mas continuam guardados no banco.`))
           </p>
         </div>
       )}
+
+      {/* Fila automática — configuração. Não substitui a distribuição acima. */}
+      {admin && <FilaAutomatica />}
 
       {/* Lembrete/alerta */}
       {temAlertas && !admin && (

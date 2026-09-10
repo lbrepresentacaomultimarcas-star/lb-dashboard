@@ -334,6 +334,27 @@ export async function POST(req: NextRequest) {
 
         await registrarMensagem(db, orgId, criado.id, lead, "criado");
 
+        /*
+         * FILA AUTOMÁTICA.
+         *
+         * Só chega aqui lead RECÉM-CRIADO: mensagem nova de cliente que já
+         * existe sai lá em cima, no caminho do lead existente. É isso que
+         * garante que conversa não vira distribuição.
+         *
+         * Quem decide é o banco (`distribuir_automatico`), que tranca a fila
+         * antes de escolher — dois leads no mesmo segundo não caem no mesmo
+         * consultor. Devolver nulo é normal: fila desligada, fila vazia, ou
+         * alguém já pegou o lead à mão.
+         *
+         * Falhar aqui NÃO pode custar o lead: ele já está gravado e continua
+         * na fila de distribuição manual, como sempre esteve.
+         */
+        try {
+          await db.rpc("distribuir_automatico", { p_lead_id: criado.id });
+        } catch (e) {
+          console.error("[intake] fila automática não distribuiu:", e);
+        }
+
         // avisa quem distribui — a Central já escuta `notificacoes` em tempo real,
         // então o sino acende sozinho, sem ninguém ficar olhando a tela
         await avisarAdmins(db, orgId, criado.id, lead);
