@@ -2,6 +2,7 @@ import { supabaseServer } from "./supabase/server";
 import { supabaseAdmin } from "./supabase/admin";
 import type { Papel } from "./types";
 import { BLOQUEADO } from "./mensagens-acesso";
+import { falhaTemporaria, naoConsegui } from "./server/sessao-resposta";
 
 /**
  * Guarda para rotas que QUALQUER usuário logado pode chamar — diferente de
@@ -22,9 +23,15 @@ export type Sessao = {
 
 export async function requireSessao(): Promise<Sessao | Response> {
   const sb = await supabaseServer();
-  const { data: userRes } = await sb.auth.getUser();
-  const user = userRes.user;
-  if (!user) return Response.json({ error: "Não autenticado" }, { status: 401 });
+  // O `error` importa tanto quanto o `data`: ver `server/sessao-resposta.ts`.
+  const { data: userRes, error: erroAuth } = await sb.auth.getUser();
+  const user = userRes?.user ?? null;
+  if (!user) {
+    // Com erro = não deu para verificar (503, ninguém é expulso).
+    // Sem erro = realmente não está logado (401).
+    if (falhaTemporaria(erroAuth)) return naoConsegui("auth", erroAuth);
+    return Response.json({ error: "Não autenticado" }, { status: 401 });
+  }
 
   const admin = supabaseAdmin();
   const { data: profile, error } = await admin
@@ -32,6 +39,10 @@ export async function requireSessao(): Promise<Sessao | Response> {
     .select("id, nome, papel, vendedor_id, vendedor_ref, email, ativo, codigo_liberado")
     .eq("id", user.id)
     .single();
+  // Falha de banco NÃO é "conta bloqueada". Antes as duas davam 403, e o
+  // sentinela traduz 403 como bloqueio: um soluço de rede acusava o usuário de
+  // estar banido, com a tela dizendo isso.
+  if (error && falhaTemporaria(error)) return naoConsegui("profile", error);
   if (error || !profile) return Response.json({ error: "Profile não encontrado" }, { status: 403 });
 
   const p = profile as {

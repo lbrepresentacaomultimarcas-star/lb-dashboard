@@ -28,12 +28,27 @@ export async function updateSession(request: NextRequest) {
       },
     });
 
-    // Não usar await pra não bloquear request; erro de refresh é não-crítico
-    await supabase.auth.getUser().catch((e) => {
-      if (process.env.NODE_ENV === "production") {
-        console.error("[proxy] session refresh failed:", e);
-      }
+    /*
+     * É AQUI QUE A SESSÃO É RENOVADA — e era aqui que a falha ficava invisível.
+     *
+     * `getUser()` NÃO lança exceção quando a renovação falha: devolve
+     * `{ error }`. O `.catch()` abaixo só pega exceção, então o caso real
+     * passava em silêncio e a requisição seguia com o token velho — que os
+     * guardas leem como 401 e o sentinela transforma em expulsão para o login.
+     *
+     * Nos logs de 14/09/2026 não havia UMA linha de "[proxy] session refresh
+     * failed" apesar dos 401. É exatamente esse o motivo: o erro era retornado,
+     * não lançado.
+     *
+     * Continua não derrubando a requisição — só passa a deixar rastro.
+     */
+    const { error: erroRefresh } = await supabase.auth.getUser().catch((e) => {
+      console.error("[proxy] renovação da sessão estourou:", e);
+      return { error: e as Error };
     });
+    if (erroRefresh) {
+      console.error("[proxy] renovação da sessão falhou:", erroRefresh.message);
+    }
   } catch (e) {
     if (process.env.NODE_ENV === "production") {
       console.error("[proxy] fatal, devolvendo response sem refresh:", e);

@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { clientIdFromRequest, rateLimit } from "./rate-limit";
 import { BLOQUEADO } from "./mensagens-acesso";
+import { falhaTemporaria, naoConsegui } from "./server/sessao-resposta";
 
 /**
  * Valida que o caller está logado, é admin do org e está dentro do rate limit.
@@ -25,9 +26,11 @@ export async function requireAdmin(
   }
 
   const sb = await supabaseServer();
-  const { data: userRes } = await sb.auth.getUser();
-  const user = userRes.user;
+  // Mesma regra de `requireSessao`, de propósito: ver `server/sessao-resposta.ts`.
+  const { data: userRes, error: erroAuth } = await sb.auth.getUser();
+  const user = userRes?.user ?? null;
   if (!user) {
+    if (falhaTemporaria(erroAuth)) return naoConsegui("auth", erroAuth);
     return Response.json({ error: "Não autenticado" }, { status: 401 });
   }
   const admin = supabaseAdmin();
@@ -36,6 +39,7 @@ export async function requireAdmin(
     .select("id, papel, vendedor_id, email, ativo, codigo_liberado")
     .eq("id", user.id)
     .single();
+  if (error && falhaTemporaria(error)) return naoConsegui("profile", error);
   if (error || !profile) {
     return Response.json({ error: "Profile não encontrado" }, { status: 403 });
   }

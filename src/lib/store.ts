@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { supabaseBrowser, supabaseEnabled } from "./supabase/client";
+import { falhaTemporaria } from "./falha-temporaria";
 import { bumpSync } from "./sync-bus";
 import { conferirDistribuicao, leadAtivo, type VerificacaoDistribuicao } from "./antiduplicidade";
 import { resultadosApi, type Contemplacao } from "./resultados";
@@ -427,7 +428,33 @@ export function initStore(): Promise<void> {
   initPromise = (async () => {
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { data: userData } = await sb.auth.getUser();
+
+      /*
+       * DUAS TENTATIVAS ANTES DE CONCLUIR "NÃO ESTÁ LOGADO".
+       *
+       * `getUser()` devolve `{ user: null, error }` quando não CONSEGUE
+       * verificar — e o AuthGuard, vendo sessão nula, manda para o login.
+       * Recarregar a página durante um soluço de rede jogava o usuário na tela
+       * de login como se ele tivesse sido desconectado.
+       *
+       * Usuário nulo SEM erro é outra coisa: aí ele realmente não está logado,
+       * e nem tentamos de novo.
+       */
+      type DadosUsuario = Awaited<ReturnType<typeof sb.auth.getUser>>["data"];
+      let userData: DadosUsuario = { user: null };
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        const r = await sb.auth.getUser();
+        userData = r.data;
+        const erro = r.error;
+        // deslogado de verdade (sem sessão / token inválido) não se retenta:
+        // seria 1,2s de espera à toa em cada visita à tela de login.
+        if (r.data.user || !falhaTemporaria(erro)) break;
+        console.warn(
+          `[store] não deu para verificar a sessão (tentativa ${tentativa}/3): ${erro?.message ?? "sem detalhe"}`,
+        );
+        if (tentativa < 3) await new Promise((pronto) => setTimeout(pronto, 400 * tentativa));
+      }
+
       if (userData.user) {
         state.session = await buildSession(userData.user);
         // se o admin recarregou a página no meio de um "entrar como consultor",
@@ -788,10 +815,46 @@ function attachRealtime() {
   // Além de recarregar o dataset no store, bumpa o sync-bus: hooks com fetch
   // próprio (ranking via RPC) refazem a busca na hora — venda registrada em
   // outro aparelho aparece sem recarregar a página.
+  /*
+   * UM EVENTO = UMA RECARGA. RAJADA = UMA RECARGA SÓ.
+   *
+   * Um único lead do WhatsApp gera TRÊS escritas seguidas — INSERT em
+   * `central_leads`, UPDATE da distribuição automática e INSERT em
+   * `notificacoes` — e cada uma disparava uma recarga COMPLETA da tabela em
+   * TODA aba aberta. Cliente que manda 5 mensagens gera 5 UPDATEs, logo 5
+   * recargas. No dia 10/09/2026 entraram 12 leads em 100 minutos.
+   *
+   * Não era laço infinito (recarregar não escreve, então não se realimenta),
+   * mas era tráfego multiplicado — e requisição concorrente é justamente o
+   * cenário em que a renovação de sessão falha.
+   *
+   * Agora: no máximo uma recarga por tabela a cada 400ms, e nunca deixa de
+   * recarregar. O dado é o mesmo; só para de ser buscado várias vezes seguidas
+   * para chegar no mesmo resultado.
+   */
+  const JANELA_MS = 400;
+  const ultimaVez = new Map<string, number>();
+  const pendentes = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const agendarRecarga = (table: string, reload: () => Promise<void>) => {
+    // já existe uma recarga a caminho: este evento entra nela
+    if (pendentes.has(table)) return;
+    const desdeUltima = new Date().getTime() - (ultimaVez.get(table) ?? 0);
+    const espera = Math.max(0, JANELA_MS - desdeUltima);
+    pendentes.set(
+      table,
+      setTimeout(() => {
+        pendentes.delete(table);
+        ultimaVez.set(table, new Date().getTime());
+        void reload().then(() => bumpSync());
+      }, espera),
+    );
+  };
+
   const sub = (table: string, reload: () => Promise<void>) =>
     sb.channel(`lb-${table}`)
       .on("postgres_changes", { event: "*", schema: "public", table }, () => {
-        void reload().then(() => bumpSync());
+        agendarRecarga(table, reload);
       })
       .subscribe();
   sub("vendedores", reloadVendedores);
