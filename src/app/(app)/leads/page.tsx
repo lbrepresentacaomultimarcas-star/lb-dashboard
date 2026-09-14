@@ -64,6 +64,7 @@ import {
   type LeadTipo,
 } from "@/lib/types";
 import { brl, cn, formatNumBR, parseNumBR, pct } from "@/lib/utils";
+import { variacaoPeriodo } from "@/lib/variacao";
 import { casa, indexarLeads, termosDaBusca } from "@/lib/busca-pipeline";
 import { useCountUp } from "@/lib/use-count-up";
 import { notify } from "@/lib/notify";
@@ -548,10 +549,11 @@ export default function LeadsPage() {
       const idx = keyIdx.get(`${d.getFullYear()}-${d.getMonth()}`);
       if (idx !== undefined) buckets[idx] += l.valorEstimado;
     }
+    // buckets[5] = mês atual, buckets[4] = mês anterior (conferido: o laço
+    // acima indexa i=0 -> mês atual em 5, i=5 -> cinco meses atrás em 0).
     const cur = buckets[5] ?? 0;
     const prev = buckets[4] ?? 0;
-    const crescimento = prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
-    return { serie: buckets, crescimento };
+    return { serie: buckets, variacao: variacaoPeriodo(cur, prev) };
   }, [filtrados]);
 
   const maxCount = Math.max(...STATUS_ORDER.map((s) => colunas[s].length), 1);
@@ -1065,16 +1067,36 @@ export default function LeadsPage() {
             value={<AnimatedBRL value={metrics.ticketMedio} />}
             hint="por negócio"
           />
+          {/*
+            O título muda com a direção: "Queda" com seta para baixo, não
+            "Crescimento" com seta para baixo. Sinal, seta, cor e palavra vêm
+            todos de `variacaoPeriodo`, então não há como discordarem.
+          */}
           <Kpi
             icon={Activity}
-            label="Crescimento"
+            label={analytics.variacao.rotulo}
             color="#a78bfa"
             delay={0.18}
             hint="valor criado vs mês anterior"
             value={
-              <span className={cn("inline-flex items-center gap-1", analytics.crescimento >= 0 ? "text-emerald-400" : "text-rose-400")}>
-                {analytics.crescimento >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                {pct(Math.abs(analytics.crescimento))}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  analytics.variacao.direcao === "alta"
+                    ? "text-emerald-400"
+                    : analytics.variacao.direcao === "baixa"
+                      ? "text-rose-400"
+                      : "text-[var(--color-text-dim)]",
+                )}
+              >
+                {analytics.variacao.direcao === "alta" ? (
+                  <TrendingUp className="h-5 w-5" />
+                ) : analytics.variacao.direcao === "baixa" ? (
+                  <TrendingDown className="h-5 w-5" />
+                ) : null}
+                <span className={analytics.variacao.pct === null ? "text-sm font-normal" : undefined}>
+                  {analytics.variacao.texto}
+                </span>
               </span>
             }
           />
