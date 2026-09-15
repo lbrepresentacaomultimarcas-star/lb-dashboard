@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { History, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import { useAudit, useSession, useVendasAllEscopo, useVendedoresEscopo, vendasApi } from "@/lib/store";
-import { brl, monthKey, monthLabel, parseNumBR, todayMonth } from "@/lib/utils";
+import { brl, monthLabel, parseNumBR } from "@/lib/utils";
+import { cicloDeData, cicloPorChave } from "@/lib/ciclo";
+import { useCicloProducao } from "@/lib/use-ciclo";
+import { vendasNoMes } from "@/lib/selectors";
 import { VENDA_STATUS, type Venda } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -75,7 +78,22 @@ export default function VendasPage() {
   const audit = useAudit();
   const isAdmin = session?.papel === "admin";
 
-  const [mes, setMes] = useState(todayMonth());
+  /*
+   * O PERÍODO É O CICLO DE PRODUÇÃO, não o mês calendário.
+   *
+   * Esta tela era a única que filtrava por `monthKey(v.data)` — mês corrido.
+   * O ranking, o Dashboard e as metas já passavam por `vendasNoMes`, que usa
+   * `cicloDeData`. Era daí a divergência: o ADRIEL aparecia com 3 no ranking
+   * (ciclo) e 1 aqui (mês), e os dois números estavam certos para perguntas
+   * diferentes. Agora as duas telas respondem a MESMA pergunta.
+   *
+   * `mesEscolhido = null` significa "o ciclo de hoje". Assim, quando a config
+   * de fechamento chega do banco (ela carrega depois do primeiro render), o
+   * período acompanha sozinho — sem efeito e sem estado velho.
+   */
+  const { config, feriados, chaveAtual } = useCicloProducao();
+  const [mesEscolhido, setMes] = useState<string | null>(null);
+  const mes = mesEscolhido ?? chaveAtual;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(vendedores[0]?.id ?? ""));
 
@@ -86,18 +104,27 @@ export default function VendasPage() {
   const [erroEdit, setErroEdit] = useState<string | null>(null);
 
   const mesesDisponiveis = useMemo(() => {
-    const set = new Set(vendas.map((v) => monthKey(v.data)));
-    set.add(todayMonth());
+    const set = new Set(vendas.map((v) => cicloDeData(v.data, config, feriados)));
+    set.add(chaveAtual);
     return Array.from(set).sort().reverse();
-  }, [vendas]);
+  }, [vendas, config, feriados, chaveAtual]);
 
+  // MESMA função que o ranking e as metas usam — fonte única de verdade.
   const filtradas = useMemo(
     () =>
-      vendas
-        .filter((v) => monthKey(v.data) === mes)
+      vendasNoMes(vendas, mes, config, feriados)
+        .slice()
         .sort((a, b) => +new Date(b.data) - +new Date(a.data)),
-    [vendas, mes],
+    [vendas, mes, config, feriados],
   );
+
+  /** O intervalo do ciclo, para a tela dizer exatamente o que está mostrando. */
+  const janela = useMemo(() => {
+    const { inicio, fim } = cicloPorChave(mes, config, feriados);
+    const d = (x: Date) =>
+      `${String(x.getDate()).padStart(2, "0")}/${String(x.getMonth() + 1).padStart(2, "0")}`;
+    return `${d(inicio)} a ${d(fim)}`;
+  }, [mes, config, feriados]);
 
   const totalMes = filtradas.reduce((acc, v) => acc + v.valor, 0);
 
@@ -245,7 +272,8 @@ export default function VendasPage() {
               Vendas
             </h1>
             <p className="text-sm text-white/55">
-              {filtradas.length} vendas em {monthLabel(mes)} — total{" "}
+              {filtradas.length} vendas no ciclo de {monthLabel(mes)}{" "}
+              <span className="text-white/40">({janela})</span> — total{" "}
               <span className="font-semibold text-emerald-400">{brl(totalMes)}</span>
             </p>
           </div>

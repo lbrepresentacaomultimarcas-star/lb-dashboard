@@ -716,8 +716,23 @@ export default function LeadsPage() {
   }
   /** Venda automática do fechamento já existe? (idempotência client-side;
    *  o índice único vendas_auto_lead_unq protege no banco também). */
+  /**
+   * Já existe venda deste negócio?
+   *
+   * Confere primeiro pela IDENTIDADE (`leadId`). O texto de `observacao` fica
+   * como segunda linha só por causa das vendas antigas, gravadas antes de o
+   * `lead_id` passar a ser preenchido — comparar texto nunca foi seguro, porque
+   * `observacao` é editável na tela de Vendas.
+   *
+   * Esta é uma checagem de CONVENIÊNCIA, para avisar sem tentar gravar. Quem
+   * garante de verdade é o índice único do banco (ver
+   * `migration-venda-por-fechamento.sql`): esta roda no navegador, contra o
+   * estado em memória, e duas abas não se enxergam.
+   */
   function vendaDoLeadExiste(leadId: string) {
-    return vendas.some((v) => v.observacao === `Auto-gerada do lead ${leadId}`);
+    return vendas.some(
+      (v) => v.leadId === leadId || v.observacao === `Auto-gerada do lead ${leadId}`,
+    );
   }
 
   /** Travas do fechamento — TODO caminho que fecha negócio passa aqui ANTES
@@ -759,6 +774,9 @@ export default function LeadsPage() {
         cliente: dados.nome,
         valor: dados.valor,
         data: new Date().toISOString(),
+        // A IDENTIDADE vai na coluna, não só no texto: é ela que o índice
+        // único usa para recusar o segundo fechamento do mesmo negócio.
+        leadId: dados.leadId,
         observacao: `Auto-gerada do lead ${dados.leadId}`,
       });
       return true;

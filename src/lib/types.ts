@@ -20,6 +20,15 @@ export type Venda = {
   criadoEm?: string;
   status?: string; // rótulo editável (Confirmada/Pendente/Cancelada)
   observacao?: string;
+  /**
+   * IDENTIDADE DA VENDA: o negócio do Pipeline que a gerou.
+   *
+   * É por ela que "um fechamento = uma venda" se sustenta. Antes a checagem
+   * comparava o TEXTO de `observacao` ("Auto-gerada do lead <id>") — campo que
+   * o admin edita na tela de Vendas, no navegador, contra o estado em memória.
+   * Venda lançada à mão continua sem `leadId`, e isso é normal.
+   */
+  leadId?: string;
 };
 
 export const VENDA_STATUS = ["Confirmada", "Pendente", "Cancelada"] as const;

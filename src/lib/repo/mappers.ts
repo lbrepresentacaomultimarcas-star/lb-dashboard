@@ -50,6 +50,7 @@ export type DbVenda = {
   criado_em?: string | null;
   status?: string | null;
   observacao: string | null;
+  lead_id?: string | null;
 };
 
 export const vendaFromDb = (r: DbVenda): Venda => ({
@@ -61,6 +62,7 @@ export const vendaFromDb = (r: DbVenda): Venda => ({
   criadoEm: r.criado_em ?? undefined,
   status: r.status ?? undefined,
   observacao: r.observacao ?? undefined,
+  leadId: r.lead_id ?? undefined,
 });
 
 export const vendaToDb = (v: Partial<Venda>): Partial<DbVenda> => {
@@ -71,6 +73,9 @@ export const vendaToDb = (v: Partial<Venda>): Partial<DbVenda> => {
   if (v.data !== undefined) out.data = v.data;
   if (v.status !== undefined) out.status = v.status || null;
   if (v.observacao !== undefined) out.observacao = v.observacao || null;
+  // A identidade da venda. Sem ela o índice único do banco não tem o que
+  // comparar, e o mesmo fechamento passaria duas vezes.
+  if (v.leadId !== undefined) out.lead_id = v.leadId || null;
   // criado_em NUNCA é escrito pela aplicação (imutável).
   return out;
 };
