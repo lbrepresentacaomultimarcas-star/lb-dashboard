@@ -15,11 +15,29 @@ import { brl, monthLabel } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { PremiumStage } from "@/components/premium-stage";
 import { AnimatedBRL, Sparkline } from "@/components/ui/spark";
+import { RoleGuard } from "@/components/role-guard";
+import { FinanceiroEstrategico } from "@/components/financeiro/estrategico";
+import { useSession } from "@/lib/store";
+import { ehAdmin } from "@/lib/permissions";
 
+/*
+ * A guarda estava SO no menu (`minimo: "coordenador"` na sidebar): quem
+ * digitasse /financeiro na barra de endereco entrava e via faturamento,
+ * comissao e lucro da empresa. Agora a pagina recusa por conta propria.
+ */
 export default function FinanceiroPage() {
+  return (
+    <RoleGuard minimo="coordenador">
+      <FinanceiroConteudo />
+    </RoleGuard>
+  );
+}
+
+function FinanceiroConteudo() {
   const vendedores = useVendedoresEscopo();
   const vendas = useVendasEscopo();
   const metas = useMetasEscopo();
+  const admin = ehAdmin(useSession());
 
   const { config, feriados, chaveAtual } = useCicloProducao();
   const mesAtual = chaveAtual;
@@ -228,6 +246,18 @@ export default function FinanceiroPage() {
           </span>
         </div>
       </div>
+
+      {/*
+        FINANCEIRO ESTRATEGICO — so admin. Coordenador continua vendo o resumo
+        de faturamento/comissao acima (nao mudou nada para ele), mas caixa,
+        pro-labore, impostos e projecao sao do dono da empresa. A rota
+        /api/financeiro tambem exige admin: esconder na tela nao seria protecao.
+      */}
+      {admin && (
+        <div className="lb-fade-up">
+          <FinanceiroEstrategico chaveInicial={chaveAtual} />
+        </div>
+      )}
     </PremiumStage>
   );
 }
