@@ -108,6 +108,33 @@ function FinanceiroConteudo() {
         </select>
       </header>
 
+      {/*
+        FINANCEIRO ESTRATEGICO — so admin, e PRIMEIRO na pagina.
+        Estava no fim: o dono tinha que rolar a tabela de comissao inteira para
+        achar o proprio painel. O que ele abre esta tela para ver e o dinheiro
+        da empresa; o resumo da equipe vem depois.
+
+        Coordenador nao ve este bloco (segue vendo so o resumo abaixo, igual
+        antes). A rota /api/financeiro tambem exige admin: esconder na tela nao
+        seria protecao.
+      */}
+      {admin && (
+        <div className="lb-fade-up">
+          <FinanceiroEstrategico chaveInicial={chaveAtual} />
+        </div>
+      )}
+
+      {/* --- daqui para baixo: o resumo da equipe, que ja existia --- */}
+      {admin && (
+        <div className="flex items-center gap-3 pt-2">
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+            Resumo da equipe
+          </span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
+      )}
+
       {/* KPIs premium */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k, i) => (
@@ -246,18 +273,6 @@ function FinanceiroConteudo() {
           </span>
         </div>
       </div>
-
-      {/*
-        FINANCEIRO ESTRATEGICO — so admin. Coordenador continua vendo o resumo
-        de faturamento/comissao acima (nao mudou nada para ele), mas caixa,
-        pro-labore, impostos e projecao sao do dono da empresa. A rota
-        /api/financeiro tambem exige admin: esconder na tela nao seria protecao.
-      */}
-      {admin && (
-        <div className="lb-fade-up">
-          <FinanceiroEstrategico chaveInicial={chaveAtual} />
-        </div>
-      )}
     </PremiumStage>
   );
 }
