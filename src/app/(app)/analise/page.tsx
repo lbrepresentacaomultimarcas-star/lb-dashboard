@@ -33,6 +33,7 @@ import {
   type AnaliseFunil,
 } from "@/lib/analise-comercial";
 import { analisarOportunidades } from "@/lib/oportunidades";
+import { HistoricoConsultores } from "@/components/analise/historico-consultores";
 
 const EMOJI_ETAPA: Record<string, string> = {
   oportunidade: "💡",
@@ -74,8 +75,52 @@ function rangeAnterior(r: { de?: Date; ate?: Date }): { de: Date; ate: Date } | 
 export default function AnaliseComercialPage() {
   return (
     <RoleGuard minimo="admin">
-      <CentroInteligencia />
+      <AnaliseComAbas />
     </RoleGuard>
+  );
+}
+
+/*
+ * Duas leituras da mesma operação, e elas respondem perguntas diferentes:
+ *
+ *   PANORAMA  — como está o funil AGORA (o que já existia; não mudou nada).
+ *   HISTÓRICO — o que cada consultor fez, cliente por cliente, no período.
+ *
+ * O Histórico lê pelo servidor (/api/analise-comercial) porque o app carrega
+ * a auditoria com limite de 500 linhas, e hoje existem mais de 5.000: pelo
+ * navegador a conta histórica sairia errada sem avisar.
+ */
+function AnaliseComAbas() {
+  const [aba, setAba] = useState<"panorama" | "historico">("panorama");
+  return (
+    <>
+      <div className="mb-4 flex gap-2 px-4 pt-4 md:px-6">
+        {([
+          ["panorama", "Panorama do funil"],
+          ["historico", "Histórico por consultor"],
+        ] as const).map(([k, rotulo]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setAba(k)}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
+              aba === k
+                ? "border-[var(--color-brand)] bg-[var(--color-brand)]/15 text-[var(--color-text)]"
+                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      {aba === "panorama" ? (
+        <CentroInteligencia />
+      ) : (
+        <div className="px-4 pb-8 md:px-6">
+          <HistoricoConsultores />
+        </div>
+      )}
+    </>
   );
 }
 
