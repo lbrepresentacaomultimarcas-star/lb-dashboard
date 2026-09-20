@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { cicloAtual, cicloPorChave, setDeFeriados, type ConfigProducao } from "@/lib/ciclo";
 import {
   cobertura,
   montarJornada,
@@ -85,6 +86,38 @@ async function lerTudo<T>(
   return saida;
 }
 
+/**
+ * A configuração do ciclo é a MESMA do ranking, das metas e do financeiro
+ * (tabela `config_producao`: fecha dia 20, prorroga para o dia útil seguinte).
+ * Ler daqui evita a análise ter um "mês" próprio que discorda do resto do CRM.
+ */
+async function cicloConfig(db: ReturnType<typeof supabaseAdmin>, orgId: string) {
+  const [{ data: cfg }, { data: fer }] = await Promise.all([
+    db.from("config_producao").select("*").eq("org_id", orgId).maybeSingle(),
+    db.from("feriados").select("data").eq("org_id", orgId),
+  ]);
+  const c = cfg as Record<string, unknown> | null;
+  const config: ConfigProducao = {
+    diaBase: Number(c?.dia_base ?? 20),
+    prorrogarDiaUtil: c?.prorrogar_dia_util !== false,
+    considerarSabDom: c?.considerar_sab_dom !== false,
+    considerarFeriados: c?.considerar_feriados === true,
+    inicioProximoCiclo: (c?.inicio_proximo_ciclo as ConfigProducao["inicioProximoCiclo"]) ?? "dia_seguinte",
+    dataInicioRegra: String(c?.data_inicio_regra ?? "9999-12-31"),
+  };
+  return { config, feriados: setDeFeriados(((fer ?? []) as { data: string }[]).map((f) => f.data)) };
+}
+
+/** "2026-09" − 1 = "2026-08". */
+function chaveAnterior(chave: string, passos: number): string {
+  const [y, m] = chave.split("-").map(Number);
+  const d = new Date(y, m - 1 - passos, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const ddmm = (d: Date) =>
+  `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
@@ -92,7 +125,13 @@ export async function GET(req: NextRequest) {
   const orgId = auth.orgId;
 
   const { searchParams } = new URL(req.url);
-  const tipo = (searchParams.get("tipo") ?? "semana") as "semana" | "quinzena" | "mes" | "personalizado";
+  const tipo = (searchParams.get("tipo") ?? "semana") as
+    | "semana"
+    | "quinzena"
+    | "mes"
+    | "personalizado"
+    | "ciclo";
+  const chavePedida = searchParams.get("chave") ?? "";
   const deParam = searchParams.get("de");
   const ateParam = searchParams.get("ate");
   const vendedorFiltro = searchParams.get("vendedor") ?? "";
@@ -106,12 +145,38 @@ export async function GET(req: NextRequest) {
   const papel = ((perfil as { papel?: string } | null)?.papel ?? "admin") as string;
   const permitidos = await escopoDeConsultores(db, orgId, papel, auth.userId);
 
-  const periodo = periodoDe(
-    tipo,
-    new Date(),
-    deParam ? new Date(`${deParam}T00:00:00`) : undefined,
-    ateParam ? new Date(`${ateParam}T00:00:00`) : undefined,
-  );
+  /*
+   * O ciclo de produção NÃO é mês de calendário: vai de fechamento a
+   * fechamento (dia 20, prorrogado para o dia útil seguinte). Quem sabe essa
+   * regra é `lib/ciclo`, então a janela vem de lá — a análise não reimplementa
+   * a régua, senão um dia ela discordaria do ranking.
+   */
+  const { config, feriados } = await cicloConfig(db, orgId);
+  const atual = cicloAtual(config, feriados, new Date());
+  const ciclosDisponiveis = Array.from({ length: 6 }, (_, i) => {
+    const chave = chaveAnterior(atual.chave, i);
+    const j = cicloPorChave(chave, config, feriados);
+    return { chave, inicio: j.inicio.toISOString(), fim: j.fim.toISOString(), rotulo: `${ddmm(j.inicio)} a ${ddmm(j.fim)}` };
+  });
+
+  let periodo;
+  if (tipo === "ciclo") {
+    const janela = cicloPorChave(chavePedida || atual.chave, config, feriados);
+    const fim = new Date(janela.fim);
+    fim.setHours(23, 59, 59, 999);
+    periodo = {
+      de: janela.inicio,
+      ate: fim,
+      rotulo: `Ciclo de produção ${janela.chave} (${ddmm(janela.inicio)} a ${ddmm(janela.fim)})`,
+    };
+  } else {
+    periodo = periodoDe(
+      tipo as "semana" | "quinzena" | "mes" | "personalizado",
+      new Date(),
+      deParam ? new Date(`${deParam}T00:00:00`) : undefined,
+      ateParam ? new Date(`${ateParam}T00:00:00`) : undefined,
+    );
+  }
 
   try {
     const [leads, audit, centrais, vendas, vendedores, tentativas] = await Promise.all([
@@ -224,6 +289,8 @@ export async function GET(req: NextRequest) {
 
     return Response.json({
       periodo: { de: periodo.de.toISOString(), ate: periodo.ate.toISOString(), rotulo: periodo.rotulo, tipo },
+      ciclos: ciclosDisponiveis,
+      cicloAtual: atual.chave,
       geradoEm: new Date().toISOString(),
       // Quanto foi lido de verdade — para conferir que nada ficou de fora.
       lido: {

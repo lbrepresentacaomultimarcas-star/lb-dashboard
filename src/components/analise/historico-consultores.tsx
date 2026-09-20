@@ -87,8 +87,12 @@ type Consultor = {
   inconsistencias: number;
 };
 
+type Ciclo = { chave: string; inicio: string; fim: string; rotulo: string };
+
 type Dados = {
   periodo: { de: string; ate: string; rotulo: string; tipo: string };
+  ciclos: Ciclo[];
+  cicloAtual: string;
   geradoEm: string;
   lido: { leads: number; auditoria: number; centrais: number; vendas: number; tentativas: number };
   cobertura: {
@@ -226,7 +230,9 @@ function FichaNegocio({ n }: { n: Negocio }) {
 /* ------------------------------------------------------------------ tela */
 
 export function HistoricoConsultores() {
-  const [tipo, setTipo] = useState<"semana" | "quinzena" | "mes" | "personalizado">("semana");
+  const [tipo, setTipo] = useState<"semana" | "quinzena" | "mes" | "personalizado" | "ciclo">("semana");
+  /** Vazio = ciclo corrente; o servidor resolve qual é. */
+  const [chave, setChave] = useState("");
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [vendedor, setVendedor] = useState("");
@@ -249,6 +255,7 @@ export function HistoricoConsultores() {
         q.set("de", de);
         q.set("ate", ate);
       }
+      if (tipo === "ciclo" && chave) q.set("chave", chave);
       if (vendedor) q.set("vendedor", vendedor);
       const r = await fetch(`/api/analise-comercial?${q}`);
       const j = await r.json();
@@ -259,7 +266,7 @@ export function HistoricoConsultores() {
     } finally {
       setCarregando(false);
     }
-  }, [tipo, de, ate, vendedor]);
+  }, [tipo, de, ate, vendedor, chave]);
 
   // React 19: nada de setState direto no corpo do efeito.
   useEffect(() => {
@@ -344,9 +351,30 @@ export function HistoricoConsultores() {
                 20) é outra régua e vive no ranking/financeiro — misturar as duas
                 numa tela de atividade só confundiria a leitura da reunião. */}
             <option value="mes" className="bg-[#0b0d16]">Mês (calendário)</option>
+            <option value="ciclo" className="bg-[#0b0d16]">Ciclo de produção (fecha dia 20)</option>
             <option value="personalizado" className="bg-[#0b0d16]">Período escolhido</option>
           </select>
         </div>
+        {tipo === "ciclo" && (
+          <div>
+            <Label htmlFor="ciclo">Qual ciclo</Label>
+            <select
+              id="ciclo"
+              value={chave}
+              onChange={(e) => setChave(e.target.value)}
+              className="h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white"
+            >
+              <option value="" className="bg-[#0b0d16]">
+                Ciclo atual{d ? ` · ${d.ciclos.find((c) => c.chave === d.cicloAtual)?.rotulo ?? ""}` : ""}
+              </option>
+              {(d?.ciclos ?? []).filter((c) => c.chave !== d?.cicloAtual).map((c) => (
+                <option key={c.chave} value={c.chave} className="bg-[#0b0d16]">
+                  {c.chave} · {c.rotulo}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {tipo === "personalizado" && (
           <>
             <div>
@@ -398,7 +426,7 @@ export function HistoricoConsultores() {
           {/* --------------------------------- o que foi lido (transparência) */}
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
-              O que este painel leu — {soData(d.periodo.de)} a {soData(d.periodo.ate)}
+              O que este painel leu — {d.periodo.tipo === "ciclo" ? d.periodo.rotulo : `${soData(d.periodo.de)} a ${soData(d.periodo.ate)}`}
             </p>
             <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <Numero rotulo="Negócios" valor={d.cobertura.leads} sub={`${d.cobertura.comHistorico} com histórico`} />
