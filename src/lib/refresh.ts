@@ -10,7 +10,7 @@ import { notify } from "./notify";
  * - `refreshNow()` → re-busca todos os datasets do Supabase + dispara um
  *   "tick" que páginas com fetch local (ex: /admin/producoes) podem
  *   observar via `useRefreshTick()` pra recarregar a si mesmas.
- * - `setAutoRefresh(true)` → liga um timer de 60s que dispara refresh
+ * - `setAutoRefresh(true)` → liga um timer de 5 min que dispara refresh
  *   silencioso (sem toast) periodicamente. Persiste em localStorage.
  *
  * Padrão do store: estado em módulo + Set de listeners + useSyncExternalStore
@@ -18,7 +18,14 @@ import { notify } from "./notify";
  */
 
 const AUTO_REFRESH_KEY = "lb:setting:auto_refresh_enabled";
-const AUTO_REFRESH_INTERVAL_MS = 60_000;
+/*
+ * Era 60 segundos, e ligado isso baixava 1,4 MB por minuto, por pessoa —
+ * um dia inteiro de trabalho passava de 600 MB só nesse timer.
+ *
+ * Mudança de etapa, venda e lead novo já chegam na hora pelo tempo real,
+ * então o timer é só uma rede de segurança: 5 minutos bastam.
+ */
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60_000;
 
 type State = {
   refreshing: boolean;

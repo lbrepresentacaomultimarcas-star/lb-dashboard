@@ -174,7 +174,7 @@ function AutoRefreshCard() {
           <div>
             <CardTitle>Atualização automática</CardTitle>
             <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-              Quando ligado, o CRM recarrega os dados a cada 60 segundos em segundo plano.
+              Quando ligado, o CRM recarrega os dados a cada 5 minutos em segundo plano.
               Você ainda pode usar o botão de atualizar no topo a qualquer momento.
             </p>
           </div>
@@ -189,7 +189,7 @@ function AutoRefreshCard() {
             setAutoRefresh(novo);
             notify.success(
               novo ? "Atualização automática ligada" : "Atualização automática desligada",
-              novo ? "Dados serão atualizados a cada 60s." : undefined,
+              novo ? "Dados serão atualizados a cada 5 minutos." : undefined,
             );
           }}
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
