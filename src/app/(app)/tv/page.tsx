@@ -20,7 +20,7 @@ const MEDALHAS = ["🥇", "🥈", "🥉", "4º", "5º"];
 
 /** Modo TV: painel em tela cheia pra exibir na empresa (ranking, meta,
  *  faturamento, última venda, conversão e previsão), com atualização
- *  automática a cada 60s. Somente admin abre (dados estratégicos). */
+ *  automática em tempo real. Somente admin abre (dados estratégicos). */
 export default function TvPage() {
   return (
     <RoleGuard minimo="admin">
@@ -37,14 +37,25 @@ function PainelTv() {
   const metas = useMetas();
   const { config, feriados } = useCicloProducao();
 
-  // Relógio + auto-refresh silencioso (60s) — TV fica sempre atual.
+  /*
+   * O relógio anda de minuto em minuto; a RECARGA não precisa.
+   *
+   * Antes: a cada 60s a TV baixava TODOS os dados do CRM (1,4 MB). Deixada
+   * ligada no salão o dia inteiro, isso dava mais de 1 GB por dia — sozinha,
+   * estourava a cota de tráfego do mês.
+   *
+   * Venda registrada e mudança de etapa já chegam na hora pelo tempo real,
+   * então a TV continua ao vivo. A recarga completa fica só como rede de
+   * segurança, de 10 em 10 minutos.
+   */
   const [agora, setAgora] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => {
-      setAgora(new Date());
-      refreshOnAppFocus();
-    }, 60_000);
-    return () => clearInterval(t);
+    const relogio = setInterval(() => setAgora(new Date()), 60_000);
+    const rede = setInterval(() => refreshOnAppFocus(), 600_000);
+    return () => {
+      clearInterval(relogio);
+      clearInterval(rede);
+    };
   }, []);
 
   const periodoCiclo = useMemo(() => periodFromPreset("mes-atual", agora, config, feriados), [agora, config, feriados]);
@@ -170,7 +181,7 @@ function PainelTv() {
       </div>
 
       <p className="mt-5 text-center text-xs text-[var(--color-muted)]">
-        LB Representações · atualização automática a cada 60s
+        LB Representações · atualização automática em tempo real
       </p>
     </div>
   );

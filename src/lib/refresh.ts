@@ -125,13 +125,21 @@ async function refreshSilently(): Promise<void> {
 
 /**
  * Refresh silencioso ao VOLTAR pro app (PWA reaberto do background / aba
- * voltando ao foco). Com throttle: no máximo 1 a cada 30s, pra não martelar
- * o Supabase em alt-tabs rápidos. Registrado no DataLoader (raiz do app).
+ * voltando ao foco). Registrado no DataLoader (raiz do app).
+ *
+ * A trava era de 30 segundos, e isso custava caro: o consultor alterna
+ * WhatsApp↔CRM o dia inteiro, e cada volta baixava 1,4 MB. Quatro pessoas
+ * fazendo isso 50 vezes por dia dão mais de 250 MB/dia só em alt-tab.
+ *
+ * Agora são 5 minutos. Não atrasa nada: mudança de negócio, venda e lead novo
+ * já chegam na hora pelo tempo real — este refresh é só a rede de segurança
+ * para quem ficou com a aba parada muito tempo.
  */
+const ESPERA_FOCO_MS = 5 * 60_000;
 let lastFocusRefresh = 0;
 export function refreshOnAppFocus(): void {
   const agora = Date.now();
-  if (agora - lastFocusRefresh < 30_000) return;
+  if (agora - lastFocusRefresh < ESPERA_FOCO_MS) return;
   lastFocusRefresh = agora;
   void refreshSilently();
 }

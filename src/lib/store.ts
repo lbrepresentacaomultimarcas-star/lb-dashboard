@@ -857,10 +857,125 @@ function attachRealtime() {
         agendarRecarga(table, reload);
       })
       .subscribe();
+
+  /*
+   * A LINHA QUE MUDOU JÁ VEM NO EVENTO — não precisa baixar a tabela de novo.
+   *
+   * Era assim: alguém salva um negócio → todo navegador aberto baixava os 960
+   * KB da tabela de leads inteira, mais a auditoria. Com quatro consultores
+   * trabalhando, um clique de um custava uns 4 MB. Foi isso que estourou a
+   * cota de tráfego do Supabase.
+   *
+   * Agora o evento traz a própria linha (`new`/`old`) e ela é aplicada em
+   * memória. Quando o evento não dá para aproveitar — DELETE sem id, payload
+   * cortado, tabela com filtro que mudou — cai na recarga completa de antes.
+   * Nunca fica desatualizado: na dúvida, recarrega.
+   */
+  type Evento = {
+    eventType: "INSERT" | "UPDATE" | "DELETE";
+    new: Record<string, unknown> | null;
+    old: Record<string, unknown> | null;
+  };
+
+  const subDelta = <T extends { id: string }>(
+    table: string,
+    reload: () => Promise<void>,
+    aplicar: (lista: T[], ev: Evento) => T[] | null,
+    ler: () => T[],
+    gravar: (lista: T[]) => void,
+  ) =>
+    sb.channel(`lb-${table}`)
+      .on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        let nova: T[] | null = null;
+        try {
+          nova = aplicar(ler(), payload as unknown as Evento);
+        } catch {
+          nova = null; // qualquer surpresa no formato → recarrega inteiro
+        }
+        if (nova) {
+          gravar(nova);
+          notify();
+          bumpSync();
+          return;
+        }
+        agendarRecarga(table, reload);
+      })
+      .subscribe();
+
+  /** Troca a linha se já existe, senão põe na frente. Devolve null quando não dá. */
+  function aplicarLinha<T extends { id: string }>(
+    lista: T[],
+    ev: Evento,
+    mapear: (linha: Record<string, unknown>) => T,
+    /** `false` = a linha não pertence mais a esta lista (filtro do reload). */
+    pertence: (linha: Record<string, unknown>) => boolean = () => true,
+    limite = 0,
+  ): T[] | null {
+    if (ev.eventType === "DELETE") {
+      const id = (ev.old as { id?: string } | null)?.id;
+      if (!id) return null;
+      return lista.filter((x) => x.id !== id);
+    }
+    const linha = ev.new;
+    if (!linha || typeof (linha as { id?: string }).id !== "string") return null;
+    const id = (linha as { id: string }).id;
+    if (!pertence(linha)) return lista.filter((x) => x.id !== id);
+    const item = mapear(linha);
+    const existe = lista.some((x) => x.id === id);
+    const nova = existe ? lista.map((x) => (x.id === id ? item : x)) : [item, ...lista];
+    return limite > 0 ? nova.slice(0, limite) : nova;
+  }
+
+  // As quatro tabelas pesadas (960 KB + 258 KB + 149 KB + 44 KB por recarga).
+  subDelta<Lead>(
+    "leads",
+    reloadLeads,
+    (lista, ev) => aplicarLinha(lista, ev, (l) => leadFromDb(l as unknown as DbLead)),
+    () => state.leads,
+    (l) => {
+      state.leads = l;
+    },
+  );
+  subDelta<CentralLead>(
+    "central_leads",
+    reloadCentralLeads,
+    (lista, ev) =>
+      aplicarLinha(
+        lista,
+        ev,
+        (l) => centralLeadFromDb(l as unknown as DbCentralLead),
+        // a fila só mostra o que não foi encerrado nem excluído
+        (l) => !l.encerrado_em && !l.excluido_em,
+        1000, // mesmo teto do reload
+      ),
+    () => state.centralLeads,
+    (l) => {
+      state.centralLeads = l;
+    },
+  );
+  subDelta<AuditLog>(
+    "audit_log",
+    reloadAudit,
+    (lista, ev) => aplicarLinha(lista, ev, (l) => auditFromDb(l as unknown as DbAuditLog), () => true, 500),
+    () => state.audit,
+    (l) => {
+      state.audit = l;
+    },
+  );
+  subDelta<Notificacao>(
+    "notificacoes",
+    reloadNotificacoes,
+    (lista, ev) => aplicarLinha(lista, ev, (l) => notificacaoFromDb(l as unknown as DbNotificacao), () => true, 100),
+    () => state.notificacoes,
+    (l) => {
+      state.notificacoes = l;
+    },
+  );
+
+  // As leves continuam recarregando inteiras: são poucos KB e o código é mais simples.
   sub("vendedores", reloadVendedores);
   sub("vendas", reloadVendas);
   sub("clientes", reloadClientes);
-  sub("leads", reloadLeads);
   sub("metas", reloadMetas);
   sub("feriados", reloadFeriados);
   sub("config_producao", reloadConfigProducao);
@@ -868,10 +983,7 @@ function attachRealtime() {
   sub("performance_config", reloadPerformanceConfig);
   sub("performance_historico", reloadPerformanceHistorico);
   sub("temas", reloadTemas);
-  sub("audit_log", reloadAudit);
   sub("resultados_contemplacoes", reloadResultados);
-  sub("central_leads", reloadCentralLeads);
-  sub("notificacoes", reloadNotificacoes);
 }
 
 // ============================================================
