@@ -127,8 +127,17 @@ export type Realizado = {
   prolaboreUsado: number;
   /** Quanto foi separado para impostos. */
   impostoSeparado: number;
-  /** Quanto a operação gastou (soma dos gastos do mês marcados como operação). */
+  /**
+   * Quanto a operação COMPROMETEU no mês: tudo que foi registrado contra o
+   * orçamento, pago ou ainda a pagar. Registrar um anúncio já consome o
+   * orçamento — senão o painel mostra folga que não existe.
+   */
   operacaoGasta: number;
+  /**
+   * Dos gastos da operação, quanto JÁ SAIU do bolso. Fica separado de
+   * propósito: compromisso registrado não é dinheiro pago.
+   */
+  operacaoPaga?: number;
 };
 
 export type PlanoDoMes = {
@@ -144,6 +153,10 @@ export type PlanoDoMes = {
   operacaoDisponivel: number;
   /** Quanto a operação passou do teto. Zero quando está dentro. */
   operacaoExcedente: number;
+  /** Do orçamento da operação, quanto já saiu do bolso. */
+  operacaoPaga: number;
+  /** Registrado contra o orçamento, mas ainda não pago. */
+  operacaoAPagar: number;
 };
 
 export function planoDoMes(faturamento: number, feito: Realizado): PlanoDoMes {
@@ -161,6 +174,46 @@ export function planoDoMes(faturamento: number, feito: Realizado): PlanoDoMes {
     mantidoNaEmpresa: cent(Math.max(0, limites.prolabore - feito.prolaboreUsado)),
     operacaoDisponivel: cent(Math.max(0, limites.operacao - feito.operacaoGasta)),
     operacaoExcedente: cent(Math.max(0, feito.operacaoGasta - limites.operacao)),
+    operacaoPaga: cent(Math.max(0, feito.operacaoPaga ?? 0)),
+    operacaoAPagar: cent(Math.max(0, feito.operacaoGasta - (feito.operacaoPaga ?? 0))),
+  };
+}
+
+/* ----------------------------------------------------------- fechamento */
+
+export type ResumoFechamento = {
+  faturamento: number;
+  guardado: number;
+  prolaboreRetirado: number;
+  impostoSeparado: number;
+  operacaoUtilizada: number;
+  /** Tudo que de fato saiu do caixa no mês (fixos + variáveis já pagos). */
+  gastosPagos: number;
+  /**
+   * O que o faturamento ainda NÃO destinou. Não é lucro novo: é dinheiro do
+   * mês que continua na empresa porque não foi guardado, retirado, separado
+   * nem gasto. Negativo significa que se destinou mais do que entrou.
+   */
+  naoDestinado: number;
+};
+
+/** O fechamento do mês em sete linhas — as mesmas que vão para o histórico. */
+export function resumoDoMes(plano: PlanoDoMes, gastosPagos: number): ResumoFechamento {
+  const feito = (d: Destino) => plano.linhas.find((l) => l.destino === d)?.realizado ?? 0;
+  const guardado = feito("guardar");
+  const prolaboreRetirado = feito("prolabore");
+  const impostoSeparado = feito("impostos");
+  const operacaoUtilizada = feito("operacao");
+  return {
+    faturamento: plano.faturamento,
+    guardado,
+    prolaboreRetirado,
+    impostoSeparado,
+    operacaoUtilizada,
+    gastosPagos: cent(Math.max(0, gastosPagos)),
+    naoDestinado: cent(
+      plano.faturamento - guardado - prolaboreRetirado - impostoSeparado - operacaoUtilizada,
+    ),
   };
 }
 

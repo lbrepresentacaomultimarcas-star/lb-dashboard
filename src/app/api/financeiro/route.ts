@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { cicloDeData, setDeFeriados, type ConfigProducao } from "@/lib/ciclo";
-import { caixaDe, planoDoMes, projetar, diagnosticar } from "@/lib/financeiro";
+import { cicloDeData, cicloPorChave, setDeFeriados, type ConfigProducao } from "@/lib/ciclo";
+import { caixaDe, planoDoMes, projetar, diagnosticar, resumoDoMes } from "@/lib/financeiro";
 
 /**
  * FINANCEIRO ESTRATÉGICO — a única porta de entrada.
@@ -78,6 +78,25 @@ async function cicloConfig(db: ReturnType<typeof supabaseAdmin>, orgId: string) 
   return { config, feriados };
 }
 
+const iso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * O dia do vencimento DENTRO da janela do ciclo.
+ *
+ * O ciclo fecha dia 20, então "2026-09" vai de 21/08 a 21/09 e cruza dois meses
+ * do calendário. Montar a data como `2026-09-<dia>` jogava o aluguel do dia 25
+ * para 25/09 — fora do ciclo de setembro, que termina no dia 21. Resultado: a
+ * tela listava a despesa em setembro e a previsão a cobrava em outubro.
+ */
+function vencimentoNoCiclo(dia: number, inicio: Date, fim: Date): string {
+  const candidatos = [inicio, fim].map((ref) => {
+    const ultimo = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
+    return new Date(ref.getFullYear(), ref.getMonth(), Math.min(Math.max(1, dia), ultimo));
+  });
+  return iso(candidatos.find((d) => d >= inicio && d <= fim) ?? fim);
+}
+
 /** "2026-09" + 1 = "2026-10". */
 function proximaChave(chave: string, passos: number): string {
   const [y, m] = chave.split("-").map(Number);
@@ -94,7 +113,7 @@ export async function GET(req: NextRequest) {
   const orgId = auth.orgId;
 
   const { config, feriados } = await cicloConfig(db, orgId);
-  const chave = req.nextUrl.searchParams.get("chave") ?? cicloDeData(new Date(), config, feriados);
+  const chave = req.nextUrl.searchParams.get("chave") || cicloDeData(new Date(), config, feriados);
 
   const [{ data: mesRow }, { data: lanc }, { data: fixos }, { data: vendas }] = await Promise.all([
     db.from("fin_mes").select("*").eq("org_id", orgId).eq("chave", chave).maybeSingle(),
@@ -114,8 +133,19 @@ export async function GET(req: NextRequest) {
     .reduce((a, v) => a + n(v.valor), 0);
 
   const faturamento = n(mes.faturamento);
-  const operacaoGasta = doMes
-    .filter((l) => l.direcao === "saida" && l.operacao)
+
+  /*
+   * ORÇAMENTO DA OPERAÇÃO — registrar já consome, pagar é outra coisa.
+   *
+   * `operacaoGasta` soma tudo que foi registrado contra o orçamento (pago ou
+   * a pagar): assim que o anúncio é contratado o dinheiro está comprometido, e
+   * mostrar o orçamento cheio até a fatura vencer seria mentir sobre a folga.
+   * `operacaoPaga` é só o que já saiu — e é esse que o caixa usa.
+   */
+  const dosGastosOperacao = doMes.filter((l) => l.direcao === "saida" && l.operacao);
+  const operacaoGasta = dosGastosOperacao.reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0);
+  const operacaoPaga = dosGastosOperacao
+    .filter((l) => l.status === "liquidado")
     .reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0);
 
   const plano = planoDoMes(faturamento, {
@@ -123,17 +153,41 @@ export async function GET(req: NextRequest) {
     prolaboreUsado: n(mes.prolabore_usado),
     impostoSeparado: n(mes.imposto_separado),
     operacaoGasta,
+    operacaoPaga,
   });
 
-  // CAIXA — o que aconteceu de um lado, o que é previsão do outro. Nunca soma.
-  const liquidados = todos.filter((l) => l.status === "liquidado");
-  const pendentes = todos.filter((l) => l.status === "pendente");
+  /*
+   * CAIXA DO MÊS — e só do mês.
+   *
+   * Antes esta conta somava os lançamentos de TODOS os meses, então trocar o
+   * mês no seletor não mudava nada no caixa: setembro e abril mostravam o
+   * mesmo número, e dava a impressão de que um mês tinha recebido os valores
+   * do outro. Agora cada mês soma exclusivamente o que é dele.
+   *
+   * O caixa acumulado da empresa continua existindo, mas com nome próprio
+   * (`caixaEmpresa`) e fora do bloco do mês — é ele que serve de ponto de
+   * partida para a previsão dos próximos meses.
+   */
+  const liquidadosMes = doMes.filter((l) => l.status === "liquidado");
+  const pendentesMes = doMes.filter((l) => l.status === "pendente");
+  const entrou = liquidadosMes
+    .filter((l) => l.direcao === "entrada")
+    .reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0);
+  const saiu = liquidadosMes
+    .filter((l) => l.direcao === "saida")
+    .reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0);
   const caixa = caixaDe({
-    recebido: liquidados.filter((l) => l.direcao === "entrada").reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0),
-    pago: liquidados.filter((l) => l.direcao === "saida").reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0),
-    previstoEntrar: pendentes.filter((l) => l.direcao === "entrada").reduce((a, l) => a + n(l.valor), 0),
-    previstoSair: pendentes.filter((l) => l.direcao === "saida").reduce((a, l) => a + n(l.valor), 0),
+    recebido: entrou,
+    pago: saiu,
+    previstoEntrar: pendentesMes.filter((l) => l.direcao === "entrada").reduce((a, l) => a + n(l.valor), 0),
+    previstoSair: pendentesMes.filter((l) => l.direcao === "saida").reduce((a, l) => a + n(l.valor), 0),
   });
+
+  const pendentes = todos.filter((l) => l.status === "pendente");
+  const liquidados = todos.filter((l) => l.status === "liquidado");
+  const caixaEmpresa =
+    liquidados.filter((l) => l.direcao === "entrada").reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0) -
+    liquidados.filter((l) => l.direcao === "saida").reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0);
 
   /*
    * PROJEÇÃO — 6 meses à frente, partindo do caixa disponível de HOJE.
@@ -146,7 +200,16 @@ export async function GET(req: NextRequest) {
   const ativos = ((fixos ?? []) as Fixo[]).filter((f) => f.ativo);
   const meses = Array.from({ length: 6 }, (_, i) => {
     const ch = proximaChave(chave, i + 1);
-    const doMesFuturo = pendentes.filter((l) => cicloDeData(l.vencimento, config, feriados) === ch);
+    /*
+     * Pelo `chave` do lançamento, não pelo ciclo do vencimento.
+     *
+     * Eram dois critérios para a mesma linha: a tela do mês listava por
+     * `chave` e a previsão reclassificava pelo vencimento. Como o ciclo fecha
+     * dia 20, um gasto do ciclo de setembro com vencimento 25/09 aparecia em
+     * setembro na tela e em outubro na previsão — a mesma despesa contada
+     * duas vezes em meses diferentes.
+     */
+    const doMesFuturo = pendentes.filter((l) => l.chave === ch);
     const jaGerados = new Set(
       todos.filter((l) => l.chave === ch && l.gasto_fixo_id).map((l) => l.gasto_fixo_id),
     );
@@ -161,7 +224,8 @@ export async function GET(req: NextRequest) {
         fixosAindaNao,
     };
   });
-  const projecao = projetar(caixa.disponivel, meses);
+  // Parte do caixa da EMPRESA (todos os meses), não do resultado de um mês só.
+  const projecao = projetar(caixaEmpresa, meses);
 
   // Acumulado histórico — o que já ficou dentro da empresa, mês a mês.
   const { data: todosMeses } = await db
@@ -189,6 +253,35 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  /*
+   * GASTOS FIXOS NO MÊS — previsto, pendente e pago são três coisas.
+   *
+   * PREVISTO é o molde cadastrado (o aluguel de todo mês). Ele só vira
+   * compromisso quando a ocorrência do mês é gerada, e só vira dinheiro que
+   * saiu quando é marcado como pago. Antes a tela mostrava apenas o cadastro,
+   * então não havia como saber o que ainda estava em aberto.
+   */
+  const fixosDoMes = ((fixos ?? []) as Fixo[]).map((f) => {
+    const oc = doMes.find((l) => l.gasto_fixo_id === f.id);
+    const sit = oc ? situacaoDe(oc) : null;
+    return {
+      ...f,
+      lancamentoId: oc?.id ?? null,
+      valorNoMes: oc ? n(oc.valor) : n(f.valor),
+      vencimento: oc?.vencimento ?? null,
+      status: (sit === null ? "previsto" : sit === "liquidado" ? "pago" : sit) as
+        | "previsto"
+        | "pendente"
+        | "atrasado"
+        | "pago",
+    };
+  });
+  const somaFixos = (st: string[]) =>
+    fixosDoMes.filter((f) => f.ativo && st.includes(f.status)).reduce((a, f) => a + f.valorNoMes, 0);
+
+  // O fechamento do mês nas sete linhas que vão para o histórico.
+  const resumo = resumoDoMes(plano, saiu);
+
   return Response.json({
     chave,
     faturamento,
@@ -198,13 +291,20 @@ export async function GET(req: NextRequest) {
     plano,
     diagnostico: diagnosticar(plano),
     caixa,
+    caixaMov: { entrou, saiu },
+    caixaEmpresa,
+    resumo,
     projecao,
     historico,
     acumuladoMantido: historico.reduce((a, h) => a + h.mantidoNaEmpresa, 0),
     acumuladoGuardado: historico.reduce((a, h) => a + h.guardado, 0),
-    fixos: (fixos ?? []) as Fixo[],
+    fixos: fixosDoMes,
     lancamentos: doMes.map((l) => ({ ...l, valor: n(l.valor), situacao: situacaoDe(l) })),
     totais: {
+      fixosPrevisto: fixosDoMes.filter((f) => f.ativo).reduce((a, f) => a + f.valorNoMes, 0),
+      fixosPago: somaFixos(["pago"]),
+      fixosPendente: somaFixos(["pendente", "atrasado"]),
+      fixosNaoGerado: somaFixos(["previsto"]),
       fixos: doMes.filter((l) => l.tipo === "fixo").reduce((a, l) => a + n(l.valor), 0),
       variaveis: doMes.filter((l) => l.tipo === "variavel").reduce((a, l) => a + n(l.valor), 0),
       pagos: doMes.filter((l) => l.direcao === "saida" && l.status === "liquidado").reduce((a, l) => a + n(l.valor_pago ?? l.valor), 0),
@@ -308,7 +408,10 @@ export async function POST(req: NextRequest) {
      * subir depois, o mês já gerado não muda sozinho.
      */
     case "gerar-fixos": {
+      if (!/^\d{4}-\d{2}$/.test(chave)) return erro("Mês inválido.");
       if (await mesFechado(chave)) return erro("Este mês está fechado.", 409);
+      const { config, feriados } = await cicloConfig(db, orgId);
+      const { inicio, fim } = cicloPorChave(chave, config, feriados);
       const { data: fixos } = await db
         .from("fin_gastos_fixos")
         .select("*")
@@ -317,8 +420,6 @@ export async function POST(req: NextRequest) {
       const lista = (fixos ?? []) as Fixo[];
       if (lista.length === 0) return Response.json({ ok: true, criados: 0 });
 
-      const [y, m] = chave.split("-").map(Number);
-      const ultimoDia = new Date(y, m, 0).getDate();
       const linhas = lista.map((f) => ({
         org_id: orgId,
         chave,
@@ -327,8 +428,8 @@ export async function POST(req: NextRequest) {
         descricao: f.nome,
         categoria: f.categoria,
         valor: n(f.valor),
-        // dia 31 num mês de 30 cai no último dia, não vira data inválida
-        vencimento: `${chave}-${String(Math.min(f.dia_vencimento, ultimoDia)).padStart(2, "0")}`,
+        // dia 31 num mês de 30 cai no último dia, e sempre dentro do ciclo
+        vencimento: vencimentoNoCiclo(f.dia_vencimento, inicio, fim),
         operacao: false,
         gasto_fixo_id: f.id,
       }));
