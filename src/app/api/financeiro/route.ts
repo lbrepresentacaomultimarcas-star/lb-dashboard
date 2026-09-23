@@ -4,6 +4,12 @@ import { requireAdmin } from "@/lib/admin-guard";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { cicloDeData, cicloPorChave, setDeFeriados, type ConfigProducao } from "@/lib/ciclo";
 import { caixaDe, planoDoMes, projetar, diagnosticar, resumoDoMes } from "@/lib/financeiro";
+import {
+  chaveDoCiclo,
+  ciclosEmVolta,
+  CONFIG_RECEBIMENTO_PADRAO,
+  type ConfigRecebimento,
+} from "@/lib/producao-ciclos";
 
 /**
  * FINANCEIRO ESTRATÉGICO — a única porta de entrada.
@@ -51,7 +57,18 @@ type Fixo = {
   ativo: boolean;
 };
 
+/** Recebimento REAL de um ciclo de produção (tabela `fin_ciclos`). */
+type CicloRow = {
+  ciclo: string;
+  previsto: number | null;
+  recebido: number;
+  recebido_em: string | null;
+  observacao: string | null;
+};
+
 const n = (v: unknown) => Number(v ?? 0) || 0;
+const cent = (v: number) => Math.round(v * 100) / 100;
+const CHAVE_CICLO = /^\d{4}-(0[1-9]|1[0-2])-[AB]$/;
 const hoje = () => new Date().toISOString().slice(0, 10);
 
 /** Atrasado é DERIVADO: pendente e o vencimento já passou. */
@@ -115,22 +132,131 @@ export async function GET(req: NextRequest) {
   const { config, feriados } = await cicloConfig(db, orgId);
   const chave = req.nextUrl.searchParams.get("chave") || cicloDeData(new Date(), config, feriados);
 
-  const [{ data: mesRow }, { data: lanc }, { data: fixos }, { data: vendas }] = await Promise.all([
-    db.from("fin_mes").select("*").eq("org_id", orgId).eq("chave", chave).maybeSingle(),
-    db.from("fin_lancamentos").select("*").eq("org_id", orgId).order("vencimento"),
-    db.from("fin_gastos_fixos").select("*").eq("org_id", orgId).order("nome"),
-    db.from("vendas").select("valor, data, status").eq("org_id", orgId),
-  ]);
+  /*
+   * As duas tabelas novas (`fin_ciclos` e `fin_config`) podem ainda não existir
+   * se a migration não foi rodada. Nesse caso `data` vem null e o financeiro
+   * segue funcionando sem a parte de ciclos, em vez de quebrar a tela inteira.
+   */
+  const [{ data: mesRow }, { data: lanc }, { data: fixos }, { data: vendas }, { data: ciclosRows }, { data: cfgCiclosRow }] =
+    await Promise.all([
+      db.from("fin_mes").select("*").eq("org_id", orgId).eq("chave", chave).maybeSingle(),
+      db.from("fin_lancamentos").select("*").eq("org_id", orgId).order("vencimento"),
+      db.from("fin_gastos_fixos").select("*").eq("org_id", orgId).order("nome"),
+      db.from("vendas").select("valor, data, status").eq("org_id", orgId),
+      db.from("fin_ciclos").select("*").eq("org_id", orgId),
+      db.from("fin_config").select("*").eq("org_id", orgId).maybeSingle(),
+    ]);
 
   const todos = (lanc ?? []) as Lancamento[];
   const doMes = todos.filter((l) => l.chave === chave);
   const mes = (mesRow ?? {}) as Record<string, unknown>;
 
+  const vendasValidas = ((vendas ?? []) as { valor: unknown; data: string; status: string | null }[]).filter(
+    (v) => (v.status ?? "Confirmada") !== "Cancelada",
+  );
+
   // Faturamento REAL das vendas, pelo mesmo ciclo do ranking. Referência.
-  const faturamentoVendas = ((vendas ?? []) as { valor: unknown; data: string; status: string | null }[])
-    .filter((v) => (v.status ?? "Confirmada") !== "Cancelada")
+  const faturamentoVendas = vendasValidas
     .filter((v) => cicloDeData(v.data, config, feriados) === chave)
     .reduce((a, v) => a + n(v.valor), 0);
+
+  /*
+   * PRODUÇÃO E RECEBIMENTO — a regra real da empresa: dois ciclos por mês.
+   *
+   *   ciclo A (20→5)   recebe no dia 21/22, ou no próximo dia útil
+   *   ciclo B (5→20)   recebe até o 5º dia útil do mês seguinte
+   *
+   * Cada venda entra em UM ciclo só (`chaveDoCiclo` olha o dia do mês e as
+   * faixas não se sobrepõem). O VENDIDO é calculado de `vendas`, a PREVISÃO é
+   * calculada pela regra, e o RECEBIDO vem de `fin_ciclos` — porque quanto
+   * entrou, e em que dia, é fato, não dedução. Data de venda nunca vira data
+   * de recebimento.
+   */
+  const cfgRec: ConfigRecebimento = {
+    diaRecebimentoA: Number(
+      (cfgCiclosRow as Record<string, unknown> | null)?.dia_recebimento_a ??
+        CONFIG_RECEBIMENTO_PADRAO.diaRecebimentoA,
+    ),
+    diasUteisB: Number(
+      (cfgCiclosRow as Record<string, unknown> | null)?.dias_uteis_recebimento_b ??
+        CONFIG_RECEBIMENTO_PADRAO.diasUteisB,
+    ),
+  };
+
+  const vendidoPorCiclo = new Map<string, { total: number; qtd: number }>();
+  for (const v of vendasValidas) {
+    const ch = chaveDoCiclo(v.data);
+    const atual = vendidoPorCiclo.get(ch) ?? { total: 0, qtd: 0 };
+    atual.total = cent(atual.total + n(v.valor));
+    atual.qtd += 1;
+    vendidoPorCiclo.set(ch, atual);
+  }
+  const porCiclo = new Map(((ciclosRows ?? []) as CicloRow[]).map((c) => [c.ciclo, c]));
+
+  /*
+   * Junta o calculado (vendido, data da previsão) com o confirmado (previsto
+   * pela administradora e recebido de fato).
+   *
+   * `previsto` NÃO tem chute: fica null até alguém informar. O campo `valor` de
+   * uma venda de consórcio é o CRÉDITO vendido (R$ 1,2 milhão num ciclo), e a
+   * empresa recebe comissão sobre isso — usar o crédito como previsão de
+   * recebimento colocaria milhões em "ainda vou receber". Melhor mostrar "não
+   * informado" do que um número errado com cara de certo.
+   */
+  const montarCiclo = (c: ReturnType<typeof ciclosEmVolta>[number]) => {
+    const v = vendidoPorCiclo.get(c.chave) ?? { total: 0, qtd: 0 };
+    const row = porCiclo.get(c.chave);
+    const previsto = row?.previsto != null ? n(row.previsto) : null;
+    const recebido = n(row?.recebido);
+    return {
+      chave: c.chave,
+      letra: c.letra,
+      rotulo: c.rotulo,
+      regra: c.regra,
+      inicio: iso(c.inicio),
+      fim: iso(c.fim),
+      previsao: iso(c.previsao),
+      vendido: v.total,
+      qtdVendas: v.qtd,
+      previsto,
+      previstoInformado: previsto != null,
+      recebido,
+      recebidoEm: row?.recebido_em ?? null,
+      aReceber: previsto == null ? 0 : cent(Math.max(0, previsto - recebido)),
+      quitado: previsto != null && recebido > 0 && recebido + 0.005 >= previsto,
+      observacao: row?.observacao ?? null,
+    };
+  };
+
+  const agoraData = new Date();
+  const ciclos = ciclosEmVolta(agoraData, feriados, cfgRec, 2, 2).map(montarCiclo);
+  const cicloAtualChave = chaveDoCiclo(agoraData);
+
+  /*
+   * "Ainda a receber" soma TODOS os ciclos em aberto, não só os que a tela
+   * mostra — e só entra na conta o ciclo que tem previsão INFORMADA. Ciclo sem
+   * previsão informada não vira zero nem vira chute: fica de fora, e a tela diz
+   * quantos são.
+   */
+  const chavesConhecidas = new Set<string>([...vendidoPorCiclo.keys(), ...porCiclo.keys()]);
+  let aReceberTotal = 0;
+  let recebidoTotal = 0;
+  let ciclosSemPrevisao = 0;
+  for (const ch of chavesConhecidas) {
+    const row = porCiclo.get(ch);
+    const recebido = n(row?.recebido);
+    recebidoTotal = cent(recebidoTotal + recebido);
+    if (row?.previsto == null) {
+      if (recebido === 0) ciclosSemPrevisao += 1;
+      continue;
+    }
+    aReceberTotal = cent(aReceberTotal + Math.max(0, n(row.previsto) - recebido));
+  }
+
+  // Recebido DENTRO do mês selecionado: pela data real da entrada, não pela previsão.
+  const recebidoNoMes = ((ciclosRows ?? []) as CicloRow[])
+    .filter((c) => c.recebido_em && cicloDeData(c.recebido_em, config, feriados) === chave)
+    .reduce((a, c) => a + n(c.recebido), 0);
 
   const faturamento = n(mes.faturamento);
 
@@ -233,6 +359,20 @@ export async function GET(req: NextRequest) {
     .select("chave, faturamento, guardado, prolabore_usado, imposto_separado")
     .eq("org_id", orgId)
     .order("chave", { ascending: false });
+  /*
+   * QUAIS MESES TÊM DADOS DE VERDADE.
+   *
+   * O seletor mostra meses para trás e para frente, e isso fazia parecer que
+   * abril e janeiro tinham movimentação. A tela agora marca os vazios — mas
+   * quem sabe quais são é aqui, não a tela.
+   */
+  const mesesComDados = new Set<string>();
+  for (const l of todos) mesesComDados.add(l.chave);
+  for (const m of (todosMeses ?? []) as Record<string, unknown>[]) {
+    if (n(m.faturamento) || n(m.guardado) || n(m.prolabore_usado) || n(m.imposto_separado)) {
+      mesesComDados.add(String(m.chave));
+    }
+  }
   const historico = ((todosMeses ?? []) as Record<string, unknown>[]).map((m) => {
     const p = planoDoMes(n(m.faturamento), {
       guardado: n(m.guardado),
@@ -290,6 +430,16 @@ export async function GET(req: NextRequest) {
     fechadoEm: (mes.fechado_em as string | null) ?? null,
     plano,
     diagnostico: diagnosticar(plano),
+    // produção e recebimento (regra real: 20→5 e 5→20)
+    ciclos,
+    cicloAtual: cicloAtualChave,
+    regraRecebimento: cfgRec,
+    vendidoNoMes: faturamentoVendas,
+    recebidoNoMes,
+    aReceberTotal,
+    recebidoTotal,
+    ciclosSemPrevisao,
+    mesesComDados: [...mesesComDados],
     caixa,
     caixaMov: { entrou, saiu },
     caixaEmpresa,
@@ -357,6 +507,84 @@ export async function POST(req: NextRequest) {
         { onConflict: "org_id,chave" },
       );
       if (error) return erro(error.message);
+      return Response.json({ ok: true });
+    }
+
+    /* --------------------------------- recebimento de um ciclo de produção */
+
+    /*
+     * O dinheiro ENTROU. Este é o único lugar que transforma previsão em fato.
+     *
+     * Não fica preso ao mês selecionado na tela: um ciclo que fecha dia 5 de
+     * outubro é recebido dia 21 de outubro, e essas duas datas caem em meses
+     * diferentes do seletor. O ciclo é a chave, não o mês.
+     */
+    case "registrar-recebimento": {
+      const ciclo = String(body.ciclo ?? "");
+      if (!CHAVE_CICLO.test(ciclo)) return erro("Ciclo inválido.");
+      const valor = n(body.valor);
+      if (valor <= 0) return erro("Informe quanto entrou.");
+      const { error } = await db.from("fin_ciclos").upsert(
+        {
+          org_id: orgId,
+          ciclo,
+          recebido: valor,
+          recebido_em: String(body.recebidoEm ?? hoje()),
+          observacao: (body.observacao as string | null) ?? null,
+          atualizado_em: agora,
+        },
+        { onConflict: "org_id,ciclo" },
+      );
+      if (error) return erro(error.message);
+      await auditar(db, orgId, auth.email, "fin_recebimento", `${ciclo} — ${valor}`);
+      return Response.json({ ok: true });
+    }
+
+    case "desfazer-recebimento": {
+      const ciclo = String(body.ciclo ?? "");
+      if (!CHAVE_CICLO.test(ciclo)) return erro("Ciclo inválido.");
+      const { error } = await db
+        .from("fin_ciclos")
+        .update({ recebido: 0, recebido_em: null, atualizado_em: agora })
+        .eq("org_id", orgId)
+        .eq("ciclo", ciclo);
+      if (error) return erro(error.message);
+      await auditar(db, orgId, auth.email, "fin_recebimento_desfeito", ciclo);
+      return Response.json({ ok: true });
+    }
+
+    /**
+     * Previsão informada pela administradora, quando difere do vendido.
+     * Vazio devolve o controle para o valor calculado das vendas.
+     */
+    case "salvar-previsto": {
+      const ciclo = String(body.ciclo ?? "");
+      if (!CHAVE_CICLO.test(ciclo)) return erro("Ciclo inválido.");
+      const bruto = body.previsto;
+      const previsto = bruto === null || bruto === "" || bruto === undefined ? null : n(bruto);
+      const { error } = await db.from("fin_ciclos").upsert(
+        { org_id: orgId, ciclo, previsto, atualizado_em: agora },
+        { onConflict: "org_id,ciclo" },
+      );
+      if (error) return erro(error.message);
+      return Response.json({ ok: true });
+    }
+
+    /** A regra de recebimento: dia do ciclo A (21/22) e dias úteis do ciclo B. */
+    case "salvar-regra-recebimento": {
+      const dia = Math.min(28, Math.max(1, Number(body.diaRecebimentoA) || 21));
+      const uteis = Math.min(15, Math.max(1, Number(body.diasUteisB) || 5));
+      const { error } = await db.from("fin_config").upsert(
+        {
+          org_id: orgId,
+          dia_recebimento_a: dia,
+          dias_uteis_recebimento_b: uteis,
+          atualizado_em: agora,
+        },
+        { onConflict: "org_id" },
+      );
+      if (error) return erro(error.message);
+      await auditar(db, orgId, auth.email, "fin_regra_recebimento", `dia ${dia} · ${uteis} dias úteis`);
       return Response.json({ ok: true });
     }
 

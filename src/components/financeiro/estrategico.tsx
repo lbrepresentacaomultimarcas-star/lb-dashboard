@@ -74,6 +74,35 @@ type Lancamento = {
   valor_pago: number | null;
 };
 
+/**
+ * Um ciclo de produção da empresa.
+ *
+ * `vendido` e `previsao` são CALCULADOS (das vendas e da regra); `recebido` e
+ * `recebidoEm` são FATO, gravados quando o dinheiro entra. A tela nunca trata
+ * previsão como dinheiro em caixa.
+ */
+type Ciclo = {
+  chave: string;
+  letra: "A" | "B";
+  /** "20/09 → 05/10" */
+  rotulo: string;
+  /** a regra de recebimento em uma frase */
+  regra: string;
+  inicio: string;
+  fim: string;
+  previsao: string;
+  vendido: number;
+  qtdVendas: number;
+  /** null = ninguém informou ainda. Nunca é o crédito vendido. */
+  previsto: number | null;
+  previstoInformado: boolean;
+  recebido: number;
+  recebidoEm: string | null;
+  aReceber: number;
+  quitado: boolean;
+  observacao: string | null;
+};
+
 type Fixo = {
   id: string;
   nome: string;
@@ -105,6 +134,17 @@ type Dados = {
     operacaoAPagar: number;
   };
   diagnostico: { situacao: Situacao; titulo: string; pontos: string[] };
+  /** Os ciclos de produção em volta de hoje (dois por mês: 20→5 e 5→20). */
+  ciclos: Ciclo[];
+  cicloAtual: string;
+  regraRecebimento: { diaRecebimentoA: number; diasUteisB: number };
+  vendidoNoMes: number;
+  recebidoNoMes: number;
+  aReceberTotal: number;
+  recebidoTotal: number;
+  ciclosSemPrevisao: number;
+  /** Meses que têm movimentação de verdade — o seletor marca os vazios. */
+  mesesComDados: string[];
   caixa: { disponivel: number; aReceber: number; aPagar: number; projetado: number };
   caixaMov: { entrou: number; saiu: number };
   caixaEmpresa: number;
@@ -449,6 +489,7 @@ export function FinanceiroEstrategico({ chaveInicial }: { chaveInicial: string }
             {mesesLista.map((m) => (
               <option key={m} value={m} className="bg-[#0b0d16]">
                 {monthLabel(m)} · {janela(m)}
+                {d.mesesComDados.includes(m) ? "" : " · sem lançamento"}
               </option>
             ))}
           </select>
@@ -486,96 +527,216 @@ export function FinanceiroEstrategico({ chaveInicial }: { chaveInicial: string }
         )}
       </div>
 
-      {/* ----------------------------------------- 1. FATURAMENTO DO MÊS */}
+      {/* --------------------------------------------- 1. RECEBIMENTOS */}
       <Passo
         numero={1}
-        titulo="Quanto a empresa faturou neste mês"
-        sub={`Ciclo de ${monthLabel(chave)}, que vai de ${janela(chave)}. As vendas do CRM somam ${brl(d.faturamentoVendas)} nesse período — informe abaixo o valor que você considera realizado.`}
+        titulo="💰 Recebimentos"
+        sub="Vendido não é recebido. A empresa produz em ciclos e o dinheiro entra depois — por isso os três números abaixo são diferentes."
       >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[200px]">
-            <Moeda
-              id="fat"
-              label="Faturamento realizado"
-              valor={fat}
-              onChange={setFat}
-              disabled={fechado}
-            />
-          </div>
-          <div className="min-w-[220px] flex-1">
-            <Label htmlFor="obs">Observação do mês (opcional)</Label>
-            <Input
-              id="obs"
-              value={obs}
-              disabled={fechado}
-              placeholder="o que explica este mês"
-              onChange={(e) => setObs(e.target.value)}
-            />
-          </div>
-          <Button
-            disabled={salvando || fechado}
-            onClick={() => void salvarMes({ faturamento: fat, observacao: obs }, "Faturamento salvo")}
-          >
-            Salvar faturamento
-          </Button>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Numero
+            rotulo={`Vendido no ciclo de ${monthLabel(chave)}`}
+            valor={d.vendidoNoMes}
+            sub={janela(chave)}
+            destaque
+          />
+          <Numero
+            rotulo="Ainda vou receber"
+            valor={d.aReceberTotal}
+            cor="text-amber-300"
+            sub={
+              d.ciclosSemPrevisao > 0
+                ? `${d.ciclosSemPrevisao} ciclo(s) ainda sem previsão informada`
+                : "de todos os ciclos em aberto"
+            }
+            destaque
+          />
+          <Numero
+            rotulo="Recebido neste mês"
+            valor={d.recebidoNoMes}
+            cor="text-emerald-400"
+            sub="dinheiro que entrou de verdade"
+            destaque
+          />
         </div>
-        {d.faturamentoVendas > 0 && Math.abs(d.faturamentoVendas - d.faturamento) > 0.01 && (
-          <p className="mt-2 text-[11px] text-white/40">
-            Diferença de {brl(Math.abs(d.faturamentoVendas - d.faturamento))} em relação às vendas do
-            CRM. Os dois números aparecem lado a lado de propósito — a diferença é informação, não
-            erro.
-          </p>
-        )}
-      </Passo>
 
-      {/* -------------------------------------- 2. DISTRIBUIÇÃO AUTOMÁTICA */}
-      <Passo
-        numero={2}
-        titulo="Distribuição automática"
-        sub={`Calculada na hora sobre o faturamento: ${PERCENTUAIS.guardar}% guardar · ${PERCENTUAIS.prolabore}% limite do pró-labore · ${PERCENTUAIS.impostos}% impostos · ${PERCENTUAIS.operacao}% operação.`}
-      >
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+            Base para a distribuição deste mês
+          </p>
+          <p className="mt-0.5 text-[11px] text-white/40">
+            É sobre este valor que o sistema calcula os {PERCENTUAIS.guardar}/
+            {PERCENTUAIS.prolabore}/{PERCENTUAIS.impostos}/{PERCENTUAIS.operacao}. O normal é ser o
+            que você recebeu.
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-end gap-3">
+            <div className="min-w-[200px]">
+              <Moeda
+                id="fat"
+                label="Valor recebido/realizado"
+                valor={fat}
+                onChange={setFat}
+                disabled={fechado}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <Label htmlFor="obs">Observação do mês (opcional)</Label>
+              <Input
+                id="obs"
+                value={obs}
+                disabled={fechado}
+                placeholder="o que explica este mês"
+                onChange={(e) => setObs(e.target.value)}
+              />
+            </div>
+            <Button
+              disabled={salvando || fechado}
+              onClick={() => void salvarMes({ faturamento: fat, observacao: obs }, "Base salva")}
+            >
+              Salvar
+            </Button>
+            {d.recebidoNoMes > 0 && Math.abs(d.recebidoNoMes - d.faturamento) > 0.01 && (
+              <Button
+                variant="secondary"
+                disabled={salvando || fechado}
+                onClick={() =>
+                  void salvarMes(
+                    { faturamento: d.recebidoNoMes, observacao: obs },
+                    "Base atualizada com o que foi recebido",
+                  )
+                }
+              >
+                <Check className="h-4 w-4" /> Usar o recebido ({brl(d.recebidoNoMes)})
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+          Distribuição automática
+        </p>
         {semFaturamento ? (
-          <p className="rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-2.5 text-xs text-amber-200">
-            Informe o faturamento acima e os quatro valores aparecem aqui calculados. Este mês começa
-            zerado porque ainda não tem nenhum lançamento próprio — nada é copiado de outro mês.
+          <p className="mt-1.5 rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-2.5 text-xs text-amber-200">
+            Informe o valor recebido acima e os quatro valores aparecem aqui calculados. Este mês
+            começa zerado porque ainda não tem nenhum lançamento próprio — nada é copiado de outro
+            mês.
           </p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="mt-1.5 grid gap-2 sm:grid-cols-4">
             <Numero
               rotulo={`Guardar para a empresa · ${PERCENTUAIS.guardar}%`}
               valor={d.plano.limites.guardar}
               cor="text-emerald-400"
               sub="lucro que não se mexe"
-              destaque
             />
             <Numero
               rotulo={`Limite do pró-labore · ${PERCENTUAIS.prolabore}%`}
               valor={d.plano.limites.prolabore}
               sub="limite, não obrigação de retirar"
-              destaque
             />
             <Numero
               rotulo={`Separar para impostos · ${PERCENTUAIS.impostos}%`}
               valor={d.plano.limites.impostos}
               cor="text-amber-300"
               sub="tem que sair do caixa"
-              destaque
             />
             <Numero
               rotulo={`Operação · ${PERCENTUAIS.operacao}%`}
               valor={d.plano.limites.operacao}
               sub="orçamento do mês"
-              destaque
             />
           </div>
         )}
+        {!semFaturamento && (
+          <p className="mt-2 text-[11px] text-white/40">
+            Esses valores são <strong className="text-white/60">recomendados</strong>. O sistema não
+            considera que você guardou, retirou, separou ou gastou nada — isso você confirma nos
+            passos abaixo.
+          </p>
+        )}
       </Passo>
 
-      {/* ------------------------------ 3. QUANTO REALMENTE FOI SEPARADO */}
+      {/* --------------------------- 2 e 3. PRODUÇÃO E PRÓXIMO RECEBIMENTO */}
+      <ProducaoCiclos
+        ciclos={d.ciclos}
+        cicloAtual={d.cicloAtual}
+        regra={d.regraRecebimento}
+        salvando={salvando}
+        onEnviar={enviar}
+      />
+
+      {/* --------------------------------- 4. VALOR MANTIDO NA EMPRESA */}
       <Passo
-        numero={3}
-        titulo="Quanto você realmente separou e retirou"
-        sub="Os campos já vêm com o valor recomendado. Confirme o que realmente fez — ou troque o valor antes de confirmar."
+        numero={4}
+        titulo="🏢 Valor mantido na empresa"
+        sub={`O campo já vem com o recomendado pela regra dos ${PERCENTUAIS.guardar}%. Confirme o que realmente guardou, ou troque o valor antes de confirmar.`}
+      >
+        <LinhaRealizado
+          rotulo="Guardar para a empresa"
+          explicacao="Lucro que fica na empresa. É meta, não limite: guardar menos aparece como falta."
+          recomendadoRotulo="Valor recomendado"
+          recomendado={d.plano.limites.guardar}
+          feitoRotulo="Já guardei"
+          feito={feito("guardar")}
+          restanteRotulo="Ainda falta"
+          restante={linha("guardar")?.diferenca ?? 0}
+          situacao={linha("guardar")?.situacao ?? "ok"}
+          estado={linha("guardar")?.estado ?? ""}
+          campoId="gua"
+          campoLabel="Quanto vou guardar agora?"
+          valor={guardado}
+          onChange={setGuardado}
+          disabled={fechado}
+          salvando={salvando}
+          onConfirmar={() => void salvarMes({ guardado }, "Valor guardado atualizado")}
+        />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <Numero
+            rotulo="Valor mantido na empresa neste mês"
+            valor={d.plano.mantidoNaEmpresa}
+            cor="text-emerald-400"
+            sub="a parte do pró-labore que você não retirou"
+          />
+          <Numero
+            rotulo="Mantido na empresa (acumulado, todos os meses)"
+            valor={d.acumuladoMantido}
+            sub={`lucro guardado até hoje: ${brl(d.acumuladoGuardado)}`}
+          />
+        </div>
+      </Passo>
+
+      {/* ------------------------------------------------ 5. PRÓ-LABORE */}
+      <Passo
+        numero={5}
+        titulo="👤 Pró-labore"
+        sub={`Os ${PERCENTUAIS.prolabore}% são LIMITE, não obrigação. O sistema só considera retirado o que você registrar.`}
+      >
+        <LinhaRealizado
+          rotulo="Pró-labore"
+          explicacao="O que você não retirar continua na empresa."
+          recomendadoRotulo="Limite do mês"
+          recomendado={d.plano.limites.prolabore}
+          feitoRotulo="Já retirei"
+          feito={feito("prolabore")}
+          restanteRotulo="Ainda disponível"
+          restante={Math.max(0, d.plano.limites.prolabore - feito("prolabore"))}
+          situacao={linha("prolabore")?.situacao ?? "ok"}
+          estado={linha("prolabore")?.estado ?? ""}
+          campoId="pro"
+          campoLabel="Quanto já retirei?"
+          valor={prolabore}
+          onChange={setProlabore}
+          disabled={fechado}
+          salvando={salvando}
+          onConfirmar={() => void salvarMes({ prolaboreUsado: prolabore }, "Pró-labore atualizado")}
+        />
+      </Passo>
+
+      {/* -------------------------------------------------- 6. IMPOSTOS */}
+      <Passo
+        numero={6}
+        titulo="🧾 Impostos"
+        sub={`O campo já vem com o recomendado pela regra dos ${PERCENTUAIS.impostos}%. Confirme quanto realmente separou.`}
         acao={
           !fechado && !semFaturamento ? (
             <Button
@@ -591,87 +752,30 @@ export function FinanceiroEstrategico({ chaveInicial }: { chaveInicial: string }
                 )
               }
             >
-              <Check className="h-4 w-4" /> Confirmar o recomendado
+              <Check className="h-4 w-4" /> Confirmar empresa + impostos
             </Button>
           ) : undefined
         }
       >
-        <div className="space-y-2">
-          {/* guardar — meta */}
-          <LinhaRealizado
-            rotulo="Guardar para a empresa"
-            explicacao={`Valor recomendado pela regra dos ${PERCENTUAIS.guardar}%.`}
-            recomendadoRotulo="Valor recomendado"
-            recomendado={d.plano.limites.guardar}
-            feitoRotulo="Já guardei"
-            feito={feito("guardar")}
-            restanteRotulo="Ainda falta"
-            restante={linha("guardar")?.diferenca ?? 0}
-            situacao={linha("guardar")?.situacao ?? "ok"}
-            estado={linha("guardar")?.estado ?? ""}
-            campoId="gua"
-            campoLabel="Quanto vou guardar agora?"
-            valor={guardado}
-            onChange={setGuardado}
-            disabled={fechado}
-            salvando={salvando}
-            onConfirmar={() => void salvarMes({ guardado }, "Valor guardado atualizado")}
-          />
-          {/* pró-labore — limite */}
-          <LinhaRealizado
-            rotulo="Pró-labore"
-            explicacao={`Os ${PERCENTUAIS.prolabore}% são LIMITE. O que você não retirar continua na empresa.`}
-            recomendadoRotulo="Limite do mês"
-            recomendado={d.plano.limites.prolabore}
-            feitoRotulo="Já retirei"
-            feito={feito("prolabore")}
-            restanteRotulo="Disponível"
-            restante={Math.max(0, d.plano.limites.prolabore - feito("prolabore"))}
-            situacao={linha("prolabore")?.situacao ?? "ok"}
-            estado={linha("prolabore")?.estado ?? ""}
-            campoId="pro"
-            campoLabel="Quanto já retirei?"
-            valor={prolabore}
-            onChange={setProlabore}
-            disabled={fechado}
-            salvando={salvando}
-            onConfirmar={() => void salvarMes({ prolaboreUsado: prolabore }, "Pró-labore atualizado")}
-          />
-          {/* impostos — meta */}
-          <LinhaRealizado
-            rotulo="Separar para impostos"
-            explicacao={`Valor recomendado pela regra dos ${PERCENTUAIS.impostos}%.`}
-            recomendadoRotulo="Recomendado separar"
-            recomendado={d.plano.limites.impostos}
-            feitoRotulo="Já separei"
-            feito={feito("impostos")}
-            restanteRotulo="Ainda falta"
-            restante={linha("impostos")?.diferenca ?? 0}
-            situacao={linha("impostos")?.situacao ?? "ok"}
-            estado={linha("impostos")?.estado ?? ""}
-            campoId="imp"
-            campoLabel="Quanto já separei?"
-            valor={imposto}
-            onChange={setImposto}
-            disabled={fechado}
-            salvando={salvando}
-            onConfirmar={() => void salvarMes({ impostoSeparado: imposto }, "Impostos atualizados")}
-          />
-        </div>
-
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Numero
-            rotulo="Valor mantido na empresa"
-            valor={d.plano.mantidoNaEmpresa}
-            cor="text-emerald-400"
-            sub="a parte do pró-labore que você não retirou"
-          />
-          <Numero
-            rotulo="Mantido na empresa (acumulado, todos os meses)"
-            valor={d.acumuladoMantido}
-            sub={`lucro guardado até hoje: ${brl(d.acumuladoGuardado)}`}
-          />
-        </div>
+        <LinhaRealizado
+          rotulo="Separar para impostos"
+          explicacao="Dinheiro que tem que sair do caixa. Separar menos que a meta é problema."
+          recomendadoRotulo="Recomendado separar"
+          recomendado={d.plano.limites.impostos}
+          feitoRotulo="Já separei"
+          feito={feito("impostos")}
+          restanteRotulo="Ainda falta"
+          restante={linha("impostos")?.diferenca ?? 0}
+          situacao={linha("impostos")?.situacao ?? "ok"}
+          estado={linha("impostos")?.estado ?? ""}
+          campoId="imp"
+          campoLabel="Quanto já separei?"
+          valor={imposto}
+          onChange={setImposto}
+          disabled={fechado}
+          salvando={salvando}
+          onConfirmar={() => void salvarMes({ impostoSeparado: imposto }, "Impostos atualizados")}
+        />
       </Passo>
 
       {/* ------------------------------------ 4. ORÇAMENTO DA OPERAÇÃO */}
@@ -712,10 +816,10 @@ export function FinanceiroEstrategico({ chaveInicial }: { chaveInicial: string }
         onEnviar={enviar}
       />
 
-      {/* --------------------------------------- 7. FECHAMENTO DO MÊS */}
+      {/* -------------------------------------- 10. FECHAMENTO DO MÊS */}
       <Passo
-        numero={7}
-        titulo={fechado ? `${monthLabel(chave)} está fechado` : `Fechar ${monthLabel(chave)}`}
+        numero={10}
+        titulo={fechado ? `📊 ${monthLabel(chave)} está fechado` : `📊 Fechar ${monthLabel(chave)}`}
         sub={
           fechado
             ? "O histórico está guardado. Só o administrador pode reabrir para alterar."
@@ -746,7 +850,10 @@ export function FinanceiroEstrategico({ chaveInicial }: { chaveInicial: string }
       >
         <ul className="divide-y divide-white/5 text-sm">
           {[
-            { r: "Faturamento", v: d.resumo.faturamento, cor: "text-white" },
+            { r: "Vendido no ciclo", v: d.vendidoNoMes, cor: "text-white/80" },
+            { r: "Recebido no mês", v: d.recebidoNoMes, cor: "text-emerald-400" },
+            { r: "Ainda a receber (ciclos em aberto)", v: d.aReceberTotal, cor: "text-amber-300" },
+            { r: "Base da distribuição", v: d.resumo.faturamento, cor: "text-white" },
             { r: "Guardado para a empresa", v: d.resumo.guardado, cor: "text-emerald-400" },
             { r: "Pró-labore retirado", v: d.resumo.prolaboreRetirado, cor: "text-white/80" },
             { r: "Impostos separados", v: d.resumo.impostoSeparado, cor: "text-white/80" },
@@ -969,8 +1076,8 @@ function Operacao({
 
   return (
     <Passo
-      numero={4}
-      titulo="Orçamento da operação"
+      numero={7}
+      titulo="⚙️ Orçamento da operação"
       sub={`Os ${PERCENTUAIS.operacao}% do faturamento. Registrar um gasto já consome o orçamento; pagar é outra coisa, e aparece no caixa.`}
     >
       <div className="grid gap-2 sm:grid-cols-3">
@@ -1125,8 +1232,8 @@ function GastosFixos({
 
   return (
     <Passo
-      numero={5}
-      titulo="Gastos fixos"
+      numero={8}
+      titulo="💸 Gastos fixos"
       sub="Cadastre uma vez e o compromisso nasce todo mês. Previsto é o que está cadastrado; pendente é o compromisso do mês em aberto; pago é dinheiro que já saiu."
       acao={
         <div className="flex gap-2">
@@ -1355,8 +1462,8 @@ function Caixa({
 
   return (
     <Passo
-      numero={6}
-      titulo={`Caixa de ${monthLabel(chave)}`}
+      numero={9}
+      titulo={`💵 Caixa de ${monthLabel(chave)}`}
       sub="Dinheiro que já entrou fica separado do que ainda vai entrar — de propósito. Só os lançamentos deste mês entram nesta conta."
       acao={
         <Button variant="ghost" onClick={() => setNovo((v) => !v)} disabled={fechado}>
@@ -1564,5 +1671,324 @@ function ItemLancamento({
         </>
       )}
     </li>
+  );
+}
+
+/* ------------------------- 2 e 3. produção e próximo recebimento */
+
+const diaBR = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+/**
+ * OS DOIS CICLOS DE PRODUÇÃO DA EMPRESA.
+ *
+ *   ciclo A   produção de 20 a 5   → recebe dia 21/22, ou no próximo dia útil
+ *   ciclo B   produção de 5 a 20   → recebe até o 5º dia útil do mês seguinte
+ *
+ * Aqui é o único lugar da tela onde previsão vira fato: o botão "Recebi" grava
+ * quanto entrou e em que dia. Enquanto não for clicado, o valor fica em "ainda
+ * a receber" — nunca em caixa. Data da venda, data do fechamento, data prevista
+ * e data real do recebimento são quatro coisas diferentes, e as quatro
+ * aparecem.
+ */
+function ProducaoCiclos({
+  ciclos,
+  cicloAtual,
+  regra,
+  salvando,
+  onEnviar,
+}: {
+  ciclos: Ciclo[];
+  cicloAtual: string;
+  regra: { diaRecebimentoA: number; diasUteisB: number };
+  salvando: boolean;
+  onEnviar: (corpo: Record<string, unknown>, aviso: string) => Promise<void>;
+}) {
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [valor, setValor] = useState(0);
+  const [prev, setPrev] = useState(0);
+  const [quando, setQuando] = useState("");
+  const [editandoRegra, setEditandoRegra] = useState(false);
+  const [diaA, setDiaA] = useState(regra.diaRecebimentoA);
+  const [uteisB, setUteisB] = useState(regra.diasUteisB);
+
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const atual = ciclos.find((c) => c.chave === cicloAtual);
+  // o próximo dinheiro a entrar: o ciclo não quitado com previsão mais próxima
+  const proximo = ciclos
+    .filter((c) => c.previstoInformado && !c.quitado && c.aReceber > 0)
+    .sort((a, b) => a.previsao.localeCompare(b.previsao))[0];
+  const emAberto = ciclos.filter((c) => c.previstoInformado && !c.quitado && c.aReceber > 0);
+
+  const abrir = (c: Ciclo) => {
+    setAbrindo(c.chave);
+    setValor(c.previsto ?? 0);
+    setPrev(c.previsto ?? 0);
+    setQuando(c.previsao > hojeISO ? hojeISO : c.previsao);
+  };
+
+  const cartao = (c: Ciclo) => {
+    const ehAtual = c.chave === cicloAtual;
+    const passou = c.previsao < hojeISO;
+    return (
+      <div
+        key={c.chave}
+        className={`rounded-xl border p-3 ${
+          ehAtual ? "border-white/25 bg-white/[0.06]" : "border-white/10 bg-white/[0.02]"
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold text-white">{c.rotulo}</span>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/60">
+            ciclo {c.letra}
+          </span>
+          {ehAtual && (
+            <span className="rounded-full bg-[var(--color-brand)]/20 px-2 py-0.5 text-[10px] font-bold text-[var(--color-brand)]">
+              EM PRODUÇÃO
+            </span>
+          )}
+          {c.quitado && (
+            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+              RECEBIDO
+            </span>
+          )}
+          {!c.quitado && passou && c.aReceber > 0 && (
+            <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">
+              ATRASADO
+            </span>
+          )}
+          <span className="ml-auto text-[11px] text-white/45">
+            produção {diaBR(c.inicio)} a {diaBR(c.fim)}
+          </span>
+        </div>
+
+        <div className="mt-2.5 grid gap-2 sm:grid-cols-4">
+          <Numero
+            rotulo="Total vendido"
+            valor={c.vendido}
+            sub={c.qtdVendas > 0 ? `${c.qtdVendas} venda(s)` : "nenhuma venda ainda"}
+          />
+          {c.previstoInformado ? (
+            <Numero
+              rotulo="Previsto receber"
+              valor={c.previsto ?? 0}
+              sub="informado por você"
+            />
+          ) : (
+            <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
+                Previsto receber
+              </p>
+              <p className="mt-0.5 text-base font-bold text-white/35">não informado</p>
+              <p className="mt-0.5 text-[11px] text-white/40">o vendido é crédito, não comissão</p>
+            </div>
+          )}
+          <Numero rotulo="Já recebido" valor={c.recebido} cor="text-emerald-400" sub={c.recebidoEm ? `em ${diaBR(c.recebidoEm)}` : undefined} />
+          <Numero
+            rotulo="Ainda a receber"
+            valor={c.aReceber}
+            cor={c.aReceber > 0 ? "text-amber-300" : "text-white"}
+          />
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-xs text-white/60">
+            Previsão de pagamento:{" "}
+            <strong className="text-white">{diaBR(c.previsao)}</strong>
+          </span>
+          <span className="text-[11px] text-white/40">{c.regra}</span>
+          {c.quitado ? (
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() => void onEnviar({ acao: "desfazer-recebimento", ciclo: c.chave }, "Recebimento desfeito")}
+              className="ml-auto text-[11px] text-white/40 hover:text-white"
+            >
+              desfazer recebimento
+            </button>
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={salvando}
+              onClick={() => (abrindo === c.chave ? setAbrindo(null) : abrir(c))}
+              className="ml-auto"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {c.previstoInformado ? "Recebi este ciclo" : "Informar previsão / recebimento"}
+            </Button>
+          )}
+        </div>
+
+        {abrindo === c.chave && !c.quitado && (
+          <div className="mt-2.5 space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
+            <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto]">
+              <Moeda
+                id={`prev-${c.chave}`}
+                label="Quanto a administradora vai pagar por este ciclo?"
+                valor={prev}
+                onChange={setPrev}
+                dica="a previsão que você recebeu do repasse — não o crédito vendido"
+              />
+              <Button
+                variant="secondary"
+                disabled={salvando || prev <= 0}
+                onClick={() =>
+                  void onEnviar(
+                    { acao: "salvar-previsto", ciclo: c.chave, previsto: prev },
+                    "Previsão salva",
+                  )
+                }
+              >
+                Salvar previsão
+              </Button>
+            </div>
+            <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <Moeda id={`rec-${c.chave}`} label="Quanto entrou de verdade" valor={valor} onChange={setValor} />
+              <div>
+                <Label htmlFor={`dt-${c.chave}`}>Data em que entrou</Label>
+                <Input
+                  id={`dt-${c.chave}`}
+                  type="date"
+                  value={quando}
+                  onChange={(e) => setQuando(e.target.value)}
+                />
+              </div>
+              <Button
+                disabled={salvando || valor <= 0 || !quando}
+                onClick={async () => {
+                  await onEnviar(
+                    { acao: "registrar-recebimento", ciclo: c.chave, valor, recebidoEm: quando },
+                    "Recebimento registrado",
+                  );
+                  setAbrindo(null);
+                }}
+              >
+                Confirmar recebimento
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <Passo
+        numero={2}
+        titulo="📦 Produção e ciclo atual"
+        sub="A empresa produz em dois ciclos por mês: de 20 a 5 e de 5 a 20. Cada venda entra em um ciclo só, pelo dia em que foi feita."
+      >
+        {atual ? cartao(atual) : <p className="text-xs text-white/45">Nenhum ciclo em produção.</p>}
+        {ciclos.filter((c) => c.chave !== cicloAtual && c.fim < hojeISO).length > 0 && (
+          <>
+            <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+              Ciclos já fechados
+            </p>
+            <div className="space-y-2">
+              {ciclos
+                .filter((c) => c.chave !== cicloAtual && c.fim < hojeISO)
+                .map((c) => cartao(c))}
+            </div>
+          </>
+        )}
+      </Passo>
+
+      <Passo
+        numero={3}
+        titulo="📅 Próximo recebimento"
+        sub="Quando o dinheiro deve entrar, já com fim de semana e feriado descontados."
+        acao={
+          <Button variant="ghost" onClick={() => setEditandoRegra((v) => !v)}>
+            <CalendarClock className="h-4 w-4" /> Regra
+          </Button>
+        }
+      >
+        {proximo ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300/70">
+              Próximo dinheiro a entrar
+            </p>
+            <p className="mt-0.5 text-2xl font-extrabold text-white">{brl(proximo.aReceber)}</p>
+            <p className="mt-0.5 text-sm text-white/70">
+              em <strong className="text-white">{diaBR(proximo.previsao)}</strong> · produção{" "}
+              {proximo.rotulo} · {proximo.regra}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-white/45">
+            Nenhuma previsão de recebimento informada ainda. Abra um ciclo no passo 2, informe
+            quanto a administradora vai pagar, e o valor aparece aqui com a data certa.
+          </p>
+        )}
+
+        {emAberto.length > 1 && (
+          <div className="lb-scroll mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-white/40">
+                  <th className="pb-2">Produção</th>
+                  <th className="pb-2">Previsão</th>
+                  <th className="pb-2">Regra</th>
+                  <th className="pb-2 text-right">A receber</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emAberto.map((c) => (
+                  <tr key={c.chave} className="border-t border-white/5">
+                    <td className="py-2 text-white/80">{c.rotulo}</td>
+                    <td className="py-2 text-white/80">{diaBR(c.previsao)}</td>
+                    <td className="py-2 text-[11px] text-white/45">{c.regra}</td>
+                    <td className="py-2 text-right font-semibold text-amber-300">{brl(c.aReceber)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {editandoRegra && (
+          <div className="mt-3 grid items-end gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:grid-cols-[1fr_1fr_auto]">
+            <div>
+              <Label htmlFor="diaA">Ciclo 20→5 recebe no dia</Label>
+              <Input
+                id="diaA"
+                type="number"
+                min={1}
+                max={28}
+                value={diaA}
+                onChange={(e) => setDiaA(Number(e.target.value) || 21)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="uteisB">Ciclo 5→20 recebe até o Nº dia útil</Label>
+              <Input
+                id="uteisB"
+                type="number"
+                min={1}
+                max={15}
+                value={uteisB}
+                onChange={(e) => setUteisB(Number(e.target.value) || 5)}
+              />
+            </div>
+            <Button
+              disabled={salvando}
+              onClick={async () => {
+                await onEnviar(
+                  { acao: "salvar-regra-recebimento", diaRecebimentoA: diaA, diasUteisB: uteisB },
+                  "Regra de recebimento salva",
+                );
+                setEditandoRegra(false);
+              }}
+            >
+              Salvar regra
+            </Button>
+            <p className="text-[11px] text-white/40 sm:col-span-3">
+              Se a data cair em sábado, domingo ou feriado cadastrado, o sistema move sozinho para o
+              próximo dia útil.
+            </p>
+          </div>
+        )}
+      </Passo>
+    </>
   );
 }
