@@ -180,12 +180,18 @@ export default function ColaboradoresPage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Falha");
-      notify.success(
-        "Colaborador adicionado",
-        metodo === "email"
-          ? `Email enviado para ${form.email}`
-          : `${form.email} pode entrar com a senha definida`,
-      );
+      // Criado com pendência não pode aparecer como sucesso limpo: sem código
+      // de acesso a pessoa não entra, e o admin precisa saber agora.
+      if (j.aviso) {
+        notify.error("Criado, mas falta o código", String(j.aviso));
+      } else {
+        notify.success(
+          "Colaborador adicionado",
+          metodo === "email"
+            ? `Email enviado para ${form.email}`
+            : `${form.email} pode entrar com a senha definida`,
+        );
+      }
       setOpen(false);
       setForm({ nome: "", email: "", senha: "", papel: "vendedor", equipeId: "", codigoNumero: "" });
       carregar();
