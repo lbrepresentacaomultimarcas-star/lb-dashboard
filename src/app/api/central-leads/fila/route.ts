@@ -96,10 +96,22 @@ export async function GET(req: NextRequest) {
         impedimento: v ? motivo(v, listaPerfis) : "cadastro removido",
       };
     }),
-    // Quem poderia entrar e ainda não está. Só quem de fato receberia.
+    /*
+     * QUEM AINDA NÃO ESTÁ NA FILA — INCLUSIVE QUEM NÃO PODE ENTRAR.
+     *
+     * Antes esta lista trazia só quem estava pronto, e quem não estava
+     * simplesmente NÃO APARECIA em lugar nenhum. O admin cadastrava um novato,
+     * não achava o nome dele aqui e não tinha como saber o motivo — o mais
+     * comum sendo o login ainda não vinculado ao cadastro de vendedor.
+     *
+     * Agora todo mundo aparece, com o motivo escrito ao lado. Quem tem
+     * impedimento vem marcado e a tela não deixa selecionar: entrar na fila
+     * sem poder receber é pior que não entrar, porque a vez passa por ele em
+     * silêncio.
+     */
     disponiveis: vendedores
-      .filter((v) => !naFila.has(v.id) && motivo(v, listaPerfis) === null)
-      .map((v) => ({ vendedorId: v.id, nome: v.nome })),
+      .filter((v) => !naFila.has(v.id))
+      .map((v) => ({ vendedorId: v.id, nome: v.nome, impedimento: motivo(v, listaPerfis) })),
     proximo: proximoId ? { vendedorId: proximoId, nome: nomeDe.get(proximoId) ?? "consultor" } : null,
     totalDistribuido: (todas ?? []).length,
     ultimas: ((ultimas ?? []) as {

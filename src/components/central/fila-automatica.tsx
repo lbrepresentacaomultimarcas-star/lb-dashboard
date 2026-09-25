@@ -28,7 +28,7 @@ type Participante = {
 type Estado = {
   ativa: boolean;
   participantes: Participante[];
-  disponiveis: { vendedorId: string; nome: string }[];
+  disponiveis: { vendedorId: string; nome: string; impedimento: string | null }[];
   proximo: { vendedorId: string; nome: string } | null;
   totalDistribuido: number;
   ultimas: { leadId: string; nome: string; ordem: number; telefone: string | null; em: string }[];
@@ -227,23 +227,40 @@ export function FilaAutomatica() {
                     type="checkbox"
                     id={`fila-${d.vendedorId}`}
                     checked={marcados.has(d.vendedorId)}
+                    disabled={!!d.impedimento}
                     onChange={() => alternar(d.vendedorId)}
-                    className="h-4 w-4 shrink-0 accent-[var(--color-brand)]"
+                    className="h-4 w-4 shrink-0 accent-[var(--color-brand)] disabled:opacity-40"
                   />
                   <label
                     htmlFor={`fila-${d.vendedorId}`}
-                    className="min-w-0 flex-1 truncate text-sm text-white/70"
+                    className={`min-w-0 flex-1 truncate text-sm ${
+                      d.impedimento ? "text-white/35" : "text-white/70"
+                    }`}
                   >
                     {d.nome}
                   </label>
-                  <span className="shrink-0 text-[11px] text-white/40">fora da fila</span>
+                  {d.impedimento ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-amber-300">
+                      <AlertTriangle className="h-3 w-3" /> {d.impedimento}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-white/40">fora da fila</span>
+                  )}
                 </li>
               ))}
             </ul>
 
             {dados.participantes.length === 0 && dados.disponiveis.length === 0 && (
-              <p className="text-xs text-white/50">
-                Nenhum consultor com cadastro e login ativos para entrar na fila.
+              <p className="text-xs text-white/50">Nenhum consultor cadastrado ainda.</p>
+            )}
+
+            {/* Novato que não pode entrar: dizer o que fazer, não só o que falta. */}
+            {dados.disponiveis.some((d) => d.impedimento) && (
+              <p className="mt-2 text-[11px] text-white/45">
+                Quem está em cinza não pode entrar na fila ainda. <strong>Sem login vinculado</strong>{" "}
+                quer dizer que o cadastro de consultor existe, mas o login dele ainda não foi criado ou
+                não foi ligado a esse cadastro — resolva em Administrativo → Colaboradores. Um consultor
+                nessa situação na fila faria a vez passar por ele em silêncio.
               </p>
             )}
 
