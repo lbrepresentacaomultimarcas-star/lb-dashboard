@@ -95,7 +95,9 @@ export default function VendedoresPage() {
   }
 
   async function remover(v: Vendedor) {
-    if (confirm(`Remover ${v.nome}? Suas vendas também serão apagadas.`)) {
+    // O texto antigo dizia que as vendas seriam apagadas — e não eram: ficavam
+    // no banco, apontando para um consultor que não existia mais.
+    if (confirm(`Remover ${v.nome}? Só é possível se ele não tiver mais nenhum lead, venda ou meta no nome dele.`)) {
       try {
         await vendedoresApi.remove(v.id);
       } catch (e) {

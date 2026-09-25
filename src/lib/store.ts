@@ -1258,10 +1258,48 @@ export const vendedoresApi = {
     notify();
     void logAudit({ acao: "editar", entidade: "vendedor", entidadeId: id, detalhes: patch.nome });
   },
+  /**
+   * NÃO REMOVE QUEM AINDA TEM GENTE NA MÃO.
+   *
+   * Isto era um DELETE seco. Os leads, as vendas e os clientes do consultor
+   * continuavam no banco apontando para um id que deixou de existir, e
+   * desapareciam de TODA tela que agrupa por consultor — sem erro, sem aviso,
+   * sem ninguém levar o crédito.
+   *
+   * Aconteceu de verdade: ao remover uma consultora em 10/09/2026, 8 clientes
+   * da Central ficaram órfãos, 7 deles já convertidos. Só apareceram um mês
+   * depois, porque alguém estranhou os números da fila.
+   *
+   * Agora a remoção é RECUSADA enquanto existir registro no nome dele, com a
+   * lista do que falta. O admin transfere primeiro e remove depois — que é a
+   * ordem certa, e a única que não perde informação.
+   */
   async remove(id: string) {
     const nome = state.vendedores.find((v) => v.id === id)?.nome;
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
+      const tabelas: [string, string][] = [
+        ["leads", "negócio(s) no Pipeline"],
+        ["central_leads", "lead(s) na Central"],
+        ["vendas", "venda(s)"],
+        ["metas", "meta(s)"],
+      ];
+      const pendencias: string[] = [];
+      for (const [tabela, rotulo] of tabelas) {
+        const { count, error: cerr } = await sb
+          .from(tabela)
+          .select("id", { count: "exact", head: true })
+          .eq("vendedor_id", id);
+        // Na dúvida, não remove: falha de leitura não pode virar permissão.
+        if (cerr) throw new Error(`Não consegui conferir ${tabela} antes de remover: ${cerr.message}`);
+        if (count) pendencias.push(`${count} ${rotulo}`);
+      }
+      if (pendencias.length > 0) {
+        throw new Error(
+          `${nome ?? "Este consultor"} ainda tem ${pendencias.join(", ")}. ` +
+            "Transfira para outro consultor antes de remover — senão esses registros ficam sem dono.",
+        );
+      }
       const { error } = await sb.from("vendedores").delete().eq("id", id);
       if (error) throw error;
     }
