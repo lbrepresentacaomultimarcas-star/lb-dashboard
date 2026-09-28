@@ -24,7 +24,8 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
-import { centralLeadsApi, useCentralLeads, useEscopo, useSession, useVendedores } from "@/lib/store";
+import { centralLeadsApi, useCentralLeadsEscopo, useEscopo, useSession, useVendedores } from "@/lib/store";
+import { noEscopo } from "@/lib/scope";
 import { ehAdmin } from "@/lib/permissions";
 import { FichaConversa } from "@/components/central/ficha-conversa";
 import { FilaAutomatica } from "@/components/central/fila-automatica";
@@ -244,7 +245,15 @@ function FiltroSelect<T extends string>({
 }
 
 export default function CentralLeadsPage() {
-  const leads = useCentralLeads();
+  /*
+   * ESCOPADO, não cru.
+   *
+   * Tudo nesta tela sai daqui: os contadores das abas, o aviso de quantos
+   * estão aguardando ligação, a barra de consultores e a lista de cards. Com a
+   * fila crua, entrar COMO um consultor mostrava para ele a fila da empresa
+   * inteira — 379 leads em vez dos 32 dele.
+   */
+  const leads = useCentralLeadsEscopo();
   const session = useSession();
   const escopo = useEscopo();
   const vendedores = useVendedores();
@@ -351,7 +360,18 @@ export default function CentralLeadsPage() {
   }, [mesRef]);
 
   /** Fonte da lista: fila atual OU o mês escolhido. */
-  const base = useMemo(() => (mesRef ? (leadsDoMes ?? []) : leads), [mesRef, leadsDoMes, leads]);
+  const base = useMemo(() => {
+    if (!mesRef) return leads; // já vem recortado do store
+    /*
+     * O histórico do mês vem da API, que não conhece o "acessar como": o mesmo
+     * recorte é aplicado aqui, senão trocar para um mês passado escaparia do
+     * escopo que o resto da tela respeita.
+     */
+    const doMes = leadsDoMes ?? [];
+    return escopo.vendedorIdsVisiveis === null
+      ? doMes
+      : doMes.filter((l) => noEscopo(escopo, l.vendedorId));
+  }, [mesRef, leadsDoMes, leads, escopo]);
 
   const naoDistribuidos = useMemo(() => leads.filter((l) => l.status === "novo"), [leads]);
 

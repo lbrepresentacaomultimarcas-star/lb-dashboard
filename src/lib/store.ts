@@ -1051,7 +1051,12 @@ export function useRoster(): Profile[] {
 export function useEquipes(): Equipe[] {
   return useSyncExternalStore(subscribe, () => state.equipes, () => state.equipes);
 }
-/** Central de Leads — fila ativa (RLS entrega só o que o cargo pode ver). */
+/**
+ * Central de Leads — fila ativa, SEM recorte.
+ *
+ * Use só onde a intenção é ver a empresa inteira. Para a tela de quem atende,
+ * use `useCentralLeadsEscopo`.
+ */
 export function useCentralLeads(): CentralLead[] {
   return useSyncExternalStore(subscribe, () => state.centralLeads, () => state.centralLeads);
 }
@@ -1081,12 +1086,31 @@ function snapEscopo<T>(getSource: () => T[], getVendedorId: (x: T) => string | u
   };
 }
 const leadsEscSnap = snapEscopo<Lead>(() => state.leads, (l) => l.vendedorId);
+/*
+ * A Central também precisa de recorte — e não dava para depender só da RLS.
+ *
+ * Quando o admin usa "ACESSAR COMO" um consultor, quem conversa com o banco
+ * continua sendo o admin: a RLS entrega a fila inteira e a tela do consultor
+ * mostrava os leads de todos. O recorte do app é o que faz a tela contar a
+ * mesma história que o crachá no topo.
+ *
+ * Para quem vê tudo de verdade, `snapEscopo` devolve a própria fonte — nada
+ * muda para o administrador.
+ */
+const centralLeadsEscSnap = snapEscopo<CentralLead>(
+  () => state.centralLeads,
+  (l) => l.vendedorId,
+);
 const vendasEscSnap = snapEscopo<Venda>(vendasContabilizaveis, (v) => v.vendedorId);
 const vendasAllEscSnap = snapEscopo<Venda>(() => state.vendas, (v) => v.vendedorId);
 const metasEscSnap = snapEscopo<Meta>(() => state.metas, (m) => m.vendedorId);
 const vendedoresEscSnap = snapEscopo<Vendedor>(() => state.vendedores, (v) => v.id);
 
 /** Leads visíveis pelo escopo do usuário logado (admin/coordenador = todos). */
+/** Central de Leads recortada por quem está olhando (respeita ACESSAR COMO). */
+export function useCentralLeadsEscopo(): CentralLead[] {
+  return useSyncExternalStore(subscribe, centralLeadsEscSnap, centralLeadsEscSnap);
+}
 export function useLeadsEscopo(): Lead[] {
   return useSyncExternalStore(subscribe, leadsEscSnap, leadsEscSnap);
 }
