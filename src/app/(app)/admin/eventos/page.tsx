@@ -44,6 +44,23 @@ function EventosConteudo() {
   const [subindo, setSubindo] = useState(false);
   // Texto cru dos campos de dinheiro: o número só é calculado na saída, senão
   // o ponto e a vírgula somem enquanto se digita.
+  /*
+   * O QUE O SISTEMA ENTENDEU DO QUE FOI DIGITADO.
+   *
+   * No Brasil a vírgula separa centavos, então "4.500,000" é quatro mil e
+   * quinhentos reais — não quatro milhões e meio. O campo aceitava esse engano
+   * calado: a meta do time do trimestre inteiro foi salva mil vezes menor, e só
+   * apareceu quando alguém estranhou o número no Dashboard.
+   *
+   * Mostrar o valor lido embaixo do campo transforma um erro invisível em um
+   * erro óbvio — sem travar nada, sem adivinhar o que o usuário quis dizer.
+   */
+  const lido = (texto: string): string => {
+    const n = parseNumBR(texto);
+    if (!texto.trim()) return "";
+    return n > 0 ? brl(n) : "não consegui ler um valor aqui";
+  };
+
   const [textoLb, setTextoLb] = useState("");
   const [textoGeral, setTextoGeral] = useState("");
 
@@ -231,8 +248,15 @@ function EventosConteudo() {
                 onChange={(e) => setTextoLb(e.target.value)}
                 placeholder="1.000.000"
               />
+              {lido(textoLb) && (
+                <p className="mt-1 text-[11px] font-bold text-[var(--color-brand)]">
+                  {lido(textoLb)}
+                </p>
+              )}
               <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                É esta que aparece em destaque para o time.
+                É esta que aparece em destaque para o time. Use ponto para os
+                milhares: 4.500.000 são quatro milhões e meio; 4.500,000 são quatro mil e
+                quinhentos.
               </p>
             </div>
             <div>
@@ -243,6 +267,11 @@ function EventosConteudo() {
                 onChange={(e) => setTextoGeral(e.target.value)}
                 placeholder="8.000.000"
               />
+              {lido(textoGeral) && (
+                <p className="mt-1 text-[11px] font-bold text-[var(--color-brand)]">
+                  {lido(textoGeral)}
+                </p>
+              )}
               <p className="mt-1 text-[11px] text-[var(--color-muted)]">
                 Só como contexto, em letra pequena.
               </p>
