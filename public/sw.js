@@ -4,7 +4,19 @@
  * - Assets estáticos (_next/static, ícones): stale-while-revalidate
  * - NUNCA cacheia /api/* nem o Supabase (dados sempre frescos)
  */
-const VERSION = "lb-v8";
+/*
+ * A VERSÃO VEM DO ENDEREÇO DESTE ARQUIVO (/sw.js?v=...).
+ *
+ * Era uma constante trocada na mão, e ficou parada em "lb-v8" desde
+ * 07/08/2026. Como o `activate` abaixo só apaga cache que NÃO começa com a
+ * versão, nada nunca era apagado: arquivos de agosto continuavam sendo
+ * servidos em setembro.
+ *
+ * Agora quem registra passa a versão do deploy, e cada publicação ganha um
+ * cache próprio — o antigo é apagado na ativação. O valor fixo continua como
+ * rede de segurança para um navegador que registre sem o parâmetro.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "lb-v8";
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 const OFFLINE_URL = "/offline.html";

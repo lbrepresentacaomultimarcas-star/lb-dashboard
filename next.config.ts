@@ -50,7 +50,19 @@ const securityHeaders = [
   },
 ];
 
+/**
+ * A VERSÃO DESTE DEPLOY, visível para o navegador.
+ *
+ * Serve para o service worker trocar de cache a cada publicação. Vem do commit
+ * que a Vercel está publicando; fora dela (build local) vira "dev".
+ *
+ * É lida aqui, no build, e não em tempo de execução: assim o valor é o mesmo
+ * em todos os arquivos gerados por esta publicação.
+ */
+const versaoDoApp = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || "dev";
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_APP_VERSION: versaoDoApp },
   compress: true,
   poweredByHeader: false,
   // pdf-parse/pdfjs precisam do require nativo do Node (o bundle de navegador
