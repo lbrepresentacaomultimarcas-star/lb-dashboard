@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
-import { brlOuTraco, pctOuTraco, type Analise } from "@/lib/analises";
+import { analisesApi, brlOuTraco, pctOuTraco, type Analise } from "@/lib/analises";
 import {
   ESTADOS_BR,
   ESTADOS_CIVIS,
@@ -147,15 +147,49 @@ export function FichaFinal({
   ficha,
   onMudou,
   autorNome,
+  admin = false,
+  vendedores = [],
 }: {
   analise: Analise;
   ficha: Ficha | null;
   onMudou: () => Promise<void> | void;
   autorNome?: string;
+  /** Só o administrador troca o consultor da ficha. */
+  admin?: boolean;
+  vendedores?: { id: string; nome: string }[];
 }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState<Ficha | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [trocando, setTrocando] = useState(false);
+  const [novoId, setNovoId] = useState("");
+
+  /**
+   * Trocar o consultor: `transferir` falso muda só o nome impresso; verdadeiro
+   * passa a análise para o outro consultor de verdade.
+   */
+  async function trocarConsultor(transferir: boolean) {
+    const v = vendedores.find((x) => x.id === novoId);
+    if (!v) return;
+    setOcupado(true);
+    try {
+      await analisesApi.trocarConsultor(
+        analise.id,
+        { nome: v.nome, vendedorId: transferir ? v.id : undefined },
+        autorNome,
+      );
+      notify.success(
+        transferir ? `Atendimento transferido para ${v.nome}` : `Ficha passa a sair com ${v.nome}`,
+      );
+      setTrocando(false);
+      setNovoId("");
+      await onMudou();
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não consegui trocar o consultor.");
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   const liberada = podeCriarFicha(analise);
   const f = editando ? rascunho : ficha;
@@ -316,10 +350,68 @@ export function FichaFinal({
             <Ler rotulo="E-mail" valor={analise.email} />
             <Ler rotulo="Naturalidade" valor={ficha.naturalidade} />
             <Ler rotulo="Estado civil" valor={ficha.estadoCivil} />
-            <Ler rotulo="Vendedor" valor={analise.criadoPorNome} />
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                  Vendedor
+                </p>
+                {admin && (
+                  <button
+                    type="button"
+                    onClick={() => setTrocando((v) => !v)}
+                    className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand)] hover:underline"
+                  >
+                    trocar
+                  </button>
+                )}
+              </div>
+              <p className="truncate text-sm font-semibold">{analise.criadoPorNome || "—"}</p>
+            </div>
             <Ler rotulo="Nome da mãe" valor={ficha.nomeMae} />
             <Ler rotulo="Nome do pai" valor={ficha.nomePai} />
           </div>
+
+          {admin && trocando && (
+            <div className="rounded-lg border border-[var(--color-brand)]/40 bg-[var(--color-brand)]/8 p-3">
+              <p className="text-xs font-bold">Trocar o consultor desta operação</p>
+              <p className="mt-0.5 text-[11px] text-[var(--color-text-dim)]">
+                Hoje a ficha sai com <strong>{analise.criadoPorNome || "sem nome"}</strong>.
+              </p>
+              <select
+                value={novoId}
+                onChange={(e) => setNovoId(e.target.value)}
+                className="mt-2 h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+              >
+                <option value="">Escolha o consultor…</option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nome}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={!novoId || ocupado}
+                  onClick={() => void trocarConsultor(false)}
+                >
+                  Só corrigir o nome na ficha
+                </Button>
+                <Button disabled={!novoId || ocupado} onClick={() => void trocarConsultor(true)}>
+                  Transferir o atendimento
+                </Button>
+                <Button variant="ghost" disabled={ocupado} onClick={() => setTrocando(false)}>
+                  Cancelar
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--color-text-dim)]">
+                <strong>Corrigir o nome</strong> muda só o que sai impresso na ficha e no PDF — a
+                análise continua de quem era. <strong>Transferir</strong> muda também quem enxerga:
+                o novo consultor passa a ver a operação e o antigo deixa de ver. As duas ficam
+                registradas no histórico, com o nome de antes e o de depois.
+              </p>
+            </div>
+          )}
 
           <p className="pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Cônjuge</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

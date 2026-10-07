@@ -351,9 +351,76 @@ export const analisesApi = {
           : calcularLancePct(mudancas.credito, mudancas.lanceValor),
     });
     if (Object.keys(payload).length === 0) return;
-    const { error } = await supabaseBrowser().from("analises").update(payload).eq("id", id);
+    /*
+     * `.select()` aqui não é enfeite: um UPDATE recusado pela permissão do
+     * banco devolve ZERO LINHAS, não erro. Sem conferir, a tela dizia "salvo"
+     * e nada tinha mudado — foi assim no compartilhamento do Pipeline.
+     */
+    const { data, error } = await supabaseBrowser()
+      .from("analises")
+      .update(payload)
+      .eq("id", id)
+      .select("id");
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Nada foi gravado: a permissão do banco recusou esta alteração.");
+    }
     await registrar(id, { tipo: "editada", detalhe: "Dados da análise atualizados" }, autorNome);
+  },
+
+  /**
+   * TROCAR O CONSULTOR DA FICHA — duas coisas diferentes, de propósito.
+   *
+   * O nome que sai impresso no campo VENDEDOR vem de `criado_por_nome`, que
+   * nasce com o nome de quem criou a análise e não tinha como ser corrigido.
+   *
+   *   só o NOME  → muda o que sai na ficha e no PDF. A análise continua de
+   *                quem era: ele segue vendo e ela segue contando para ele.
+   *   TRANSFERIR → muda também o dono (`vendedor_id`): o novo consultor passa
+   *                a enxergar a análise e o antigo deixa de ver.
+   *
+   * As duas ficam no histórico com o nome de antes e o de depois, porque
+   * trocar o vendedor de uma operação é o tipo de mudança que alguém vai
+   * querer explicar depois.
+   */
+  async trocarConsultor(
+    id: string,
+    alvo: { nome: string; vendedorId?: string },
+    autorNome?: string,
+  ): Promise<void> {
+    const sb = supabaseBrowser();
+    const { data: antes } = await sb
+      .from("analises")
+      .select("criado_por_nome")
+      .eq("id", id)
+      .maybeSingle();
+    const de = (antes as { criado_por_nome?: string | null } | null)?.criado_por_nome || "sem nome";
+
+    const payload: Record<string, unknown> = { criado_por_nome: alvo.nome };
+    const transferindo = !!alvo.vendedorId;
+    if (transferindo) payload.vendedor_id = alvo.vendedorId;
+
+    const { data, error } = await sb.from("analises").update(payload).eq("id", id).select("id");
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(
+        "O banco recusou a troca. Só o administrador pode trocar o consultor de uma análise.",
+      );
+    }
+
+    await registrar(
+      id,
+      {
+        tipo: transferindo ? "transferida" : "editada",
+        campo: "consultor",
+        valorAnterior: de,
+        valorNovo: alvo.nome,
+        detalhe: transferindo
+          ? `Atendimento transferido de ${de} para ${alvo.nome}`
+          : `Nome do consultor na ficha corrigido de ${de} para ${alvo.nome}`,
+      },
+      autorNome,
+    );
   },
 
   /**

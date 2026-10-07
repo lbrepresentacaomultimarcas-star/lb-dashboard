@@ -31,6 +31,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { notify } from "@/lib/notify";
 import { useEscopo, useLeadsEscopo, useSession, useVendedoresEscopo } from "@/lib/store";
+import { ehAdmin } from "@/lib/permissions";
 import { noEscopo } from "@/lib/scope";
 import { telefoneBonito } from "@/lib/telefone";
 import {
@@ -923,6 +924,8 @@ Ela sai da lista. O registro continua guardado no banco para auditoria.`,
                 ficha={ficha}
                 autorNome={session?.nome}
                 onMudou={recarregarAberta}
+                admin={ehAdmin(session)}
+                vendedores={vendedores.filter((v) => v.ativo).map((v) => ({ id: v.id, nome: v.nome }))}
               />
             </section>
             {/* histórico */}
