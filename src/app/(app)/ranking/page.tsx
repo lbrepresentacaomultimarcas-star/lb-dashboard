@@ -198,6 +198,46 @@ export default function RankingPage() {
   );
   const algumaMetaBatida = barrasAtivas.some((b) => valorMetrica(b.metrica) >= (b.alvo ?? Infinity));
 
+  if (visualJogo !== "padrao") {
+    return (
+      <TemaProvider tema={tema} className="-m-4 md:-m-6 relative">
+        <RankingJogo
+          ranking={ranking}
+          tema={tema}
+          visual={visualJogo}
+          chavePeriodo={period.cicloKey ?? `${period.from.getTime()}-${period.to.getTime()}`}
+          periodoLabel={formatPeriodLabel(period)}
+          filtro={<PeriodFilter period={period} onChange={onChangePeriod} resolvePreset={resolvePreset} />}
+          campanha={
+            barrasAtivas.length > 0 ? (
+              <div className="lbr-painel mt-3 space-y-2 p-3">
+                {barrasAtivas.map((b, i) => {
+                  const dinheiro = !b.metrica || b.metrica === "faturamento" || b.metrica === "producao";
+                  return (
+                    <BarraProgresso
+                      key={i}
+                      rotulo={b.rotulo ?? "Meta da campanha"}
+                      atual={valorMetrica(b.metrica)}
+                      alvo={b.alvo ?? 0}
+                      cor="var(--tema-primaria)"
+                      fmt={dinheiro ? brl : (n) => String(Math.round(n))}
+                    />
+                  );
+                })}
+              </div>
+            ) : undefined
+          }
+          total={total}
+          crescimento={crescimento}
+          metaGlobal={metaGlobal}
+          pctGlobal={pctGlobal}
+          serie={serie.map((s) => s.total)}
+          perf={perfLinhas.map((l) => ({ id: l.vendedor.id, nome: l.vendedor.nome, nota: l.resultado.nota, delta: l.delta }))}
+        />
+      </TemaProvider>
+    );
+  }
+
   return (
     <TemaProvider
       tema={tema}
@@ -257,7 +297,7 @@ export default function RankingPage() {
       />
       </>
       )}
-      {temaCustom && visualJogo === "padrao" && <EfeitosTema tema={tema} confeteAtivo={algumaMetaBatida} />}
+      {temaCustom && <EfeitosTema tema={tema} confeteAtivo={algumaMetaBatida} />}
 
       <div className="relative grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* ===================== COLUNA PRINCIPAL ===================== */}
@@ -308,11 +348,6 @@ export default function RankingPage() {
             </div>
           )}
 
-          {visualJogo !== "padrao" && (
-            <RankingJogo ranking={ranking} tema={tema} visual={visualJogo} chavePeriodo={period.cicloKey ?? `${period.from.getTime()}-${period.to.getTime()}`} />
-          )}
-
-          {visualJogo === "padrao" && (<>
           {/* ===================== PÓDIO ===================== */}
           {top3.length === 0 ? (
             <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
@@ -529,7 +564,6 @@ export default function RankingPage() {
               </table>
             </div>
           </div>
-          </>)}
         </div>
 
         {/* ===================== PAINEL DIREITO ===================== */}

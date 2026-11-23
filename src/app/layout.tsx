@@ -10,6 +10,7 @@ import { TemaVisualGlobal } from "@/components/tema-visual";
 import { SCRIPT_BOOT_TEMA } from "@/lib/tema-visual";
 import "./globals.css";
 import "./temas-visuais.css";
+import "./ranking-premium.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });

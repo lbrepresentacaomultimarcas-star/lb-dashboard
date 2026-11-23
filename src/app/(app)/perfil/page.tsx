@@ -23,6 +23,7 @@ import { PremiumStage } from "@/components/premium-stage";
 import { JornadaCarreira } from "@/components/jornada-carreira";
 import { MapaEvolucao } from "@/components/perfil/mapa-evolucao";
 import { PlanoEvolucaoCard } from "@/components/perfil/plano-evolucao";
+import { MeuApelidoCard } from "@/components/perfil/meu-apelido";
 import { useEquipes, useRoster, useSession } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { PAPEL_INFO } from "@/lib/types";
@@ -157,6 +158,8 @@ export default function PerfilPage() {
             </p>
           </div>
         )}
+
+        {souEu && <MeuApelidoCard />}
 
         {/* =========================== o mapa =========================== */}
         <MapaEvolucao mapa={mapa} papel={papel} primeiraPessoa={souEu} nome={nome} />

@@ -77,3 +77,49 @@ export function variacaoPosicao(base: Record<string, number>, id: string, posica
   const antes = base[id];
   return antes ? antes - posicao : 0;
 }
+
+/* ------------------------- reconhecimentos ------------------------- */
+
+export type LinhaReconhecimento = { id: string; nome: string; nota: number; delta: number };
+export type Reconhecimento = {
+  chave: string;
+  icone: string;
+  titulo: string;
+  criterio: string;
+  vencedor: { id: string; nome: string } | null;
+  detalhe: string;
+};
+
+type Base = { id: string; nome: string; vendido: number; vendas: number; pctMeta: number };
+
+function maior<T>(lista: T[], valor: (x: T) => number): T | null {
+  let melhor: T | null = null;
+  let v = 0;
+  for (const x of lista) {
+    const n = valor(x);
+    if (Number.isFinite(n) && n > v) {
+      v = n;
+      melhor = x;
+    }
+  }
+  return melhor;
+}
+
+/** Sem resultado real no período, o título fica "Em disputa": nada é inventado. */
+export function reconhecimentosDe(ranking: Base[], perf: LinhaReconhecimento[]): Reconhecimento[] {
+  const campeao = maior(ranking, (d) => d.vendido);
+  const realeza = maior(ranking, (d) => d.pctMeta);
+  const fechamentos = maior(ranking, (d) => d.vendas);
+  const evolucao = maior(perf, (l) => l.delta);
+  const elite = maior(perf, (l) => l.nota);
+  const metas = ranking.filter((d) => d.pctMeta >= 100);
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  return [
+    { chave: "campeao", icone: "🏆", titulo: "Campeão do mês", criterio: "Maior faturamento", vencedor: campeao, detalhe: campeao ? `R$ ${campeao.vendido.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "" },
+    { chave: "realeza", icone: "👑", titulo: "Rei ou Rainha das Vendas", criterio: "Maior % da meta", vencedor: realeza, detalhe: realeza ? `${fmt(realeza.pctMeta)}% da meta` : "" },
+    { chave: "evolucao", icone: "📈", titulo: "Maior evolução", criterio: "Maior alta no índice", vencedor: evolucao, detalhe: evolucao ? `+${fmt(evolucao.delta)} pts` : "" },
+    { chave: "fechamentos", icone: "🤝", titulo: "Destaque em fechamentos", criterio: "Mais vendas", vencedor: fechamentos, detalhe: fechamentos ? `${fechamentos.vendas} vendas` : "" },
+    { chave: "elite", icone: "⚡", titulo: "Elite Comercial", criterio: "Melhor índice", vencedor: elite, detalhe: elite ? `Índice ${fmt(elite.nota)}%` : "" },
+    { chave: "metas", icone: "🎯", titulo: "Conquistador de Metas", criterio: "Bater 100% da meta", vencedor: metas[0] ?? null, detalhe: metas.length > 1 ? `+${metas.length - 1} bateram a meta` : metas.length ? "Meta batida" : "" },
+  ];
+}

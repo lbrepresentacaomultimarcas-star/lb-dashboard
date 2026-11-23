@@ -2568,6 +2568,27 @@ export const temasApi = {
     if (!criado) throw new Error(`Não foi possível criar o tema "${slug}"`);
     return criado;
   },
+  /** Consultor escolhe entre os apelidos autorizados (a validação fica no banco). */
+  async escolherMeuApelido(slug: string, vendedorId: string, apelido?: string, preferencia?: string) {
+    if (supabaseEnabled) {
+      const { error } = await supabaseBrowser().rpc("escolher_meu_apelido", {
+        p_slug: slug,
+        p_apelido: apelido ?? null,
+        p_preferencia: preferencia ?? null,
+      });
+      if (error) throw error;
+    }
+    state.temas = state.temas.map((t) => {
+      if (t.slug !== slug) return t;
+      const atual = t.estilo.apelidos?.[vendedorId] ?? {};
+      if (apelido && !atual.opcoes?.includes(apelido)) throw new Error("Apelido não autorizado");
+      const entrada = { ...atual, ...(apelido ? { apelido } : {}), ...(preferencia !== undefined ? { preferencia } : {}) };
+      return { ...t, estilo: { ...t.estilo, apelidos: { ...t.estilo.apelidos, [vendedorId]: entrada } } };
+    });
+    if (!supabaseEnabled) lsWrite(K_TEMAS, state.temas);
+    recomputeTemaAtivo();
+    notify();
+  },
   async ativarPorSlug(slug: string) {
     const tema = await temasApi.garantir(slug);
     if (tema.status !== "ativo") await temasApi.ativar(tema.id);

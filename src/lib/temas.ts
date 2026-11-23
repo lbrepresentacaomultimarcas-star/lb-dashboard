@@ -103,7 +103,17 @@ export type EstiloTema = {
   apelidos?: Record<string, ApelidoTema>;
 };
 
-export type ApelidoTema = { apelido?: string; personagem?: string };
+export type ApelidoTema = {
+  /** Só aparece no ranking depois de aprovado pelo admin ou escolhido entre as opções. */
+  apelido?: string;
+  personagem?: string;
+  /** Apelidos que o admin autorizou o consultor a escolher. */
+  opcoes?: string[];
+  /** Preferência informada pelo próprio consultor. */
+  preferencia?: string;
+  /** Ajuste do gorro sobre a foto: x/y em %, r em graus, s = escala. */
+  chapeu?: { x?: number; y?: number; r?: number; s?: number };
+};
 
 export type Tema = {
   id: string;

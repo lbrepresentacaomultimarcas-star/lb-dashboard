@@ -1,0 +1,230 @@
+/* Palco do ranking nos temas Natal e Neon City. */
+.lbr-palco {
+  --lbr-a: #ffc933;
+  --lbr-b: #ffd95a;
+  --lbr-painel: rgba(20, 5, 9, 0.9);
+  --lbr-borda: rgba(255, 201, 51, 0.72);
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100vh - 4rem);
+  overflow: hidden;
+  padding: 18px 20px 96px;
+  color: #fff;
+}
+.lbr-neon {
+  --lbr-a: #ff2fd0;
+  --lbr-b: #7fe3ff;
+  --lbr-painel: rgba(14, 6, 34, 0.9);
+  --lbr-borda: rgba(255, 47, 208, 0.72);
+}
+.lbr-cenario { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.lbr-fundo-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lbr-floco {
+  position: absolute;
+  top: -24px;
+  color: #fff;
+  opacity: 0.72;
+  animation: lbr-neve linear infinite;
+}
+@keyframes lbr-neve { to { transform: translate3d(34px, 112vh, 0) rotate(240deg); } }
+
+.lbr-conteudo { position: relative; z-index: 2; margin: 0 auto; max-width: 1560px; }
+.lbr-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.lbr-trofeu { width: 58px; height: 58px; flex: none; color: #ffc933; filter: drop-shadow(0 0 14px rgba(255, 201, 51, 0.8)); }
+.lbr-titulo {
+  font-size: clamp(30px, 3.6vw, 58px) !important;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #ffd95a;
+  text-shadow: 0 3px 0 #8a3f05, 0 6px 18px rgba(0, 0, 0, 0.75);
+}
+.lbr-neon .lbr-titulo {
+  font-style: italic;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(90deg, #ffffff 0 48%, #e879ff 62%, #8b5cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(3px 4px 0 #24083f) drop-shadow(0 0 16px rgba(255, 47, 208, 0.65));
+}
+.lbr-sub { margin-top: 5px; font-size: 15px; font-weight: 700; color: #fff; text-shadow: 0 2px 6px #000; }
+.lbr-neon .lbr-sub { font-style: italic; text-transform: uppercase; letter-spacing: 0.08em; }
+.lbr-filtro { border-radius: 12px; background: var(--lbr-painel); padding: 5px 8px; }
+.lbr-painel {
+  border: 1.5px solid var(--lbr-borda);
+  border-radius: 16px;
+  background: var(--lbr-painel);
+  box-shadow: 0 0 22px -5px var(--lbr-a), 0 16px 34px -16px #000;
+}
+.lbr-kpi { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.lbr-pill { border-radius: 9999px; background: rgba(40, 200, 110, 0.18); padding: 4px 10px; font-size: 13px; font-weight: 800; }
+
+.lbr-centro { display: grid; grid-template-columns: 190px minmax(0, 1fr) 340px; align-items: end; gap: 12px; margin-top: 10px; }
+.lbr-personagem { position: relative; align-self: end; height: 500px; filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.55)); }
+.lbr-placa {
+  position: absolute;
+  left: -4px;
+  bottom: 4px;
+  transform: rotate(-7deg);
+  border: 3px solid #4a2c18;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #a56a35, #6e431f);
+  padding: 8px 10px;
+  font-family: var(--lbx-fonte);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #ffe9a8;
+  text-shadow: 0 2px 2px #2c1608;
+}
+.lbr-personagem-direita { position: absolute; z-index: 1; right: 366px; bottom: 300px; display: none; }
+.lbr-assinatura {
+  position: absolute;
+  z-index: 3;
+  right: 22px;
+  bottom: 22px;
+  transform: rotate(-4deg);
+  font-size: clamp(17px, 1.7vw, 27px);
+  font-style: italic;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 2px 3px 0 #5a108a, 0 0 12px #ff2fd0;
+}
+.lbr-assinatura b { color: #ffd166; }
+
+.lbr-podio { display: flex; align-items: flex-end; justify-content: center; gap: clamp(8px, 1.2vw, 20px); padding-top: 44px; min-width: 0; }
+.lbr-coluna { display: flex; width: 29%; max-width: 260px; flex-direction: column; align-items: center; animation: lbr-entra 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lbr-coluna-1 { z-index: 2; width: 38%; max-width: 340px; }
+@keyframes lbr-entra { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+.lbr-card {
+  position: relative;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: 2px solid var(--c);
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 30%, #0b0612), #0b0612 58%);
+  padding: 12px 10px 10px;
+  text-align: center;
+  box-shadow: 0 0 26px -2px var(--c), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.lbr-coluna-1 .lbr-card { box-shadow: 0 0 46px 2px var(--c), inset 0 1px 0 rgba(255, 255, 255, 0.4); animation: lbr-pulsa 3.2s ease-in-out infinite; }
+@keyframes lbr-pulsa { 50% { box-shadow: 0 0 66px 8px var(--c), inset 0 1px 0 rgba(255, 255, 255, 0.4); } }
+.lbr-coroa { position: absolute; z-index: 5; top: -40px; left: 50%; width: 58px; height: 58px; transform: translateX(-50%); color: #ffc933; filter: drop-shadow(0 0 10px #ffb300); }
+.lbr-natal .lbr-coroa { top: -54px; }
+.lbr-medalha {
+  position: absolute;
+  z-index: 6;
+  top: -12px;
+  left: -8px;
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 3px solid #fff4c9;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #fff, var(--c) 46%, color-mix(in srgb, var(--c) 55%, #000));
+  font-size: 17px;
+  font-weight: 900;
+  color: #14070a;
+  box-shadow: 0 0 14px var(--c);
+}
+.lbr-foto { position: relative; display: inline-block; flex: none; }
+.lbr-foto-recorte { display: block; width: 100%; height: 100%; overflow: hidden; border: 3px solid var(--c); border-radius: 50%; box-shadow: 0 0 14px var(--c); }
+.lbr-foto-recorte > * { width: 100% !important; height: 100% !important; }
+.lbr-gorro { position: absolute; z-index: 4; width: 86%; height: auto; transform-origin: 50% 80%; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45)); pointer-events: none; }
+.lbr-nome { margin-top: 6px; max-width: 100%; overflow: hidden; font-family: inherit !important; font-size: 16px; font-weight: 900; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.lbr-coluna-1 .lbr-nome { font-size: 21px; }
+.lbr-apelido { max-width: 100%; overflow: hidden; border: 1px solid var(--c); border-radius: 8px; background: rgba(0, 0, 0, 0.5); padding: 2px 8px; font-size: 13px; font-weight: 800; color: #fff; text-overflow: ellipsis; white-space: nowrap; }
+.lbr-apelido-campeao { border-width: 2px; padding: 4px 10px; font-size: 16px; color: #ffe27a; box-shadow: 0 0 12px -2px var(--c); }
+.lbr-neon .lbr-apelido { font-style: italic; }
+.lbr-valor { font-size: 21px; font-weight: 900; color: #5ee592; text-shadow: 0 0 10px rgba(94, 229, 146, 0.42); }
+.lbr-coluna-1 .lbr-valor { font-size: 30px; }
+.lbr-stats { display: grid; width: 100%; grid-template-columns: 1fr 1fr 1.5fr; gap: 3px; border-top: 1px solid rgba(255, 255, 255, 0.25); padding-top: 5px; }
+.lbr-stats dt { font-size: 9px; font-weight: 700; text-transform: uppercase; color: rgba(255, 255, 255, 0.85); }
+.lbr-stats dd { font-size: 12px; font-weight: 800; }
+.lbr-stat-comissao dd { color: #5ee592; }
+.lbr-barra { width: 100%; height: 6px; overflow: hidden; border-radius: 9999px; background: rgba(255, 255, 255, 0.2); }
+.lbr-barra > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c), #5ee592); transition: width 0.8s ease; }
+.lbr-delta { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; font-weight: 800; }
+
+.lbr-pedestal { position: relative; width: 88%; height: 74px; }
+.lbr-coluna-1 .lbr-pedestal { height: 118px; }
+.lbr-pedestal-topo { position: absolute; z-index: 2; inset: 0 0 auto; height: 18px; border-radius: 50%; background: var(--c); box-shadow: 0 0 20px var(--c); }
+.lbr-pedestal-corpo {
+  position: absolute;
+  inset: 8px 0 8px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px 6px 50% 50% / 6px 6px 14px 14px;
+  background: linear-gradient(90deg, #120609, color-mix(in srgb, var(--c) 72%, #2c1200) 28%, color-mix(in srgb, var(--c) 92%, #fff) 50%, color-mix(in srgb, var(--c) 72%, #2c1200) 72%, #120609);
+}
+.lbr-pedestal-corpo b { font-size: 34px; font-weight: 900; color: #14070a; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55); }
+.lbr-coluna-1 .lbr-pedestal-corpo b { font-size: 54px; }
+.lbr-pedestal-base { position: absolute; inset: auto -11% -3px; height: 15px; border-radius: 50%; background: color-mix(in srgb, var(--c) 66%, #000); box-shadow: 0 0 24px 2px var(--c); }
+.lbr-laco { position: absolute; z-index: 3; top: 8px; left: 50%; transform: translateX(-50%); font-size: 38px; }
+
+.lbr-top10 { padding: 12px; }
+.lbr-painel-titulo { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 18px !important; font-weight: 800; color: #fff; }
+.lbr-top10 li { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid rgba(255, 255, 255, 0.13); padding: 8px 1px 5px; }
+.lbr-top10 li:last-child { border-bottom: 0; }
+.lbr-pos { width: 22px; flex: none; font-size: 13px; font-weight: 800; }
+
+.lbr-rodape { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 12px; margin-top: 16px; padding-right: 0; }
+.lbr-resumo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lbr-resumo dt { font-size: 11px; color: rgba(255, 255, 255, 0.85); }
+.lbr-resumo dd { font-size: clamp(14px, 1.3vw, 20px); font-weight: 900; }
+.lbr-linha { filter: drop-shadow(0 0 5px var(--lbr-a)); }
+.lbr-reconhecimentos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.lbr-reconhecimentos li { display: flex; min-width: 0; align-items: center; gap: 7px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 10px; background: rgba(255, 255, 255, 0.06); padding: 6px 8px; }
+.lbr-disputa { opacity: 0.86; }
+
+@media (max-width: 1320px) {
+  .lbr-centro { grid-template-columns: minmax(0, 1fr) 310px; }
+  .lbr-personagem { display: none; }
+}
+@media (max-width: 1050px) {
+  .lbr-centro, .lbr-rodape { grid-template-columns: minmax(0, 1fr); }
+  .lbr-reconhecimentos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .lbr-palco { padding: 12px 8px 108px; }
+  .lbr-trofeu { width: 38px; height: 38px; }
+  .lbr-topo > div:last-child { width: 100%; justify-content: flex-start; }
+  .lbr-kpi { width: 100%; }
+  .lbr-kpi > div { flex: 1; }
+  .lbr-podio { gap: 4px; padding-top: 52px; }
+  .lbr-coluna { width: 30%; }
+  .lbr-coluna-1 { width: 40%; }
+  .lbr-card { padding: 8px 4px; }
+  .lbr-card .lbr-foto { width: 62px !important; height: 62px !important; }
+  .lbr-coluna-1 .lbr-card .lbr-foto { width: 88px !important; height: 88px !important; }
+  .lbr-medalha { top: -10px; left: -4px; width: 32px; height: 32px; font-size: 11px; }
+  .lbr-coroa { width: 38px; height: 38px; top: -28px; }
+  .lbr-natal .lbr-coroa { top: -42px; }
+  .lbr-nome, .lbr-coluna-1 .lbr-nome { font-size: 11px; }
+  .lbr-apelido, .lbr-apelido-campeao { padding: 1px 3px; font-size: 9px; }
+  .lbr-valor { font-size: 12px; }
+  .lbr-coluna-1 .lbr-valor { font-size: 15px; }
+  .lbr-stats { grid-template-columns: 1fr 1fr; }
+  .lbr-stat-comissao { grid-column: 1 / -1; }
+  .lbr-stats dd { font-size: 10px; }
+  .lbr-pedestal { height: 42px; }
+  .lbr-coluna-1 .lbr-pedestal { height: 68px; }
+  .lbr-pedestal-corpo b { font-size: 20px; }
+  .lbr-coluna-1 .lbr-pedestal-corpo b { font-size: 30px; }
+  .lbr-laco { font-size: 22px; }
+  .lbr-reconhecimentos { grid-template-columns: minmax(0, 1fr); }
+  .lbr-assinatura { right: 12px; bottom: 74px; }
+  .lbr-floco:nth-of-type(2n) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lbr-floco { display: none; }
+  .lbr-coluna, .lbr-coluna-1 .lbr-card { animation: none; }
+  .lbr-barra > span { transition: none; }
+}

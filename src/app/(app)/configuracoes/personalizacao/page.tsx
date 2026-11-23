@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, Palette, Save } from "lucide-react";
-import { temasApi, useReady, useTemaAtivo, useTemas, useVendedores } from "@/lib/store";
+import { temasApi, useMetas, useReady, useTemaAtivo, useTemas, useVendas, useVendedores } from "@/lib/store";
 import { SLUG_NATAL, SLUG_NEON, SLUG_PADRAO, temaVisualDoSlug, type TemaVisual } from "@/lib/tema-visual";
+import { APELIDOS, sugerirApelidos } from "@/lib/apelidos-tema";
 import type { ApelidoTema } from "@/lib/temas";
+import { periodFromPreset } from "@/lib/period";
+import { useCicloProducao } from "@/lib/use-ciclo";
+import { useRankingPeriodo } from "@/lib/use-ranking";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar } from "@/components/avatar";
-import { nomePersonagem, Personagem, PERSONAGENS, personagemPadrao } from "@/components/personagens-natal";
+import { Foto } from "@/components/ranking-jogo";
+import type { VendedorComDesempenho } from "@/lib/types";
 
 const OPCOES: { id: TemaVisual; slug: string; nome: string; descricao: string; cores: string[] }[] = [
   { id: "padrao", slug: SLUG_PADRAO, nome: "Tema padrão LB CRM", descricao: "A identidade original do sistema.", cores: ["#0a0a0f", "#6366f1", "#e8e8f0"] },
@@ -18,21 +22,35 @@ const OPCOES: { id: TemaVisual; slug: string; nome: string; descricao: string; c
   { id: "natal", slug: SLUG_NATAL, nome: "Natal — Christmas Edition", descricao: "Celebração, neve e espírito de equipe.", cores: ["#07130e", "#b3202f", "#1f9d55", "#f2c94c"] },
 ];
 
+const AJUSTES = [
+  { k: "x", rotulo: "Lado", min: -45, max: 45, passo: 1, padrao: 0 },
+  { k: "y", rotulo: "Altura", min: -40, max: 70, passo: 1, padrao: 0 },
+  { k: "r", rotulo: "Giro", min: -40, max: 40, passo: 1, padrao: -10 },
+  { k: "s", rotulo: "Tamanho", min: 0.4, max: 1.6, passo: 0.05, padrao: 1 },
+] as const;
+
 export default function PersonalizacaoVisualPage() {
   const ready = useReady();
   const temas = useTemas();
   const ativo = useTemaAtivo();
   const vendedores = useVendedores();
+  const vendas = useVendas();
+  const metas = useMetas();
+  const { config, feriados } = useCicloProducao();
+  const periodo = useMemo(() => periodFromPreset("mes-atual", new Date(), config, feriados), [config, feriados]);
+  const desempenho = useRankingPeriodo(periodo, vendedores, vendas, metas, config, feriados);
+
   const visualAtivo = temaVisualDoSlug(ativo.slug);
   const [aplicando, setAplicando] = useState<TemaVisual | null>(null);
-  const [abaApelidos, setAbaApelidos] = useState<"neon" | "natal">("natal");
+  const [aba, setAba] = useState<"neon" | "natal">(visualAtivo === "neon" ? "neon" : "natal");
   const [rascunhos, setRascunhos] = useState<Record<string, Record<string, ApelidoTema>>>({});
   const [salvando, setSalvando] = useState(false);
 
-  const slugAba = abaApelidos === "natal" ? SLUG_NATAL : SLUG_NEON;
+  const slugAba = aba === "natal" ? SLUG_NATAL : SLUG_NEON;
   const temaAba = temas.find((t) => t.slug === slugAba);
   const apelidos = rascunhos[slugAba] ?? temaAba?.estilo.apelidos ?? {};
   const ativos = useMemo(() => vendedores.filter((v) => v.ativo), [vendedores]);
+  const porId = useMemo(() => new Map(desempenho.map((d) => [d.id, d])), [desempenho]);
 
   async function escolher(op: (typeof OPCOES)[number]) {
     if (op.id === visualAtivo && ativo.slug === op.slug) return;
@@ -47,11 +65,17 @@ export default function PersonalizacaoVisualPage() {
     }
   }
 
-  function editar(id: string, patch: ApelidoTema) {
-    setRascunhos((r) => ({ ...r, [slugAba]: { ...apelidos, [id]: { ...apelidos[id], ...patch } } }));
-  }
+  const editar = useCallback(
+    (id: string, patch: ApelidoTema) => {
+      setRascunhos((r) => {
+        const atual = r[slugAba] ?? temaAba?.estilo.apelidos ?? {};
+        return { ...r, [slugAba]: { ...atual, [id]: { ...atual[id], ...patch } } };
+      });
+    },
+    [slugAba, temaAba],
+  );
 
-  async function salvarApelidos() {
+  async function salvar() {
     setSalvando(true);
     try {
       const t = await temasApi.garantir(slugAba);
@@ -114,16 +138,18 @@ export default function PersonalizacaoVisualPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Apelidos dos consultores</h2>
-            <p className="text-xs text-[var(--color-text-dim)]">Aparecem só no ranking do tema. O nome verdadeiro não muda.</p>
+            <p className="text-xs text-[var(--color-text-dim)]">
+              Nada aparece no ranking sem aprovação. Marque as opções que o consultor pode escolher em Meu Perfil. O nome verdadeiro não muda.
+            </p>
           </div>
           <div className="flex gap-1 rounded-lg bg-[var(--color-surface-2)] p-1">
             {(["natal", "neon"] as const).map((a) => (
               <button
                 key={a}
                 type="button"
-                aria-pressed={abaApelidos === a}
-                onClick={() => setAbaApelidos(a)}
-                className={cn("rounded-md px-3 py-1 text-sm font-medium", abaApelidos === a ? "bg-[var(--color-brand)] text-white" : "text-[var(--color-text-dim)]")}
+                aria-pressed={aba === a}
+                onClick={() => setAba(a)}
+                className={cn("rounded-md px-3 py-1 text-sm font-medium", aba === a ? "bg-[var(--color-brand)] text-white" : "text-[var(--color-text-dim)]")}
               >
                 {a === "natal" ? "Natal" : "Neon City"}
               </button>
@@ -131,33 +157,84 @@ export default function PersonalizacaoVisualPage() {
           </div>
         </div>
 
-        <ul className="divide-y divide-[var(--color-border)]">
+        <datalist id="lista-apelidos">
+          {APELIDOS[aba].map((a) => <option key={a.nome} value={a.nome} />)}
+        </datalist>
+
+        <ul className="space-y-3">
           {ativos.map((v) => {
             const conf = apelidos[v.id] ?? {};
-            const personagem = conf.personagem ?? personagemPadrao(v.id);
+            const d = porId.get(v.id);
+            const sugestoes = sugerirApelidos(aba, { pctMeta: d?.pctMeta, vendas: d?.vendas, preferencia: conf.preferencia });
+            const opcoes = conf.opcoes ?? [];
+            const alternar = (nome: string) =>
+              editar(v.id, { opcoes: opcoes.includes(nome) ? opcoes.filter((o) => o !== nome) : [...opcoes, nome] });
+            const fotoDados = { id: v.id, nome: v.nome } as VendedorComDesempenho;
             return (
-              <li key={v.id} className="grid items-center gap-2 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  {abaApelidos === "natal" ? <Personagem tipo={personagem} size={38} /> : <Avatar id={v.id} nome={v.nome} size={38} />}
-                  <span className="truncate text-sm font-medium">{v.nome}</span>
+              <li key={v.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                <div className="grid gap-3 md:grid-cols-[110px_minmax(0,1fr)]">
+                  <div className="flex justify-center pt-5">
+                    <Foto d={fotoDados} size={84} natal={aba === "natal"} conf={conf} cor="#ffc933" />
+                  </div>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{v.nome}</span>
+                      {conf.preferencia && <span className="text-xs text-[var(--color-text-dim)]">Preferência: “{conf.preferencia}”</span>}
+                    </div>
+                    <Input
+                      aria-label={`Apelido aprovado de ${v.nome}`}
+                      list="lista-apelidos"
+                      maxLength={32}
+                      value={conf.apelido ?? ""}
+                      placeholder="Sem apelido aprovado"
+                      onChange={(e) => editar(v.id, { apelido: e.target.value })}
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-[var(--color-text-dim)]">Sugestões:</span>
+                      {sugestoes.map((s) => (
+                        <button key={s} type="button" onClick={() => editar(v.id, { apelido: s })} className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-surface)]">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-xs font-medium text-[var(--color-text-dim)]">
+                        Opções autorizadas ({opcoes.length}){aba === "natal" ? " e ajuste do gorro" : ""}
+                      </summary>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {APELIDOS[aba].map((a) => (
+                          <button
+                            key={a.nome}
+                            type="button"
+                            aria-pressed={opcoes.includes(a.nome)}
+                            onClick={() => alternar(a.nome)}
+                            className={cn("rounded-full border px-2 py-0.5 text-xs", opcoes.includes(a.nome) ? "border-[var(--color-success)] text-[var(--color-success)]" : "border-[var(--color-border)] text-[var(--color-text-dim)]")}
+                          >
+                            {opcoes.includes(a.nome) ? "✓ " : ""}{a.nome}
+                          </button>
+                        ))}
+                      </div>
+                      {aba === "natal" && (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {AJUSTES.map((a) => (
+                            <label key={a.k} className="flex items-center gap-2 text-xs text-[var(--color-text-dim)]">
+                              <span className="w-14">{a.rotulo}</span>
+                              <input
+                                type="range"
+                                className="min-w-0 flex-1"
+                                min={a.min}
+                                max={a.max}
+                                step={a.passo}
+                                value={conf.chapeu?.[a.k] ?? a.padrao}
+                                onChange={(e) => editar(v.id, { chapeu: { ...conf.chapeu, [a.k]: Number(e.target.value) } })}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </details>
+                  </div>
                 </div>
-                <Input
-                  aria-label={`Apelido de ${v.nome}`}
-                  maxLength={32}
-                  value={conf.apelido ?? ""}
-                  placeholder={abaApelidos === "natal" ? nomePersonagem(personagem) : "Título automático pelo nível"}
-                  onChange={(e) => editar(v.id, { apelido: e.target.value })}
-                />
-                {abaApelidos === "natal" ? (
-                  <select
-                    aria-label={`Personagem de ${v.nome}`}
-                    value={personagem}
-                    onChange={(e) => editar(v.id, { personagem: e.target.value })}
-                    className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-sm text-[var(--color-text)]"
-                  >
-                    {PERSONAGENS.map((p) => <option key={p.tipo} value={p.tipo}>{p.nome}</option>)}
-                  </select>
-                ) : <span className="hidden sm:block" />}
               </li>
             );
           })}
@@ -165,7 +242,7 @@ export default function PersonalizacaoVisualPage() {
         </ul>
 
         <div className="mt-4 flex justify-end">
-          <Button onClick={() => void salvarApelidos()} disabled={salvando || !rascunhos[slugAba]}>
+          <Button onClick={() => void salvar()} disabled={salvando || !rascunhos[slugAba]}>
             <Save className="h-4 w-4" />
             {salvando ? "Salvando…" : "Salvar apelidos"}
           </Button>
