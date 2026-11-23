@@ -1256,6 +1256,17 @@ export const impersonacaoApi = {
 // ============================================================
 // API — vendedores
 // ============================================================
+export type EncerramentoConsultor = {
+  simulado: boolean;
+  acao: "excluido" | "inativado";
+  nome: string;
+  pipeline: number;
+  central: number;
+  porConsultor: { vendedorId: string; nome: string; quantos: number }[];
+  mantidos: { vendas: number; metas: number; negocios: number; central: number; analises: number; performance: number };
+  acessoBloqueado: number;
+};
+
 export const vendedoresApi = {
   async add(input: Omit<Vendedor, "id" | "criadoEm">) {
     if (supabaseEnabled) {
@@ -1335,6 +1346,89 @@ export const vendedoresApi = {
     }
     notify();
     void logAudit({ acao: "remover", entidade: "vendedor", entidadeId: id, detalhes: nome });
+  },
+  /**
+   * Transfere os contatos ativos e encerra o consultor numa transação só (função
+   * `encerrar_consultor`). Com `simular`, o banco executa e desfaz: é a prévia.
+   * Vendas, metas e negócios encerrados nunca mudam de dono.
+   */
+  async encerrar(
+    id: string,
+    destinos: string[],
+    opts: { bloquearAcesso: boolean; simular: boolean },
+  ): Promise<EncerramentoConsultor> {
+    if (supabaseEnabled) {
+      const { data, error } = await supabaseBrowser().rpc("encerrar_consultor", {
+        p_vendedor: id,
+        p_destinos: destinos,
+        p_bloquear_acesso: opts.bloquearAcesso,
+        p_simular: opts.simular,
+      });
+      if (error) {
+        throw new Error(
+          /encerrar_consultor|schema cache/i.test(error.message)
+            ? "Falta rodar o SQL de transferência no Supabase."
+            : error.message,
+        );
+      }
+      const r = data as EncerramentoConsultor & { erro?: string };
+      if (r.erro) throw new Error(r.erro);
+      if (!opts.simular) {
+        await Promise.all([reloadVendedores(), reloadLeads(), reloadCentralLeads(), reloadRoster()]);
+        notify();
+        bumpSync();
+      }
+      return r;
+    }
+
+    // Modo demonstração: mesma regra, sobre os dados locais.
+    const atual = state.vendedores.find((v) => v.id === id);
+    if (!atual) throw new Error("Consultor não encontrado.");
+    const abertos = state.leads.filter((l) => l.vendedorId === id && l.status !== "fechamento" && l.status !== "perdido");
+    const ativos = state.centralLeads.filter((c) => c.vendedorId === id && !c.encerradoEm && !c.excluidoEm);
+    const negocios = state.leads.filter((l) => l.vendedorId === id).length - abertos.length;
+    const centralHist = state.centralLeads.filter((c) => c.vendedorId === id).length - ativos.length;
+    const vendas = state.vendas.filter((v) => v.vendedorId === id).length;
+    const metasDele = state.metas.filter((m) => m.vendedorId === id).length;
+    const mantidos = { vendas, metas: metasDele, negocios, central: centralHist, analises: 0, performance: 0 };
+    const acao: EncerramentoConsultor["acao"] = vendas + metasDele + negocios + centralHist > 0 ? "inativado" : "excluido";
+    const total = abertos.length + ativos.length;
+    if (total > 0 && destinos.length === 0 && !opts.simular) throw new Error("Escolha quem vai receber os contatos.");
+    const contagem = new Map<string, number>();
+    const donoDe = new Map<string, string>();
+    if (destinos.length > 0) {
+      [...abertos, ...ativos].forEach((c, i) => {
+        const d = destinos[i % destinos.length];
+        donoDe.set(c.id, d);
+        contagem.set(d, (contagem.get(d) ?? 0) + 1);
+      });
+    }
+    if (!opts.simular) {
+      state.leads = state.leads.map((l) => (donoDe.has(l.id) ? { ...l, vendedorId: donoDe.get(l.id) } : l));
+      state.centralLeads = state.centralLeads.map((c) => (donoDe.has(c.id) ? { ...c, vendedorId: donoDe.get(c.id) } : c));
+      state.vendedores = acao === "excluido"
+        ? state.vendedores.filter((v) => v.id !== id)
+        : state.vendedores.map((v) => (v.id === id ? { ...v, ativo: false } : v));
+      lsWrite(K_LEADS, state.leads);
+      lsWrite(K_VENDEDORES, state.vendedores);
+      notify();
+      bumpSync();
+      void logAudit({ acao: acao === "excluido" ? "remover" : "editar", entidade: "vendedor", entidadeId: id, detalhes: `${atual.nome} · ${total} contato(s) transferido(s)` });
+    }
+    return {
+      simulado: opts.simular,
+      acao,
+      nome: atual.nome,
+      pipeline: abertos.length,
+      central: ativos.length,
+      porConsultor: [...contagem].map(([vendedorId, quantos]) => ({
+        vendedorId,
+        quantos,
+        nome: state.vendedores.find((v) => v.id === vendedorId)?.nome ?? vendedorId,
+      })),
+      mantidos,
+      acessoBloqueado: 0,
+    };
   },
 };
 

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Crown, Pencil, Plus, Trash2, Users } from "lucide-react";
-import { useMetasEscopo, useVendasEscopo, useVendedoresEscopo, vendedoresApi } from "@/lib/store";
+import { useMetasEscopo, useSession, useVendasEscopo, useVendedoresEscopo, vendedoresApi } from "@/lib/store";
+import { ehAdmin } from "@/lib/permissions";
 import { desempenhoPorVendedor } from "@/lib/selectors";
 import type { Vendedor } from "@/lib/types";
 import { brl, parseNumBR, pct } from "@/lib/utils";
@@ -13,6 +14,7 @@ import { Avatar } from "@/components/avatar";
 import { AvatarUploader } from "@/components/avatar-uploader";
 import { PremiumStage } from "@/components/premium-stage";
 import { AcessoConsultor } from "@/components/acesso-consultor";
+import { EncerrarConsultorModal } from "@/components/vendedores/encerrar-consultor";
 
 type FormState = {
   nome: string;
@@ -43,6 +45,8 @@ export default function VendedoresPage() {
   const metas = useMetasEscopo();
   const desempenho = desempenhoPorVendedor(vendedores, vendas, metas);
   const melhor = desempenho.length ? desempenho.reduce((a, b) => (b.vendido > a.vendido ? b : a)) : null;
+  const session = useSession();
+  const [encerrando, setEncerrando] = useState<Vendedor | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Vendedor | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -95,6 +99,11 @@ export default function VendedoresPage() {
   }
 
   async function remover(v: Vendedor) {
+    // Admin escolhe quem recebe os contatos; os demais papéis seguem como antes.
+    if (ehAdmin(session)) {
+      setEncerrando(v);
+      return;
+    }
     // O texto antigo dizia que as vendas seriam apagadas — e não eram: ficavam
     // no banco, apontando para um consultor que não existia mais.
     if (confirm(`Remover ${v.nome}? Só é possível se ele não tiver mais nenhum lead, venda ou meta no nome dele.`)) {
@@ -340,6 +349,7 @@ export default function VendedoresPage() {
           </div>
         </form>
       </Modal>
+      {encerrando && <EncerrarConsultorModal key={encerrando.id} vendedor={encerrando} onClose={() => setEncerrando(null)} />}
     </PremiumStage>
   );
 }
