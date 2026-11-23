@@ -5,6 +5,7 @@ import { History, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import { useAudit, useSession, useVendasAllEscopo, useVendedoresEscopo, vendasApi } from "@/lib/store";
 import { brl, monthLabel, parseNumBR } from "@/lib/utils";
 import { cicloDeData, cicloPorChave } from "@/lib/ciclo";
+import { combinarDataHora, dataDoDia, diaDaVenda, hojeLocal, horaDaVenda } from "@/lib/data-venda";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { vendasNoMes } from "@/lib/selectors";
 import { VENDA_STATUS, type Venda } from "@/lib/types";
@@ -24,31 +25,15 @@ type FormState = {
   observacao: string;
 };
 
-function hojeIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 const emptyForm = (vendedorId = ""): FormState => ({
   vendedorId,
   cliente: "",
   valor: "",
-  data: hojeIso(),
+  data: hojeLocal(),
   observacao: "",
 });
 
 /* ---- helpers de data/hora locais (a venda guarda ISO timestamptz) ---- */
-function isoParaDataLocal(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function isoParaHoraLocal(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-function combinarDataHora(data: string, hora: string): string {
-  // Interpreta no fuso LOCAL e converte pra ISO (o que os relatórios usam).
-  return new Date(`${data}T${hora || "00:00"}:00`).toISOString();
-}
 function fmtDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -158,7 +143,7 @@ export default function VendasPage() {
         vendedorId: form.vendedorId,
         cliente: form.cliente.trim(),
         valor: valorNum,
-        data: new Date(form.data).toISOString(),
+        data: dataDoDia(form.data),
         observacao: form.observacao.trim() || undefined,
       });
       setOpen(false);
@@ -182,8 +167,8 @@ export default function VendasPage() {
       cliente: v.cliente,
       valor: v.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       status: v.status ?? "Confirmada",
-      data: isoParaDataLocal(v.data),
-      hora: isoParaHoraLocal(v.data),
+      data: diaDaVenda(v.data),
+      hora: horaDaVenda(v.data),
       observacao: v.observacao ?? "",
       motivo: "",
     });
@@ -215,7 +200,9 @@ export default function VendasPage() {
       return;
     }
 
-    const novaData = combinarDataHora(edit.data, edit.hora);
+    // Data intacta fica exatamente como estava: editar o valor não move a venda de ciclo.
+    const dataIntacta = edit.data === diaDaVenda(editando.data) && edit.hora === horaDaVenda(editando.data);
+    const novaData = dataIntacta ? editando.data : combinarDataHora(edit.data, edit.hora);
     const patch: Partial<Venda> = {
       vendedorId: edit.vendedorId,
       cliente: edit.cliente.trim(),

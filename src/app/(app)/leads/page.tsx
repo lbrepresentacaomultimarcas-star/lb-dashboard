@@ -1,5 +1,6 @@
 "use client";
 
+import { instanteDaVenda } from "@/lib/data-venda";
 import { linkLigacao, linkWhatsapp } from "@/lib/telefone";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -763,7 +764,7 @@ export default function LeadsPage() {
         vendedorId: dados.vendedorId,
         cliente: dados.nome,
         valor: dados.valor,
-        data: new Date().toISOString(),
+        data: instanteDaVenda(),
         // A IDENTIDADE vai na coluna, não só no texto: é ela que o índice
         // único usa para recusar o segundo fechamento do mesmo negócio.
         leadId: dados.leadId,
