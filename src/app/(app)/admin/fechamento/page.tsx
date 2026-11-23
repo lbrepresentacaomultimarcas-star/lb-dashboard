@@ -236,7 +236,7 @@ export default function FechamentoPage() {
           />
           <Toggle
             titulo="Considerar feriados"
-            desc="Usa a lista de feriados cadastrada abaixo."
+            desc="Feriados nacionais entram automaticamente. Cadastre abaixo só os estaduais e municipais."
             checked={form.considerarFeriados}
             onChange={(v) => set("considerarFeriados", v)}
           />
