@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { reloadAllData } from "./store";
+import { reloadAllData, tempoRealSaudavel } from "./store";
 import { notify } from "./notify";
 
 /**
@@ -65,10 +65,43 @@ const subscribe = (l: () => void) => {
 // ============================================================
 let autoTimer: ReturnType<typeof setInterval> | null = null;
 
+/*
+ * A CARGA COMPLETA VIROU EXCEÇÃO.
+ *
+ * Com o tempo real conectado, cada mudança já chega sozinha. Baixar tudo de novo
+ * só se justifica quando a conexão caiu, a aba ficou muito tempo escondida (o
+ * celular pode ter derrubado a conexão sem avisar) ou como conferência periódica.
+ * O botão de atualizar continua fazendo a carga completa, sempre.
+ */
+const CONFERENCIA_MS = 30 * 60_000;
+const ESCONDIDA_MS = 10 * 60_000;
+let ultimaCargaCompleta = Date.now();
+let escondidaDesde: number | null = null;
+let ficouEscondidaMuitoTempo = false;
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      escondidaDesde = Date.now();
+    } else if (escondidaDesde !== null) {
+      if (Date.now() - escondidaDesde >= ESCONDIDA_MS) ficouEscondidaMuitoTempo = true;
+      escondidaDesde = null;
+    }
+  });
+}
+
+function precisaRecarregar(): boolean {
+  return (
+    !tempoRealSaudavel() ||
+    ficouEscondidaMuitoTempo ||
+    Date.now() - ultimaCargaCompleta >= CONFERENCIA_MS
+  );
+}
+
 function startAutoTimer() {
   if (autoTimer || typeof window === "undefined") return;
   autoTimer = setInterval(() => {
-    void refreshSilently();
+    if (precisaRecarregar()) void refreshSilently();
   }, AUTO_REFRESH_INTERVAL_MS);
 }
 
@@ -96,6 +129,8 @@ async function doRefresh(): Promise<void> {
   broadcast();
   try {
     await reloadAllData();
+    ultimaCargaCompleta = Date.now();
+    ficouEscondidaMuitoTempo = false;
     state.lastRefresh = new Date();
     state.tick += 1;
   } finally {
@@ -146,7 +181,9 @@ const ESPERA_FOCO_MS = 5 * 60_000;
 let lastFocusRefresh = 0;
 export function refreshOnAppFocus(): void {
   const agora = Date.now();
-  if (agora - lastFocusRefresh < ESPERA_FOCO_MS) return;
+  // A ordem importa: o evento de voltar à aba pode chegar antes deste aqui.
+  if (escondidaDesde !== null && agora - escondidaDesde >= ESCONDIDA_MS) ficouEscondidaMuitoTempo = true;
+  if (agora - lastFocusRefresh < ESPERA_FOCO_MS || !precisaRecarregar()) return;
   lastFocusRefresh = agora;
   void refreshSilently();
 }

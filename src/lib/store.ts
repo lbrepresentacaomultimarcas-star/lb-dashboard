@@ -363,6 +363,13 @@ async function logAudit(input: {
 let initPromise: Promise<void> | null = null;
 let realtimeAttached = false;
 let timerReconciliar: ReturnType<typeof setInterval> | null = null;
+const canaisEsperados = new Set<string>();
+const canaisConectados = new Set<string>();
+
+/** Todos os canais estão conectados? Então os dados já chegam sozinhos. */
+export function tempoRealSaudavel(): boolean {
+  return realtimeAttached && canaisEsperados.size > 0 && canaisConectados.size === canaisEsperados.size;
+}
 
 /**
  * Monta a sessão buscando o papel REAL + vínculo de vendedor do profile.
@@ -578,18 +585,34 @@ export async function reloadRoster() {
 
 /** Central de Leads — fila ATIVA (não encerrados). Histórico e métricas vêm por
  *  RPC (central_dashboard/central_ranking), não pelo cliente → escala. */
+const COLUNAS_CENTRAL = [
+  "id", "org_id", "nome", "telefone", "produto", "origem", "observacoes", "prioridade", "vendedor_id",
+  "distribuido_por", "status", "recebido_em", "distribuido_em", "ligacao_iniciada_em", "atendido_em",
+  "mensagem_enviada_em", "convertido_em", "encerrado_em", "motivo_perda", "lead_id", "external_id",
+  "criado_em", "atualizado_em", "excluido_em", "excluido_por", "excluido_motivo", "teste",
+  "prazo_interesse", "cidade", "subproduto", "faixa_credito", "objetivo",
+  "formulario_campos:wa_contato->lead->field_data",
+].join(",");
+
 async function reloadCentralLeads() {
   if (!supabaseEnabled) return;
   const sb = supabaseBrowser();
-  const { data, error } = await sb
-    .from("central_leads")
-    .select("*")
-    .is("encerrado_em", null)
-    .is("excluido_em", null) // lead excluído sai da fila (continua no banco)
-    .order("recebido_em", { ascending: false })
-    .limit(1000);
+  const buscar = (colunas: string) =>
+    buscarTodas<DbCentralLead>((de, ate) =>
+      sb
+        .from("central_leads")
+        .select(colunas)
+        .is("encerrado_em", null)
+        .is("excluido_em", null) // lead excluído sai da fila (continua no banco)
+        .order("recebido_em", { ascending: false })
+        .order("id")
+        .range(de, ate) as unknown as PromiseLike<{ data: DbCentralLead[] | null; error: unknown }>,
+    );
+  // Sem o payload bruto da Meta: a tela só usa as respostas do formulário.
+  let { data, error } = await buscar(COLUNAS_CENTRAL);
+  if (error) ({ data, error } = await buscar("*")); // coluna nova ainda não migrada
   if (!error && data) {
-    state.centralLeads = (data as DbCentralLead[]).map(centralLeadFromDb);
+    state.centralLeads = data.map(centralLeadFromDb);
     notify();
   }
 }
@@ -889,12 +912,17 @@ function attachRealtime() {
    * o canal volta, recarrega a tabela para recuperar o que passou nesse intervalo.
    */
   const caiu = new Set<string>();
-  const aoMudarStatus = (table: string, reload: () => Promise<void>) => (status: string) => {
-    if (status === "SUBSCRIBED") {
-      if (caiu.delete(table)) agendarRecarga(table, reload);
-    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-      caiu.add(table);
-    }
+  const aoMudarStatus = (table: string, reload: () => Promise<void>) => {
+    canaisEsperados.add(table);
+    return (status: string) => {
+      if (status === "SUBSCRIBED") {
+        canaisConectados.add(table);
+        if (caiu.delete(table)) agendarRecarga(table, reload);
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        canaisConectados.delete(table);
+        caiu.add(table);
+      }
+    };
   };
 
   const sub = (table: string, reload: () => Promise<void>) =>
@@ -995,7 +1023,6 @@ function attachRealtime() {
         (l) => centralLeadFromDb(l as unknown as DbCentralLead),
         // a fila só mostra o que não foi encerrado nem excluído
         (l) => !l.encerrado_em && !l.excluido_em,
-        1000, // mesmo teto do reload
       ),
     () => state.centralLeads,
     (l) => {
@@ -1077,7 +1104,7 @@ async function reconciliarEscopo(recarregarLeads: () => void, recarregarCentral:
       state.centralLeads = ficam;
       mudou = true;
     }
-    if (ids.size > ficam.length && ficam.length < 1000) recarregarCentral();
+    if (ids.size > ficam.length) recarregarCentral();
   }
   if (mudou) {
     notify();
@@ -2639,6 +2666,27 @@ export const performanceConfigApi = {
 // ============================================================
 // API — histórico de performance (snapshot por vendedor/ciclo)
 // ============================================================
+/**
+ * Toda a movimentação de leads desde `inicio`. O store guarda só os 500 eventos
+ * mais recentes, o que deixava o índice de performance abaixo do real.
+ */
+export async function carregarAuditDeLeads(inicio: Date): Promise<AuditLog[]> {
+  if (!supabaseEnabled) return state.audit;
+  const sb = supabaseBrowser();
+  const { data, error } = await buscarTodas<DbAuditLog>((de, ate) =>
+    sb
+      .from("audit_log")
+      .select("id,acao,entidade,entidade_id,usuario_email,detalhes,criado_em")
+      .eq("entidade", "lead")
+      .gte("criado_em", inicio.toISOString())
+      .order("criado_em", { ascending: false })
+      .order("id")
+      .range(de, ate),
+  );
+  if (error || !data) throw new Error("Não consegui carregar a movimentação do ciclo.");
+  return data.map(auditFromDb);
+}
+
 export const performanceHistoricoApi = {
   async upsert(snap: Omit<PerformanceSnapshot, "id" | "criadoEm">) {
     if (supabaseEnabled) {
@@ -2866,6 +2914,8 @@ export const sessionApi = {
       if (timerReconciliar) clearInterval(timerReconciliar);
       timerReconciliar = null;
       realtimeAttached = false;
+      canaisEsperados.clear();
+      canaisConectados.clear();
       await sb.removeAllChannels();
       await sb.auth.signOut();
     } else {

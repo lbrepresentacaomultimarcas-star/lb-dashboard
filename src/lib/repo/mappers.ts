@@ -386,6 +386,8 @@ export type DbCentralLead = {
   faixa_credito?: string | null;
   objetivo?: string | null;
   wa_contato?: unknown;
+  /** Só as respostas do formulário, sem o restante do payload da Meta. */
+  formulario_campos?: unknown;
 };
 
 export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
@@ -420,7 +422,7 @@ export const centralLeadFromDb = (r: DbCentralLead): CentralLead => ({
   subproduto: r.subproduto ?? undefined,
   faixaCredito: r.faixa_credito ?? undefined,
   objetivo: r.objetivo ?? undefined,
-  formulario: respostasDoFormulario(r.wa_contato),
+  formulario: respostasDoFormulario(r.wa_contato ?? { lead: { field_data: r.formulario_campos } }),
 });
 
 /**
