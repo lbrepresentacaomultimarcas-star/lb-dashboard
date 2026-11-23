@@ -362,6 +362,7 @@ async function logAudit(input: {
 // ============================================================
 let initPromise: Promise<void> | null = null;
 let realtimeAttached = false;
+let timerReconciliar: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Monta a sessão buscando o papel REAL + vínculo de vendedor do profile.
@@ -506,6 +507,31 @@ export function initStore(): Promise<void> {
   return initPromise;
 }
 
+/**
+ * Busca TODAS as linhas, de 1.000 em 1.000. O Supabase corta a resposta em 1.000
+ * sem avisar: passando disso, os registros mais antigos sumiam das telas e dos
+ * indicadores sem nenhum erro.
+ */
+const TAMANHO_PAGINA = 1000;
+async function buscarTodas<T>(
+  pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ data: T[] | null; error: unknown }> {
+  const todas: T[] = [];
+  for (let de = 0; ; de += TAMANHO_PAGINA) {
+    const { data, error } = await pagina(de, de + TAMANHO_PAGINA - 1);
+    if (error || !data) return { data: null, error: error ?? new Error("Resposta vazia") };
+    todas.push(...data);
+    if (data.length < TAMANHO_PAGINA) return { data: todas, error: null };
+  }
+}
+
+/** O banco recusa por regra de acesso com "0 linhas", sem erro: isto vira erro visível. */
+function exigirGravacao(data: unknown[] | null) {
+  if (!data?.length) {
+    throw new Error("A alteração não foi salva: registro indisponível ou sem permissão. Atualize a tela.");
+  }
+}
+
 async function reloadVendedores() {
   const sb = supabaseBrowser();
   const { data, error } = await sb.from("vendedores").select("*").order("criado_em");
@@ -516,7 +542,9 @@ async function reloadVendedores() {
 }
 async function reloadVendas() {
   const sb = supabaseBrowser();
-  const { data, error } = await sb.from("vendas").select("*").order("data", { ascending: false });
+  const { data, error } = await buscarTodas<DbVenda>((de, ate) =>
+    sb.from("vendas").select("*").order("data", { ascending: false }).order("id").range(de, ate),
+  );
   if (!error && data) {
     state.vendas = (data as DbVenda[]).map(vendaFromDb);
     notify();
@@ -662,15 +690,18 @@ async function notificarUsuario(
 async function patchCentral(id: string, patch: Partial<CentralLead>) {
   if (supabaseEnabled) {
     const sb = supabaseBrowser();
-    const { error } = await sb.from("central_leads").update(centralLeadToDb(patch)).eq("id", id);
+    const { data, error } = await sb.from("central_leads").update(centralLeadToDb(patch)).eq("id", id).select("id");
     if (error) throw error;
+    exigirGravacao(data);
   }
   state.centralLeads = state.centralLeads.map((c) => (c.id === id ? { ...c, ...patch } : c));
   notify();
 }
 async function reloadClientes() {
   const sb = supabaseBrowser();
-  const { data, error } = await sb.from("clientes").select("*").order("criado_em", { ascending: false });
+  const { data, error } = await buscarTodas<DbCliente>((de, ate) =>
+    sb.from("clientes").select("*").order("criado_em", { ascending: false }).order("id").range(de, ate),
+  );
   if (!error && data) {
     state.clientes = (data as DbCliente[]).map(clienteFromDb);
     notify();
@@ -678,7 +709,9 @@ async function reloadClientes() {
 }
 async function reloadLeads() {
   const sb = supabaseBrowser();
-  const { data, error } = await sb.from("leads").select("*").order("criado_em", { ascending: false });
+  const { data, error } = await buscarTodas<DbLead>((de, ate) =>
+    sb.from("leads").select("*").order("criado_em", { ascending: false }).order("id").range(de, ate),
+  );
   if (!error && data) {
     state.leads = (data as DbLead[]).map(leadFromDb);
     notify();
@@ -851,12 +884,25 @@ function attachRealtime() {
     );
   };
 
+  /*
+   * Eventos emitidos enquanto a conexão estava caída não são reenviados. Quando
+   * o canal volta, recarrega a tabela para recuperar o que passou nesse intervalo.
+   */
+  const caiu = new Set<string>();
+  const aoMudarStatus = (table: string, reload: () => Promise<void>) => (status: string) => {
+    if (status === "SUBSCRIBED") {
+      if (caiu.delete(table)) agendarRecarga(table, reload);
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      caiu.add(table);
+    }
+  };
+
   const sub = (table: string, reload: () => Promise<void>) =>
     sb.channel(`lb-${table}`)
       .on("postgres_changes", { event: "*", schema: "public", table }, () => {
         agendarRecarga(table, reload);
       })
-      .subscribe();
+      .subscribe(aoMudarStatus(table, reload));
 
   /*
    * A LINHA QUE MUDOU JÁ VEM NO EVENTO — não precisa baixar a tabela de novo.
@@ -887,8 +933,11 @@ function attachRealtime() {
     sb.channel(`lb-${table}`)
       .on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
         let nova: T[] | null = null;
+        // Linha grande demais chega com os campos longos cortados e `errors`
+        // preenchido: aplicar isso apagaria observações da tela.
+        const cortado = ((payload as { errors?: unknown[] | null }).errors?.length ?? 0) > 0;
         try {
-          nova = aplicar(ler(), payload as unknown as Evento);
+          nova = cortado ? null : aplicar(ler(), payload as unknown as Evento);
         } catch {
           nova = null; // qualquer surpresa no formato → recarrega inteiro
         }
@@ -900,7 +949,7 @@ function attachRealtime() {
         }
         agendarRecarga(table, reload);
       })
-      .subscribe();
+      .subscribe(aoMudarStatus(table, reload));
 
   /** Troca a linha se já existe, senão põe na frente. Devolve null quando não dá. */
   function aplicarLinha<T extends { id: string }>(
@@ -984,6 +1033,56 @@ function attachRealtime() {
   sub("performance_historico", reloadPerformanceHistorico);
   sub("temas", reloadTemas);
   sub("resultados_contemplacoes", reloadResultados);
+  sub("mensagens_prontas", reloadMensagensProntas);
+
+  /*
+   * LEAD TRANSFERIDO PARA OUTRA PESSOA.
+   *
+   * O tempo real respeita a regra de acesso: quando um lead deixa de ser do
+   * consultor, o evento simplesmente NÃO chega para ele, e o card antigo ficava
+   * na tela até recarregar. Quem vê a empresa inteira não tem esse problema.
+   * Por isso só o consultor confere, a cada 2 minutos e com a aba visível, a
+   * lista de ids (leve) do que ainda é dele.
+   */
+  const RECONCILIAR_MS = 120_000;
+  timerReconciliar = setInterval(() => {
+    const papel = state.session?.papel;
+    if (document.visibilityState !== "visible" || papel === "admin" || papel === "coordenador") return;
+    void reconciliarEscopo(() => agendarRecarga("leads", reloadLeads), () => agendarRecarga("central_leads", reloadCentralLeads));
+  }, RECONCILIAR_MS);
+}
+
+async function reconciliarEscopo(recarregarLeads: () => void, recarregarCentral: () => void) {
+  const sb = supabaseBrowser();
+  const [l, c] = await Promise.all([
+    buscarTodas<{ id: string }>((de, ate) => sb.from("leads").select("id").order("id").range(de, ate)),
+    buscarTodas<{ id: string }>((de, ate) =>
+      sb.from("central_leads").select("id").is("encerrado_em", null).is("excluido_em", null).order("id").range(de, ate),
+    ),
+  ]);
+  let mudou = false;
+  if (l.data) {
+    const ids = new Set(l.data.map((x) => x.id));
+    const ficam = state.leads.filter((x) => ids.has(x.id));
+    if (ficam.length !== state.leads.length) {
+      state.leads = ficam;
+      mudou = true;
+    }
+    if (ids.size > ficam.length) recarregarLeads();
+  }
+  if (c.data) {
+    const ids = new Set(c.data.map((x) => x.id));
+    const ficam = state.centralLeads.filter((x) => ids.has(x.id));
+    if (ficam.length !== state.centralLeads.length) {
+      state.centralLeads = ficam;
+      mudou = true;
+    }
+    if (ids.size > ficam.length && ficam.length < 1000) recarregarCentral();
+  }
+  if (mudou) {
+    notify();
+    bumpSync();
+  }
 }
 
 // ============================================================
@@ -1285,8 +1384,9 @@ export const vendedoresApi = {
   async update(id: string, patch: Partial<Vendedor>) {
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb.from("vendedores").update(vendedorToDb(patch)).eq("id", id);
+      const { data, error } = await sb.from("vendedores").update(vendedorToDb(patch)).eq("id", id).select("id");
       if (error) throw error;
+      exigirGravacao(data);
     }
     state.vendedores = state.vendedores.map((v) => (v.id === id ? { ...v, ...patch } : v));
     if (!supabaseEnabled) lsWrite(K_VENDEDORES, state.vendedores);
@@ -1462,8 +1562,9 @@ export const vendasApi = {
   async update(id: string, patch: Partial<Venda>, detalhesAudit?: string) {
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb.from("vendas").update(vendaToDb(patch)).eq("id", id);
+      const { data, error } = await sb.from("vendas").update(vendaToDb(patch)).eq("id", id).select("id");
       if (error) throw error;
+      exigirGravacao(data);
     }
     state.vendas = state.vendas.map((s) => (s.id === id ? { ...s, ...patch } : s));
     if (!supabaseEnabled) lsWrite(K_VENDAS, state.vendas);
@@ -1512,8 +1613,9 @@ export const clientesApi = {
   async update(id: string, patch: Partial<Cliente>) {
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb.from("clientes").update(clienteToDb(patch)).eq("id", id);
+      const { data, error } = await sb.from("clientes").update(clienteToDb(patch)).eq("id", id).select("id");
       if (error) throw error;
+      exigirGravacao(data);
     }
     state.clientes = state.clientes.map((c) => (c.id === id ? { ...c, ...patch } : c));
     if (!supabaseEnabled) lsWrite(K_CLIENTES, state.clientes);
@@ -2061,7 +2163,7 @@ export const centralLeadsApi = {
 
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
-      const { error } = await sb
+      const { data, error } = await sb
         .from("central_leads")
         .update(
           centralLeadToDb({
@@ -2070,8 +2172,10 @@ export const centralLeadsApi = {
             distribuidoEm: agora,
           }),
         )
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      exigirGravacao(data);
     }
 
     state.centralLeads = state.centralLeads.map((c) =>
@@ -2708,23 +2812,8 @@ export const sessionApi = {
       const u = data.user;
       if (!u) throw new Error("Sessão inválida");
       state.session = await buildSession(u);
-      await Promise.all([
-        reloadVendedores(),
-        reloadVendas(),
-        reloadClientes(),
-        reloadLeads(),
-        reloadMetas(),
-        reloadFeriados(),
-        reloadConfigProducao(),
-        reloadDashboardConfig(),
-        reloadPerformanceConfig(),
-        reloadPerformanceHistorico(),
-        reloadTemas(),
-        reloadAudit(),
-        reloadRoster(),
-        reloadCentralLeads(),
-        reloadNotificacoes(),
-      ]);
+      // Mesma carga de quem abre o app: antes faltavam mensagens e resultados.
+      await reloadAllData();
       attachRealtime();
     } else {
       state.session = {
@@ -2773,6 +2862,11 @@ export const sessionApi = {
     }
     if (supabaseEnabled) {
       const sb = supabaseBrowser();
+      // Fecha o tempo real desta pessoa: quem entrar depois abre os próprios canais.
+      if (timerReconciliar) clearInterval(timerReconciliar);
+      timerReconciliar = null;
+      realtimeAttached = false;
+      await sb.removeAllChannels();
       await sb.auth.signOut();
     } else {
       lsWrite(K_SESSION, null);
@@ -2789,6 +2883,15 @@ export const sessionApi = {
     state.performanceHistorico = [];
     state.temas = [];
     state.temaAtivo = TEMA_LB_PREMIUM;
+    // Em aparelho compartilhado, nada do usuário anterior fica na memória.
+    state.dashboardConfig = DASHBOARD_CONFIG_PADRAO;
+    state.mensagensProntas = [];
+    state.audit = [];
+    state.resultados = [];
+    state.roster = [];
+    state.equipes = [];
+    state.centralLeads = [];
+    state.notificacoes = [];
     notify();
     void logAudit({ acao: "logout", entidade: "sessao", detalhes: email });
   },

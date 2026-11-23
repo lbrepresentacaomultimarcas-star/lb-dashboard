@@ -129,16 +129,20 @@ export function useRankingPeriodo(
   config: ConfigProducao = CONFIG_PRODUCAO_PADRAO,
   feriados: Set<string> = new Set(),
 ): VendedorComDesempenho[] {
-  const local = desempenhoPorPeriodo(vendedores, vendas, metas, period, config, feriados).sort(
-    (a, b) => b.vendido - a.vendido,
+  const fromMs = period.from.getTime();
+  const toMs = period.to.getTime();
+  // Sem memo, este cálculo cruzava todas as vendas a CADA renderização.
+  const local = useMemo(
+    () => desempenhoPorPeriodo(vendedores, vendas, metas, period, config, feriados).sort((a, b) => b.vendido - a.vendido),
+    // period é recriado pela página; from/to/cicloKey capturam a mudança real.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vendedores, vendas, metas, fromMs, toMs, period.cicloKey, config, feriados],
   );
   const [dados, setDados] = useState<DadosRpc | null>(null);
   const tick = useRefreshTick();
   // Tick do realtime: venda/meta alterada em QUALQUER aparelho refaz a busca
   // na hora (o store recarrega e bumpa o sync-bus).
   const syncTick = useSyncTick();
-  const fromMs = period.from.getTime();
-  const toMs = period.to.getTime();
 
   useEffect(() => {
     if (!supabaseEnabled) {

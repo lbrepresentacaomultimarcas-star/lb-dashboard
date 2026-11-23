@@ -63,3 +63,35 @@ export function telefoneBonito(t?: string | null): string {
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return t ?? "";
 }
+
+/**
+ * Número completo para WhatsApp e ligação (DDI + DDD + número), ou null quando
+ * não dá para discar com segurança. Só calcula para o link: o dado salvo não muda.
+ *
+ * O tamanho decide, nunca o começo do número: "(55) 99999-1234" é um celular do
+ * DDD 55 (RS), com 11 dígitos, e não um número que "já tem DDI". Sem DDD (8 ou 9
+ * dígitos) não existe como adivinhar a cidade, então não gera link errado.
+ */
+export function numeroDiscavel(t?: string | null): string | null {
+  const original = (t ?? "").trim();
+  let d = soDigitos(original);
+  if (!d) return null;
+  if (d.length > 13 && d.startsWith("00")) d = d.slice(2);
+  else if (d.startsWith("0") && (d.length === 11 || d.length === 12)) d = d.slice(1);
+  if (original.startsWith("+") && !d.startsWith("55")) return d.length >= 8 ? d : null;
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) return d;
+  if (d.length < 10) return null;
+  return d;
+}
+
+export function linkWhatsapp(t?: string | null, texto?: string): string | null {
+  const n = numeroDiscavel(t);
+  if (!n) return null;
+  return `https://wa.me/${n}${texto ? `?text=${encodeURIComponent(texto)}` : ""}`;
+}
+
+export function linkLigacao(t?: string | null): string | null {
+  const n = numeroDiscavel(t);
+  return n ? `tel:+${n}` : null;
+}

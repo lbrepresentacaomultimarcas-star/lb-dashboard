@@ -1,5 +1,6 @@
 "use client";
 
+import { linkWhatsapp } from "@/lib/telefone";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Clock,
@@ -39,17 +40,8 @@ const EMPRESA = "LB Representações";
 
 /* ------------------------------- utilidades ------------------------------- */
 
-function onlyDigits(s: string) {
-  return s.replace(/\D/g, "");
-}
 
-function waLink(telefone: string, texto?: string) {
-  const d = onlyDigits(telefone);
-  if (!d) return null;
-  const numero = d.startsWith("55") ? d : `55${d}`;
-  const q = texto ? `?text=${encodeURIComponent(texto)}` : "";
-  return `https://wa.me/${numero}${q}`;
-}
+const waLink = (telefone: string, texto?: string) => linkWhatsapp(telefone, texto);
 
 /** Troca {{nome}}, {{consultor}}, {{produto}} e {{empresa}} pelos dados reais. */
 export function aplicarVariaveis(

@@ -1,5 +1,6 @@
 "use client";
 
+import { linkLigacao, linkWhatsapp } from "@/lib/telefone";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
@@ -53,15 +54,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
 // ---------- helpers ----------
-const soDigitos = (t?: string) => (t ?? "").replace(/\D/g, "");
-const waLink = (t?: string) => {
-  const d = soDigitos(t);
-  return d ? `https://wa.me/${d.length <= 11 ? "55" + d : d}` : undefined;
-};
-const telLink = (t?: string) => {
-  const d = soDigitos(t);
-  return d ? `tel:${d}` : undefined;
-};
+const waLink = (t?: string) => linkWhatsapp(t) ?? undefined;
+const telLink = (t?: string) => linkLigacao(t) ?? undefined;
 const fmtData = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
 const fmtHora = (iso?: string) =>
   iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";

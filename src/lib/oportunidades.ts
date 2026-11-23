@@ -16,6 +16,7 @@
 //  • sem informação suficiente, o motor diz isso com todas as letras em vez
 //    de inventar.
 
+import { linkWhatsapp } from "./telefone";
 import type { Lead, LeadStatus } from "./types";
 import { LEAD_STATUS_INFO, LEAD_TIPO_INFO } from "./types";
 
@@ -531,9 +532,6 @@ export function analisarOportunidades(leads: Lead[], agora: Date = new Date()): 
 
 /** Link do WhatsApp com mensagem pronta pro lead (null sem telefone). */
 export function whatsappDoLead(lead: Lead): string | null {
-  const digitos = (lead.telefone ?? "").replace(/\D/g, "");
-  if (!digitos) return null;
-  const numero = digitos.startsWith("55") ? digitos : `55${digitos}`;
   const msg = `Olá, ${lead.nome.split(" ")[0]}! Tudo bem? Aqui é da LB Representações. Podemos retomar nossa conversa?`;
-  return `https://wa.me/${numero}?text=${encodeURIComponent(msg)}`;
+  return linkWhatsapp(lead.telefone, msg);
 }

@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
   const { data: perfil } = await admin
     .from("profiles")
     .select("id, email, ativo, codigo_liberado")
-    .ilike("codigo_acesso", codigo) // o código não diferencia maiúscula
+    // ilike ignora maiúsculas, mas % e _ são curingas: sem escapar, "V00_" servia
+    // de código e permitia testar senha sem conhecer nenhum código real.
+    .ilike("codigo_acesso", codigo.replace(/[\\%_]/g, (c) => `\\${c}`))
     .maybeSingle();
 
   const p = perfil as

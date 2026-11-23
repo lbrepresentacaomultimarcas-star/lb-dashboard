@@ -22,6 +22,8 @@ export const maxDuration = 30;
 
 const BUCKET = "analise-docs";
 const MAX_BYTES = 10 * 1024 * 1024;
+// Mesmas chaves de TIPOS_DOCUMENTO (lib/analises.ts, que só roda no navegador).
+const TIPOS_ACEITOS = new Set(["identificacao", "renda", "residencia", "outros"]);
 const MIMES = new Set([
   "image/jpeg",
   "image/png",
@@ -72,7 +74,10 @@ export async function POST(req: NextRequest) {
 
   if (!(file instanceof File)) return Response.json({ error: "Arquivo obrigatório" }, { status: 400 });
   if (typeof analiseId !== "string" || !analiseId) return Response.json({ error: "analiseId obrigatório" }, { status: 400 });
-  if (typeof tipo !== "string" || !tipo) return Response.json({ error: "tipo obrigatório" }, { status: 400 });
+  // `tipo` entra no caminho do arquivo: só aceita os tipos conhecidos.
+  if (typeof tipo !== "string" || !TIPOS_ACEITOS.has(tipo)) {
+    return Response.json({ error: "Tipo de documento inválido" }, { status: 400 });
+  }
   if (file.size > MAX_BYTES) return Response.json({ error: "Arquivo maior que 10MB" }, { status: 400 });
   if (!MIMES.has(file.type)) {
     return Response.json({ error: `Tipo não aceito (${file.type || "desconhecido"})` }, { status: 400 });

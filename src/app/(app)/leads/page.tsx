@@ -1,5 +1,6 @@
 "use client";
 
+import { linkLigacao, linkWhatsapp } from "@/lib/telefone";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -146,19 +147,8 @@ function timeAgo(iso: string) {
   return `${Math.floor(months / 12)}a`;
 }
 
-function onlyDigits(s: string) {
-  return s.replace(/\D/g, "");
-}
-function waLink(telefone: string) {
-  const d = onlyDigits(telefone);
-  if (!d) return null;
-  const numero = d.startsWith("55") ? d : `55${d}`;
-  return `https://wa.me/${numero}`;
-}
-function telLink(telefone: string) {
-  const d = onlyDigits(telefone);
-  return d ? `tel:+${d.startsWith("55") ? d : "55" + d}` : null;
-}
+const waLink = (telefone: string) => linkWhatsapp(telefone);
+const telLink = (telefone: string) => linkLigacao(telefone);
 
 /** Carimbo "dd/mm/aaaa - hh:mm - Nome" pra cada observação. */
 function carimbo(nome: string) {
