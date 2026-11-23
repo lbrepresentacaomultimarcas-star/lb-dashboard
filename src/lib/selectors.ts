@@ -191,3 +191,13 @@ export function desempenhoPorPeriodo(
     };
   });
 }
+
+/**
+ * Quem aparece nas listas de ranking: consultor ativo, ou inativo que vendeu no
+ * período exibido. Sem isso, quem saiu da empresa seguia ocupando posição com
+ * R$ 0,00; e esconder quem vendeu faria o crédito daquele período sumir.
+ * Só filtra a LISTA: cálculo, ordem, metas e totais não mudam.
+ */
+export function visiveisNoRanking<T extends { ativo: boolean; vendido: number }>(ranking: T[]): T[] {
+  return ranking.filter((d) => d.ativo || d.vendido > 0);
+}

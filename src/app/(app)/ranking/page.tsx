@@ -15,7 +15,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { useMetas, useTemaAtivo, useVendas, useVendedores } from "@/lib/store";
-import { faturamentoMensal } from "@/lib/selectors";
+import { faturamentoMensal, visiveisNoRanking } from "@/lib/selectors";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { useCountUp } from "@/lib/use-count-up";
 import { brl, pct } from "@/lib/utils";
@@ -164,11 +164,12 @@ export default function RankingPage() {
     setPeriod(resolvePreset("mes-atual"));
   }, [resolvePreset]);
 
-  const ranking = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
+  const rankingCompleto = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
+  const ranking = useMemo(() => visiveisNoRanking(rankingCompleto), [rankingCompleto]);
   const top3 = ranking.slice(0, 3);
   const resto = ranking.slice(3, 10); // posições 4-10 na tabela
-  const total = ranking.reduce((a, d) => a + d.vendido, 0);
-  const metaGlobal = ranking.reduce((a, d) => a + d.metaMensal, 0);
+  const total = rankingCompleto.reduce((a, d) => a + d.vendido, 0);
+  const metaGlobal = rankingCompleto.reduce((a, d) => a + d.metaMensal, 0);
   const pctGlobal = metaGlobal > 0 ? (total / metaGlobal) * 100 : 0;
 
   const serie = useMemo(() => faturamentoMensal(vendas, 8, config, feriados), [vendas, config, feriados]);
@@ -186,7 +187,7 @@ export default function RankingPage() {
   const temaCustom = tema.slug !== "lb-premium";
   const visualJogo = temaVisualDoSlug(tema.slug);
   const tonesAtivo = temaCustom ? tonsDoTema(tema) : TONES;
-  const totalFech = ranking.reduce((a, d) => a + d.vendas, 0);
+  const totalFech = rankingCompleto.reduce((a, d) => a + d.vendas, 0);
   const mediaPerf = perfLinhas.length
     ? perfLinhas.reduce((a, l) => a + l.resultado.nota, 0) / perfLinhas.length
     : 0;

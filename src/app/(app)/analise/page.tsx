@@ -20,6 +20,7 @@ import {
 import { useAudit, useLeadsEscopo, useMetasEscopo, useVendasEscopo, useVendedoresEscopo } from "@/lib/store";
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { useRankingPeriodo } from "@/lib/use-ranking";
+import { visiveisNoRanking } from "@/lib/selectors";
 import { periodFromPreset, type Period } from "@/lib/period";
 import { metaTotalDoPeriodo, totalFaturado, vendasNoPeriodo } from "@/lib/selectors";
 import {
@@ -409,7 +410,7 @@ function CentroInteligencia() {
             <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
               <Trophy className="h-4 w-4" style={{ color: "#f5b301" }} /> Ranking do período
             </h3>
-            <RankingPremium rows={ranking} />
+            <RankingPremium rows={visiveisNoRanking(ranking)} />
           </div>
         </div>
       </div>

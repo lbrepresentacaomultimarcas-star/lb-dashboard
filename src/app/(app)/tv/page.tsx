@@ -11,7 +11,7 @@ import { useAudit, useLeads, useMetas, useVendas, useVendedores } from "@/lib/st
 import { useCicloProducao } from "@/lib/use-ciclo";
 import { useRankingPeriodo } from "@/lib/use-ranking";
 import { periodFromPreset } from "@/lib/period";
-import { metaTotalDoPeriodo, totalFaturado, vendasNoPeriodo } from "@/lib/selectors";
+import { metaTotalDoPeriodo, totalFaturado, vendasNoPeriodo, visiveisNoRanking } from "@/lib/selectors";
 import { analisarFunil, receitaPrevista } from "@/lib/analise-comercial";
 import { previsaoInteligente } from "@/lib/inteligencia";
 import { refreshOnAppFocus } from "@/lib/refresh";
@@ -96,7 +96,7 @@ function PainelTv() {
   );
   const nomeVendedor = (id: string) => vendedores.find((v) => v.id === id)?.nome ?? "—";
   const pctMeta = metaCiclo > 0 ? Math.min(100, (vendidoCiclo / metaCiclo) * 100) : 0;
-  const top = ranking.slice(0, 5);
+  const top = visiveisNoRanking(ranking).slice(0, 5);
   const maxTop = Math.max(top[0]?.vendido ?? 0, 1);
 
   return (

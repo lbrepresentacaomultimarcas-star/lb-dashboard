@@ -18,6 +18,7 @@ import {
   vendasNoPeriodo,
 } from "@/lib/selectors";
 import { useRankingPeriodo } from "@/lib/use-ranking";
+import { visiveisNoRanking } from "@/lib/selectors";
 import { temPermissao } from "@/lib/permissions";
 import { brl, pct } from "@/lib/utils";
 import { formatPeriodLabel, periodFromPreset, type Period, type PeriodPreset } from "@/lib/period";
@@ -118,6 +119,7 @@ export default function DashboardPage() {
   const perfFoco = minhaPerf ?? perfLinhas[0] ?? null;
 
   const ranking = useRankingPeriodo(period, vendedores, vendas, metas, config, feriados);
+  const rankingVisivel = visiveisNoRanking(ranking);
   // Gráfico mantém visão de 12 meses (tendência histórica) independente do filtro.
   const serie = faturamentoMensal(vendas, 12, config, feriados);
 
@@ -281,7 +283,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {ranking.map((d, i) => {
+              {rankingVisivel.map((d, i) => {
                 const pc = pctColor(d.pctMeta);
                 return (
                   <tr key={d.id} className="transition-colors hover:bg-white/[0.05]">
@@ -325,7 +327,7 @@ export default function DashboardPage() {
                   </tr>
                 );
               })}
-              {ranking.length === 0 && (
+              {rankingVisivel.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-white/45">
                     Nenhum vendedor cadastrado ainda.
