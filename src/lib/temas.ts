@@ -98,7 +98,12 @@ export type EstiloTema = {
   // — Extras (curingas) —
   sons?: { fanfarra?: string; destaque?: string };
   cssPersonalizado?: string;
+
+  // — Apelido/personagem por consultor (id do vendedor). Só exibição: o nome real não muda —
+  apelidos?: Record<string, ApelidoTema>;
 };
+
+export type ApelidoTema = { apelido?: string; personagem?: string };
 
 export type Tema = {
   id: string;
@@ -147,6 +152,20 @@ export type TemaSeed = { nome: string; slug: string; status: StatusTema; estilo:
 
 export const TEMAS_PADRAO: TemaSeed[] = [
   { nome: "LB Premium", slug: "lb-premium", status: "ativo", estilo: ESTILO_LB_PREMIUM },
+  {
+    nome: "Neon City",
+    slug: "neon-city",
+    status: "inativo",
+    estilo: {
+      descricao: "Cidade neon: rosa, roxo e azul elétrico.",
+      primaria: "#ff2d9b", secundaria: "#8b3dff", terciaria: "#19c8ff",
+      ouro: "#ff2d9b", prata: "#19c8ff", bronze: "#8b3dff",
+      background: "#07040f",
+      trofeu: "🏆", medalhas: { ouro: "👑", prata: "⚡", bronze: "🔥" },
+      efeitos: { particulas: false, confetes: false, brilho: false, animacoes: true, particulasCores: ["#ff2d9b", "#19c8ff"] },
+      campanha: { nome: "Neon City", textoMotivacional: "A cidade é de quem fecha. Suba de nível!" },
+    },
+  },
   {
     nome: "Copa do Mundo",
     slug: "copa-do-mundo",

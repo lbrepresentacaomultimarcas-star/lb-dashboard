@@ -100,6 +100,7 @@ const NAV: (NavItem | NavGroup)[] = [
     icon: Users,
     minimo: "admin",
     items: [
+      { href: "/configuracoes/personalizacao", label: "Personalização Visual", icon: Palette, minimo: "admin" },
       { href: "/admin/colaboradores", label: "Colaboradores", icon: Shield, minimo: "admin" },
       { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
       { href: "/admin/eventos", label: "Evento em destaque", icon: Flame, minimo: "admin" },
@@ -230,7 +231,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] md:flex">
+    <aside data-lb-area="sidebar" className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] md:flex">
       <div className="flex h-16 items-center gap-3 border-b border-[var(--color-border)] px-5">
         <Logo size={36} />
         <div className="min-w-0">

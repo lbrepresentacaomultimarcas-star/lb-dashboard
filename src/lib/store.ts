@@ -2540,8 +2540,10 @@ export const temasApi = {
       const sb = supabaseBrowser();
       // desativa o ativo atual (índice único garante 1) e ativa o novo
       await sb.from("temas").update({ status: "inativo" }).eq("status", "ativo");
-      const { error } = await sb.from("temas").update({ status: "ativo" }).eq("id", id);
+      const { data, error } = await sb.from("temas").update({ status: "ativo" }).eq("id", id).select("id");
       if (error) throw error;
+      // O RLS recusa em silêncio (0 linhas, sem erro): sem isto a tela diria que trocou.
+      if (!data?.length) throw new Error("Apenas o administrador pode alterar o tema.");
     }
     state.temas = state.temas.map((t) => ({
       ...t,
@@ -2554,6 +2556,21 @@ export const temasApi = {
   },
   async setStatus(id: string, status: StatusTema) {
     await temasApi.update(id, { status });
+  },
+  /** Devolve o tema do slug, criando a partir do pacote padrão se ainda não existir. */
+  async garantir(slug: string): Promise<Tema> {
+    const existente = state.temas.find((t) => t.slug === slug);
+    if (existente) return existente;
+    const seed = TEMAS_PADRAO.find((t) => t.slug === slug);
+    if (!seed) throw new Error(`Tema "${slug}" não encontrado`);
+    await temasApi.add({ nome: seed.nome, slug: seed.slug, status: "inativo", estilo: seed.estilo });
+    const criado = state.temas.find((t) => t.slug === slug);
+    if (!criado) throw new Error(`Não foi possível criar o tema "${slug}"`);
+    return criado;
+  },
+  async ativarPorSlug(slug: string) {
+    const tema = await temasApi.garantir(slug);
+    if (tema.status !== "ativo") await temasApi.ativar(tema.id);
   },
   /** Semeia os 5 temas padrão (só se ainda não houver tema). */
   async seedPadrao() {

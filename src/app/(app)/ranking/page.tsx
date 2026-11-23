@@ -31,6 +31,8 @@ import { EvolucaoTag } from "@/components/perf-badge";
 import { PeriodFilter } from "@/components/period-filter";
 import { TemaProvider } from "@/components/tema-provider";
 import { BannerCampanha, BarraProgresso, EfeitosTema, Premiacoes } from "@/components/tema-gamificacao";
+import { RankingJogo } from "@/components/ranking-jogo";
+import { temaVisualDoSlug } from "@/lib/tema-visual";
 
 const PODIUM_ORDER: (0 | 1 | 2)[] = [1, 0, 2]; // 2º, 1º, 3º
 
@@ -182,6 +184,7 @@ export default function RankingPage() {
   // ===== Tema ativo (camada VISUAL) — LB Premium reproduz o atual =====
   const tema = useTemaAtivo();
   const temaCustom = tema.slug !== "lb-premium";
+  const visualJogo = temaVisualDoSlug(tema.slug);
   const tonesAtivo = temaCustom ? tonsDoTema(tema) : TONES;
   const totalFech = ranking.reduce((a, d) => a + d.vendas, 0);
   const mediaPerf = perfLinhas.length
@@ -254,7 +257,7 @@ export default function RankingPage() {
       />
       </>
       )}
-      {temaCustom && <EfeitosTema tema={tema} confeteAtivo={algumaMetaBatida} />}
+      {temaCustom && visualJogo === "padrao" && <EfeitosTema tema={tema} confeteAtivo={algumaMetaBatida} />}
 
       <div className="relative grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* ===================== COLUNA PRINCIPAL ===================== */}
@@ -305,6 +308,11 @@ export default function RankingPage() {
             </div>
           )}
 
+          {visualJogo !== "padrao" && (
+            <RankingJogo ranking={ranking} tema={tema} visual={visualJogo} chavePeriodo={period.cicloKey ?? `${period.from.getTime()}-${period.to.getTime()}`} />
+          )}
+
+          {visualJogo === "padrao" && (<>
           {/* ===================== PÓDIO ===================== */}
           {top3.length === 0 ? (
             <div className="lb-glass rounded-2xl p-12 text-center text-white/60">Sem vendedores pra ranquear ainda.</div>
@@ -521,6 +529,7 @@ export default function RankingPage() {
               </table>
             </div>
           </div>
+          </>)}
         </div>
 
         {/* ===================== PAINEL DIREITO ===================== */}

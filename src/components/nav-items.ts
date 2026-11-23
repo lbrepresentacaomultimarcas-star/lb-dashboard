@@ -66,6 +66,7 @@ export const NAV: (NavItem | NavGroup)[] = [
       { href: "/ranking", label: "Rankings", icon: Trophy },
       { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
+      { href: "/configuracoes/personalizacao", label: "Personalização Visual", icon: Palette, minimo: "admin" },
       { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
     ],
   },

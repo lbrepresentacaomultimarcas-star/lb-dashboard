@@ -1,0 +1,272 @@
+/*
+ * TEMAS VISUAIS GLOBAIS — ativados por <html data-lb-tema="neon|natal">.
+ * Sem o atributo, nada aqui se aplica: o tema padrão fica idêntico.
+ *
+ * O Tailwind 4 resolve cada cor por variável, então trocar a escala abaixo
+ * repinta também as classes fixas (text-indigo-300, bg-blue-500…) de todas as
+ * telas. Verde, vermelho e âmbar NÃO mudam: indicam sucesso, erro e alerta.
+ */
+
+:root[data-lb-tema="neon"] {
+  color-scheme: dark;
+  --color-bg: #07040f;
+  --color-surface: #120a20;
+  --color-surface-2: #1d1131;
+  --color-border: #3b2459;
+  --color-muted: #a294bf;
+  --color-text: #f6f1ff;
+  --color-text-dim: #c8bce0;
+  --color-brand: #c81e78;
+  --color-brand-hover: #a8175f;
+  --color-success: #34e3a0;
+  --color-warn: #ffc247;
+  --color-danger: #ff6583;
+  --lbx-brand-texto: #ff8fd0;
+  --lbx-a: #ff2d9b;
+  --lbx-b: #8b3dff;
+  --lbx-c: #19c8ff;
+  --lbx-fundo:
+    radial-gradient(ellipse 70% 45% at 85% 0%, rgba(139, 61, 255, 0.28), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 8% 12%, rgba(255, 45, 155, 0.17), transparent 70%),
+    linear-gradient(180deg, #07040f 0%, #0d0619 62%, #1a0a2c 100%);
+  --lbx-fonte: var(--font-lbx-neon), var(--font-geist-sans), system-ui, sans-serif;
+
+  --color-indigo-200: #ffc8e8; --color-indigo-300: #ff9ed6; --color-indigo-400: #ff6cbe;
+  --color-indigo-500: #f0259b; --color-indigo-600: #c81e78; --color-indigo-700: #9c1660;
+  --color-blue-200: #b8e8ff; --color-blue-300: #7fd6ff; --color-blue-400: #38bdff;
+  --color-blue-500: #0ea5ff; --color-blue-600: #0284e0; --color-blue-700: #0669b0;
+  --color-violet-200: #e0ceff; --color-violet-300: #cbaaff; --color-violet-400: #b184ff;
+  --color-violet-500: #9450ff; --color-violet-600: #7a2ff0; --color-violet-700: #6220c4;
+  --color-purple-200: #e0ceff; --color-purple-300: #cbaaff; --color-purple-400: #b184ff;
+  --color-purple-500: #9450ff; --color-purple-600: #7a2ff0; --color-purple-700: #6220c4;
+}
+
+:root[data-lb-tema="natal"] {
+  color-scheme: dark;
+  --color-bg: #07130e;
+  --color-surface: #0f2219;
+  --color-surface-2: #173224;
+  --color-border: #2f5340;
+  --color-muted: #9ab5a6;
+  --color-text: #fcf8ee;
+  --color-text-dim: #d0dcd2;
+  --color-brand: #b3202f;
+  --color-brand-hover: #921824;
+  --color-success: #5ee592;
+  --color-warn: #fbbf24;
+  --color-danger: #ff8678;
+  --lbx-brand-texto: #f6d365;
+  --lbx-a: #e2333f;
+  --lbx-b: #1f9d55;
+  --lbx-c: #f2c94c;
+  --lbx-fundo:
+    radial-gradient(ellipse 65% 42% at 88% 0%, rgba(179, 32, 47, 0.3), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 6% 10%, rgba(31, 157, 85, 0.2), transparent 70%),
+    linear-gradient(180deg, #07130e 0%, #0a1c14 65%, #10291d 100%);
+  --lbx-fonte: var(--font-lbx-natal), Georgia, serif;
+
+  --color-indigo-200: #c6f2d6; --color-indigo-300: #98e6b6; --color-indigo-400: #66d492;
+  --color-indigo-500: #2fa862; --color-indigo-600: #1f8a4e; --color-indigo-700: #17693c;
+  --color-blue-200: #e6f6fd; --color-blue-300: #cfe9f5; --color-blue-400: #a9d8ea;
+  --color-blue-500: #6fb7d1; --color-blue-600: #3b8aa8; --color-blue-700: #2a6b84;
+  --color-violet-200: #fbe8a6; --color-violet-300: #f7d774; --color-violet-400: #f0c243;
+  --color-violet-500: #d9a521; --color-violet-600: #b3841a; --color-violet-700: #8a6414;
+  --color-purple-200: #fbe8a6; --color-purple-300: #f7d774; --color-purple-400: #f0c243;
+  --color-purple-500: #d9a521; --color-purple-600: #b3841a; --color-purple-700: #8a6414;
+}
+
+/* ---------- estrutura ---------- */
+:root[data-lb-tema] { background: var(--lbx-fundo) fixed var(--color-bg); }
+:root[data-lb-tema] body { background: transparent; }
+:root[data-lb-tema] h1,
+:root[data-lb-tema] h2 { font-family: var(--lbx-fonte); letter-spacing: -0.01em; }
+:root[data-lb-tema="neon"] h1 { text-transform: uppercase; letter-spacing: 0.01em; }
+
+/* a marca escura é ótima como fundo de botão, mas ilegível como texto */
+:root[data-lb-tema] .text-\[var\(--color-brand\)\] { color: var(--lbx-brand-texto); }
+
+/* textos brancos muito transparentes ficam abaixo do contraste mínimo */
+:root[data-lb-tema] .text-white\/20,
+:root[data-lb-tema] .text-white\/25,
+:root[data-lb-tema] .text-white\/30,
+:root[data-lb-tema] .text-white\/35,
+:root[data-lb-tema] .text-white\/40,
+:root[data-lb-tema] .text-white\/45,
+:root[data-lb-tema] .text-white\/50,
+:root[data-lb-tema] .text-white\/55,
+:root[data-lb-tema] .text-white\/60 { color: var(--color-text-dim); }
+
+/* cores fixas em style="" que ficam escuras demais sobre os fundos dos temas */
+:root[data-lb-tema] :is([style^="color: var(--color-brand)"], [style*="; color: var(--color-brand)"]) { color: var(--lbx-brand-texto) !important; }
+:root[data-lb-tema] :is([style^="color: rgb(37, 99, 255)"], [style*="; color: rgb(37, 99, 255)"]) { color: var(--color-blue-300) !important; }
+:root[data-lb-tema] :is([style^="color: rgb(239, 68, 68)"], [style*="; color: rgb(239, 68, 68)"],
+  [style^="color: rgb(244, 63, 94)"], [style*="; color: rgb(244, 63, 94)"]) { color: var(--color-danger) !important; }
+:root[data-lb-tema] :is([style^="color: rgba(255, 255, 255, 0.3"], [style*="; color: rgba(255, 255, 255, 0.3"],
+  [style^="color: rgba(255, 255, 255, 0.4"], [style*="; color: rgba(255, 255, 255, 0.4"],
+  [style^="color: rgba(255, 255, 255, 0.5"], [style*="; color: rgba(255, 255, 255, 0.5"]) { color: var(--color-text-dim) !important; }
+
+/* o vermelho do pacote de Natal é escuro demais para título e texto de campanha */
+:root[data-lb-tema="natal"] .lb-tema { --tema-primaria: #f6d365 !important; }
+
+/* claro/escuro não se aplica enquanto um tema especial está ativo */
+:root[data-lb-tema] [data-lb-claro-escuro] { display: none; }
+
+/* deixa a cena aparecer atrás do conteúdo */
+:root[data-lb-tema] .min-h-screen.bg-\[var\(--color-bg\)\],
+:root[data-lb-tema] .lb-tema { background: transparent !important; }
+:root[data-lb-tema] .lb-stage { background: transparent; }
+:root[data-lb-tema] .lb-stage > .pointer-events-none { display: none; }
+
+:root[data-lb-tema] [data-lb-area="sidebar"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lbx-b) 16%, var(--color-surface)), var(--color-surface) 45%);
+}
+:root[data-lb-tema] [data-lb-area="topbar"] {
+  position: relative;
+  background: linear-gradient(90deg, var(--color-surface), color-mix(in srgb, var(--lbx-a) 13%, var(--color-surface)));
+}
+:root[data-lb-tema="neon"] [data-lb-area="topbar"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--lbx-a), var(--lbx-b), var(--lbx-c));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lbx-a) 70%, transparent);
+  pointer-events: none;
+}
+/* cordão de luzes de Natal */
+:root[data-lb-tema="natal"] [data-lb-area="topbar"]::after {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  inset: auto 0 -5px;
+  height: 9px;
+  background:
+    radial-gradient(circle 3.5px at 12px 5px, #ff5a5f 92%, transparent),
+    radial-gradient(circle 3.5px at 40px 5px, #f6d365 92%, transparent),
+    radial-gradient(circle 3.5px at 68px 5px, #5ee592 92%, transparent);
+  background-size: 84px 9px;
+  animation: lbx-luzes 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes lbx-luzes { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
+
+:root[data-lb-tema] main .bg-\[var\(--color-surface\)\] {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lbx-c) 22%, transparent), 0 10px 26px -18px var(--lbx-a);
+}
+:root[data-lb-tema] .bg-\[var\(--color-brand\)\] {
+  background-image: linear-gradient(100deg, var(--color-brand), color-mix(in srgb, var(--color-brand) 74%, #000));
+}
+:root[data-lb-tema] .lb-card-premium {
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  border-color: color-mix(in srgb, var(--lbx-c) 24%, var(--color-border));
+}
+:root[data-lb-tema] .lb-card-premium:hover {
+  border-color: color-mix(in srgb, var(--lbx-a) 60%, transparent);
+  box-shadow: 0 18px 44px -16px rgba(0, 0, 0, 0.6), 0 0 24px -8px var(--lbx-a);
+}
+:root[data-lb-tema] .lb-glass,
+:root[data-lb-tema] .lb-glass-strong {
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  border-color: color-mix(in srgb, var(--lbx-c) 20%, var(--color-border));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:root[data-lb-tema] ::-webkit-scrollbar-thumb,
+:root[data-lb-tema] .lb-scroll::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--lbx-a), var(--lbx-b)); }
+:root[data-lb-tema] ::selection { background: color-mix(in srgb, var(--lbx-a) 45%, transparent); }
+:root[data-lb-tema] :focus-visible { outline: 2px solid var(--lbx-c); outline-offset: 2px; }
+:root[data-lb-tema] svg [stroke="#6366f1"] { stroke: var(--lbx-a); }
+:root[data-lb-tema] svg [stroke="#2a2a3a"] { stroke: var(--color-border); }
+
+/* ---------- cena de fundo (atrás de todo o conteúdo) ---------- */
+.lbx-cena { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.lbx-horizonte { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34vh; min-height: 170px; opacity: 0.5; }
+.lbx-arvores { position: absolute; right: 0; bottom: 0; width: min(46vw, 430px); opacity: 0.55; }
+.lbx-floco {
+  position: absolute;
+  top: -12px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.62;
+  animation: lbx-neve linear infinite;
+}
+@keyframes lbx-neve {
+  from { transform: translate3d(0, -12px, 0); }
+  to { transform: translate3d(26px, 104vh, 0); }
+}
+@media (max-width: 640px) {
+  .lbx-floco:nth-child(2n) { display: none; }
+  .lbx-horizonte { opacity: 0.32; }
+  .lbx-arvores { opacity: 0.32; }
+}
+
+/* ---------- ranking em modo jogo ---------- */
+.lbx-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--lbx-c) 26%, var(--color-border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+}
+.lbx-campeao {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--lbx-c) 70%, transparent);
+  background:
+    radial-gradient(ellipse 60% 110% at 12% 50%, color-mix(in srgb, var(--lbx-a) 34%, transparent), transparent 72%),
+    radial-gradient(ellipse 55% 110% at 100% 0%, color-mix(in srgb, var(--lbx-b) 36%, transparent), transparent 72%),
+    var(--color-surface);
+  box-shadow: 0 0 34px -12px var(--lbx-a);
+}
+.lbx-moldura {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  padding: 3px;
+  border-radius: 9999px;
+  background: conic-gradient(from 140deg, var(--lbx-a), var(--lbx-b), var(--lbx-c), var(--lbx-a));
+}
+.lbx-barra { height: 8px; overflow: hidden; border-radius: 9999px; background: color-mix(in srgb, var(--color-text) 13%, transparent); }
+.lbx-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--lbx-a), var(--lbx-b) 58%, var(--lbx-c));
+  transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lbx-nivel {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: color-mix(in srgb, var(--lbx-b) 62%, #000);
+  white-space: nowrap;
+}
+.lbx-subindo { animation: lbx-pulso 1.8s ease-in-out infinite; }
+@keyframes lbx-pulso { 0%, 100% { opacity: 0.78; } 50% { opacity: 1; } }
+.lbx-sobe { animation: lbx-sobe 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lbx-desce { animation: lbx-desce 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes lbx-sobe { from { transform: translateY(26px); opacity: 0.35; } to { transform: none; opacity: 1; } }
+@keyframes lbx-desce { from { transform: translateY(-26px); opacity: 0.35; } to { transform: none; opacity: 1; } }
+.lbx-confete {
+  position: absolute;
+  top: -10px;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  pointer-events: none;
+  animation: lbx-confete 2.6s ease-in both;
+}
+@keyframes lbx-confete {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(230px) rotate(520deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lbx-floco, .lbx-confete { display: none; }
+  .lbx-subindo, .lbx-sobe, .lbx-desce,
+  :root[data-lb-tema="natal"] [data-lb-area="topbar"]::after { animation: none; }
+  .lbx-barra > span { transition: none; }
+}

@@ -16,6 +16,7 @@ export function Topbar() {
   const { setOpen } = useMobileNav();
   return (
     <header
+      data-lb-area="topbar"
       className="flex h-16 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 md:px-6"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >

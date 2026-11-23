@@ -8,6 +8,7 @@ import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
+import { SeloTemaLogin } from "@/components/tema-visual";
 import { BrandBar } from "@/components/marca-dupla";
 import { KeyRound, LogIn, UserPlus } from "lucide-react";
 import { BLOQUEADO } from "@/lib/mensagens-acesso";
@@ -115,6 +116,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-4 flex h-40 w-40 items-center justify-center">
             <Logo size={160} className="drop-shadow-lg" />
           </div>
+          <SeloTemaLogin />
           <h1 className="text-2xl font-semibold">LB Representações</h1>
           <p className="mt-1 text-sm text-[var(--color-text-dim)]">
             {mode === "entrar"
