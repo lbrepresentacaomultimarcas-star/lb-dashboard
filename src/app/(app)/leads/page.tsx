@@ -1,6 +1,8 @@
 "use client";
 
 import { instanteDaVenda } from "@/lib/data-venda";
+import { exigePerfil, perfilPendente } from "@/lib/perfil-cliente";
+import { BadgePendente, BadgePerfil, ModalPerfil, PainelPerfilNegocio, usePerfis } from "@/components/leads/perfil-cliente";
 import { linkLigacao, linkWhatsapp } from "@/lib/telefone";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -23,6 +25,7 @@ import {
   MessageCircle,
   MessageCircleOff,
   MoreVertical,
+  Fingerprint,
   Mountain,
   Pencil,
   Phone,
@@ -370,6 +373,19 @@ export default function LeadsPage() {
   const [compartilhar, setCompartilhar] = useState<Lead | null>(null);
   const [timelineDe, setTimelineDe] = useState<Lead | null>(null);
   const [novoVendedorId, setNovoVendedorId] = useState("");
+  /* ------------------------- perfil do cliente ------------------------- */
+  const { ativos: perfisAtivos, porId: perfilPorId } = usePerfis();
+  const [filtroPerfil, setFiltroPerfil] = useState<string>("todos");
+  const [pedidoPerfil, setPedidoPerfil] = useState<{
+    lead: Pick<Lead, "nome" | "perfilClienteId" | "perfilObservacao">;
+    obrigatorio: boolean;
+    responder: (r: { perfilId: string; obs: string } | null) => void;
+  } | null>(null);
+  /** Abre o modal e espera a escolha. null = a pessoa cancelou. */
+  const pedirPerfil = (lead: Pick<Lead, "nome" | "perfilClienteId" | "perfilObservacao">, obrigatorio: boolean) =>
+    new Promise<{ perfilId: string; obs: string } | null>((responder) => setPedidoPerfil({ lead, obrigatorio, responder }));
+  const nomeDoPerfilPor = (id?: string) =>
+    id ? (roster.find((p) => p.id === id)?.nome ?? (id === session?.id ? session?.nome : undefined)) : undefined;
   // drag & drop entre etapas
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<LeadStatus | null>(null);
@@ -406,7 +422,7 @@ export default function LeadsPage() {
     return base.filter((l) => dias(l.compartilhadoEm) <= limite);
   }, [leads, recorte, periodo]);
 
-  const filtrados = useMemo(
+  const porVendedor = useMemo(
     () =>
       filtroVendedor === "todos"
         ? recortados
@@ -419,6 +435,13 @@ export default function LeadsPage() {
             : recortados.filter((l) => l.vendedorId === filtroVendedor),
     [recortados, filtroVendedor, roster],
   );
+
+  const filtrados = useMemo(() => {
+    if (filtroPerfil === "todos") return porVendedor;
+    if (filtroPerfil === "pendente") return porVendedor.filter(perfilPendente);
+    if (filtroPerfil === "sem") return porVendedor.filter((l) => !l.perfilClienteId);
+    return porVendedor.filter((l) => l.perfilClienteId === filtroPerfil);
+  }, [porVendedor, filtroPerfil]);
 
   /** Contadores dos recortes — sempre sobre o total, nunca número fixo. */
   const contagens = useMemo(() => {
@@ -602,6 +625,17 @@ export default function LeadsPage() {
     const valorRaw =
       (new FormData(formEl).get("valor") as string | null) ?? form.valorEstimado;
 
+    // Passou do primeiro atendimento sem perfil: pergunta antes de gravar.
+    let perfilNovo: Partial<Lead> = {};
+    if (perfisAtivos.length > 0 && exigePerfil(editing?.status, form.status, !!editing?.perfilClienteId)) {
+      const r = await pedirPerfil({ nome: form.nome.trim(), perfilClienteId: undefined, perfilObservacao: undefined }, true);
+      if (!r) {
+        notify.info("Nada foi salvo", "Escolha o perfil do cliente para avançar de etapa.");
+        return;
+      }
+      perfilNovo = { perfilClienteId: r.perfilId, perfilObservacao: r.obs || undefined };
+    }
+
     setSalvando(true);
     try {
       // Histórico de atendimento: nova observação carimbada vai pro topo.
@@ -623,6 +657,7 @@ export default function LeadsPage() {
         vendedorId: form.vendedorId || undefined,
         origem: form.origem.trim() || undefined,
         observacao: observacaoFinal || undefined,
+        ...perfilNovo,
       };
       // Fechar pelo FORMULÁRIO também gera venda (antes só o arrastar gerava —
       // fechamento pelo modal deixava faturamento/ranking/comissão sem a venda).
@@ -797,8 +832,17 @@ export default function LeadsPage() {
   async function mudarStatus(l: Lead, status: LeadStatus) {
     // Travas ANTES de gravar: fechamento sem vendedor/valor não acontece.
     if (status === "fechamento" && !podeFechar(l)) return;
+    let perfil: Partial<Lead> = {};
+    if (perfisAtivos.length > 0 && exigePerfil(l.status, status, !!l.perfilClienteId)) {
+      const r = await pedirPerfil(l, true);
+      if (!r) {
+        notify.info("Movimentação cancelada", "Escolha o perfil do cliente para avançar de etapa.");
+        return;
+      }
+      perfil = { perfilClienteId: r.perfilId, perfilObservacao: r.obs || undefined };
+    }
     try {
-      await leadsApi.update(l.id, { status });
+      await leadsApi.update(l.id, { status, ...perfil });
       if (status === "fechamento" && l.vendedorId) {
         const ok = await registrarVendaDoFechamento({
           leadId: l.id,
@@ -816,6 +860,17 @@ export default function LeadsPage() {
       }
     } catch (e) {
       notify.error("Erro", e instanceof Error ? e.message : undefined);
+    }
+  }
+
+  async function alterarPerfil(l: Lead) {
+    const r = await pedirPerfil(l, false);
+    if (!r) return;
+    try {
+      await leadsApi.update(l.id, { perfilClienteId: r.perfilId, perfilObservacao: r.obs });
+      notify.success("Perfil do cliente salvo");
+    } catch (e) {
+      notify.error("Não consegui salvar o perfil", e instanceof Error ? e.message : undefined);
     }
   }
 
@@ -1026,6 +1081,23 @@ export default function LeadsPage() {
                     {v.nome}
                   </option>
                 ))}
+              </select>
+            )}
+            {perfisAtivos.length > 0 && (
+              <select
+                aria-label="Perfil do cliente"
+                value={filtroPerfil}
+                onChange={(e) => setFiltroPerfil(e.target.value)}
+                className="h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-white backdrop-blur"
+              >
+                <option className="bg-[#0b0d16]" value="todos">Todos os perfis</option>
+                {perfisAtivos.map((p) => (
+                  <option className="bg-[#0b0d16]" key={p.id} value={p.id}>
+                    {p.emoji} {p.nome}
+                  </option>
+                ))}
+                <option className="bg-[#0b0d16]" value="pendente">Perfil pendente</option>
+                <option className="bg-[#0b0d16]" value="sem">Sem perfil</option>
               </select>
             )}
             {/* Marcar 270 caixinhas na mão não é opção: seleciona de uma vez
@@ -1309,6 +1381,8 @@ export default function LeadsPage() {
                         if (altoTicket) tags.push({ icon: Star, label: "Alto ticket", color: "#fcd34d", bg: "rgba(245,158,11,.16)" });
                         if (prioridade) tags.push({ icon: Zap, label: "Prioridade", color: "#c4b5fd", bg: "rgba(139,92,246,.16)" });
                         if (fechamentoProx) tags.push({ icon: Target, label: "Fechar", color: "#6ee7b7", bg: "rgba(16,185,129,.16)" });
+                        const perfilDoCard = l.perfilClienteId ? perfilPorId.get(l.perfilClienteId) : undefined;
+                        const pendenteDoCard = perfisAtivos.length > 0 && perfilPendente(l);
 
                         return (
                           <div key={l.id} className="lb-fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
@@ -1424,8 +1498,17 @@ export default function LeadsPage() {
                                 )}
 
                                 {/* indicadores premium */}
-                                {tags.length > 0 && (
+                                {(tags.length > 0 || perfilDoCard || pendenteDoCard) && (
                                   <div className="relative mt-1.5 flex flex-wrap items-center gap-1">
+                                    {perfilDoCard && (
+                                      <BadgePerfil
+                                        perfil={perfilDoCard}
+                                        definidoPor={nomeDoPerfilPor(l.perfilDefinidoPor)}
+                                        definidoEm={l.perfilDefinidoEm}
+                                        destaque={!!l.compartilhadoEm}
+                                      />
+                                    )}
+                                    {pendenteDoCard && <BadgePendente onClick={() => void alterarPerfil(l)} />}
                                     {tags.map((t) => (
                                       <span
                                         key={t.label}
@@ -1500,6 +1583,17 @@ export default function LeadsPage() {
                                       >
                                         <MessageCircle className="h-3.5 w-3.5" />
                                       </a>
+                                    )}
+                                    {perfisAtivos.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void alterarPerfil(l)}
+                                        className="shrink-0 rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-sky-300"
+                                        title={perfilDoCard ? "Alterar perfil do cliente" : "Definir perfil do cliente"}
+                                        aria-label={perfilDoCard ? "Alterar perfil do cliente" : "Definir perfil do cliente"}
+                                      >
+                                        <Fingerprint className="h-3.5 w-3.5" />
+                                      </button>
                                     )}
                                     <Dropdown
                                       trigger={<MoreVertical className="h-3.5 w-3.5" />}
@@ -1713,6 +1807,13 @@ export default function LeadsPage() {
         icon={<Briefcase className="h-5 w-5" />}
       >
         <form onSubmit={salvar} className="space-y-4">
+          {editing && perfisAtivos.length > 0 && (
+            <PainelPerfilNegocio
+              lead={leads.find((x) => x.id === editing.id) ?? editing}
+              nomeDe={nomeDoPerfilPor}
+              onAlterar={() => void alterarPerfil(leads.find((x) => x.id === editing.id) ?? editing)}
+            />
+          )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="nome">
@@ -1942,6 +2043,36 @@ export default function LeadsPage() {
               </p>
             )}
           </div>
+          {compartilhar && perfisAtivos.length > 0 && (() => {
+            const atual = leads.find((x) => x.id === compartilhar.id) ?? compartilhar;
+            const p = atual.perfilClienteId ? perfilPorId.get(atual.perfilClienteId) : undefined;
+            return (
+              <div
+                className="rounded-lg border p-3"
+                style={{ borderColor: p ? p.cor : "var(--color-border)", background: p ? `${p.cor}14` : undefined }}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-dim)]">
+                  Perfil do cliente para o novo consultor
+                </p>
+                {p ? (
+                  <>
+                    <p className="mt-1 text-base font-bold" style={{ color: p.cor }}>
+                      {p.emoji} {p.nome}
+                    </p>
+                    <p className="mt-1 text-xs leading-snug text-[var(--color-text-dim)]">{p.dica}</p>
+                    {atual.perfilObservacao && <p className="mt-1 text-sm">Observação: {atual.perfilObservacao}</p>}
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-[var(--color-text-dim)]">
+                    Perfil ainda não definido.{" "}
+                    <button type="button" className="font-semibold underline" onClick={() => void alterarPerfil(atual)}>
+                      Definir agora
+                    </button>
+                  </p>
+                )}
+              </div>
+            );
+          })()}
           {compartilhar?.vendedorId && (
             <p className="rounded-md bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-text-dim)]">
               Atualmente com:{" "}
@@ -2142,6 +2273,24 @@ export default function LeadsPage() {
       </Modal>
 
       <TimelineLead lead={timelineDe} onClose={() => setTimelineDe(null)} />
+
+      {pedidoPerfil && (
+        <ModalPerfil
+          aberto
+          nomeCliente={pedidoPerfil.lead.nome}
+          obrigatorio={pedidoPerfil.obrigatorio}
+          perfilAtual={pedidoPerfil.lead.perfilClienteId}
+          observacaoAtual={pedidoPerfil.lead.perfilObservacao}
+          onConfirmar={(perfilId, obs) => {
+            pedidoPerfil.responder({ perfilId, obs });
+            setPedidoPerfil(null);
+          }}
+          onCancelar={() => {
+            pedidoPerfil.responder(null);
+            setPedidoPerfil(null);
+          }}
+        />
+      )}
     </div>
   );
 }

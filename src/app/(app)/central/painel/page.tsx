@@ -18,6 +18,7 @@ import {
 import { centralLeadsApi, useVendedores } from "@/lib/store";
 import type { CentralDashboard, CentralRankingRow } from "@/lib/types";
 import { PremiumStage } from "@/components/premium-stage";
+import { QuadroPerfisPorConsultor } from "@/components/leads/perfil-cliente";
 
 // ---------- período ----------
 type Preset = "hoje" | "ontem" | "7d" | "30d" | "mes" | "mesant" | "custom";
@@ -305,6 +306,7 @@ export default function CentralPainelPage() {
           )}
         </div>
       </div>
+      <QuadroPerfisPorConsultor />
     </PremiumStage>
   );
 }

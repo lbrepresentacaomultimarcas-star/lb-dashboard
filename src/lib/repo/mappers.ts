@@ -1,5 +1,6 @@
-import type { AuditLog, CanalTentativa, CentralLead, CentralLeadEvento, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, MensagemPronta, Meta, NivelRecuperacao, Notificacao, Papel, PerformanceSnapshot, Producao, Profile, ResultadoTentativa, Tentativa, Venda, Vendedor } from "../types";
+import type { AuditLog, CanalTentativa, CentralLead, CentralLeadEvento, Cliente, DashboardConfig, Equipe, Feriado, Lead, LeadStatus, LeadTipo, MensagemPronta, Meta, NivelRecuperacao, PerfilHistorico, Notificacao, Papel, PerformanceSnapshot, Producao, Profile, ResultadoTentativa, Tentativa, Venda, Vendedor } from "../types";
 import type { ConfigProducao, InicioCiclo } from "../ciclo";
+import type { PerfilCliente } from "../perfil-cliente";
 import type { ConfigPerformance } from "../performance";
 import type { EstiloTema, StatusTema, Tema } from "../temas";
 
@@ -145,6 +146,10 @@ export type DbLead = {
   compartilhado_em?: string | null;
   compartilhado_por?: string | null;
   compartilhado_modo?: string | null;
+  perfil_cliente?: string | null;
+  perfil_observacao?: string | null;
+  perfil_definido_por?: string | null;
+  perfil_definido_em?: string | null;
 };
 
 export const leadFromDb = (r: DbLead): Lead => ({
@@ -173,6 +178,10 @@ export const leadFromDb = (r: DbLead): Lead => ({
   compartilhadoEm: r.compartilhado_em ?? undefined,
   compartilhadoPor: r.compartilhado_por ?? undefined,
   compartilhadoModo: (r.compartilhado_modo as Lead["compartilhadoModo"]) ?? undefined,
+  perfilClienteId: r.perfil_cliente ?? undefined,
+  perfilObservacao: r.perfil_observacao ?? undefined,
+  perfilDefinidoPor: r.perfil_definido_por ?? undefined,
+  perfilDefinidoEm: r.perfil_definido_em ?? undefined,
 });
 
 export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
@@ -193,6 +202,9 @@ export const leadToDb = (l: Partial<Lead>): Partial<DbLead> => {
   if (l.recuperadoEm !== undefined) out.recuperado_em = l.recuperadoEm || null;
   if (l.recuperacaoRemovidoEm !== undefined) out.recuperacao_removido_em = l.recuperacaoRemovidoEm || null;
   if (l.naoRespondeDesde !== undefined) out.nao_responde_desde = l.naoRespondeDesde || null;
+  // Quem e quando definiu o perfil são carimbados pelo banco: o app só manda o perfil.
+  if (l.perfilClienteId !== undefined) out.perfil_cliente = l.perfilClienteId || null;
+  if (l.perfilObservacao !== undefined) out.perfil_observacao = l.perfilObservacao || null;
   // tentativas_count / ultima_tentativa_* são mantidos pelo GATILHO do banco
   // a cada insert em lead_tentativas — o app nunca escreve neles.
   return out;
@@ -829,3 +841,50 @@ export const mensagemToDb = (m: Partial<MensagemPronta>): Record<string, unknown
   if (m.ativo !== undefined) out.ativo = m.ativo;
   return out;
 };
+
+// ============================================================
+// Perfil do cliente
+// ============================================================
+export type DbPerfilCliente = {
+  id: string;
+  chave: string;
+  nome: string;
+  emoji: string | null;
+  cor: string | null;
+  dica: string | null;
+  ordem: number | null;
+  ativo: boolean | null;
+};
+
+export const perfilClienteFromDb = (r: DbPerfilCliente): PerfilCliente => ({
+  id: r.id,
+  chave: r.chave,
+  nome: r.nome,
+  emoji: r.emoji ?? "",
+  cor: r.cor ?? "#94a3b8",
+  dica: r.dica ?? "",
+  ordem: r.ordem ?? 0,
+  ativo: r.ativo ?? true,
+});
+
+export type DbPerfilHistorico = {
+  id: string;
+  negocio_id: string;
+  perfil_anterior: string | null;
+  perfil_novo: string | null;
+  observacao: string | null;
+  usuario_id: string | null;
+  usuario_nome: string | null;
+  created_at: string;
+};
+
+export const perfilHistoricoFromDb = (r: DbPerfilHistorico): PerfilHistorico => ({
+  id: r.id,
+  negocioId: r.negocio_id,
+  perfilAnterior: r.perfil_anterior ?? undefined,
+  perfilNovo: r.perfil_novo ?? undefined,
+  observacao: r.observacao ?? undefined,
+  usuarioId: r.usuario_id ?? undefined,
+  usuarioNome: r.usuario_nome ?? undefined,
+  criadoEm: r.created_at,
+});

@@ -118,6 +118,22 @@ export type Lead = {
   compartilhadoPor?: string;
   /** Como chegou ao responsável atual. */
   compartilhadoModo?: "individual" | "massa" | "recuperado";
+  // ---- Perfil do cliente (quem e quando são carimbados pelo banco) ----
+  perfilClienteId?: string;
+  perfilObservacao?: string;
+  perfilDefinidoPor?: string;
+  perfilDefinidoEm?: string;
+};
+
+export type PerfilHistorico = {
+  id: string;
+  negocioId: string;
+  perfilAnterior?: string;
+  perfilNovo?: string;
+  observacao?: string;
+  usuarioId?: string;
+  usuarioNome?: string;
+  criadoEm: string;
 };
 
 export type AuditLog = {

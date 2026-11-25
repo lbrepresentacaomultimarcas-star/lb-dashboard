@@ -55,6 +55,10 @@ import {
   type DbVenda,
   type DbVendedor,
   mensagemFromDb,
+  perfilClienteFromDb,
+  perfilHistoricoFromDb,
+  type DbPerfilCliente,
+  type DbPerfilHistorico,
   mensagemToDb,
   tentativaFromDb,
   tentativaToDb,
@@ -74,6 +78,7 @@ import type {
   Lead,
   LeadStatus,
   MensagemPronta,
+  PerfilHistorico,
   Meta,
   NivelRecuperacao,
   Notificacao,
@@ -98,6 +103,7 @@ import {
   type Tema,
 } from "./temas";
 import { uid } from "./utils";
+import { PERFIS_PADRAO, type PerfilCliente } from "./perfil-cliente";
 import { siteBaseUrl } from "./site-url";
 
 // ============================================================
@@ -138,6 +144,10 @@ type State = {
   temaAtivo: Tema;
   /** Biblioteca de Mensagens Prontas da etapa "Não responde" (admin gerencia). */
   mensagensProntas: MensagemPronta[];
+  /** Perfis comportamentais do cliente (Pipeline). Vazio = recurso desligado. */
+  perfisCliente: PerfilCliente[];
+  /** Modo demonstração: histórico de perfis em memória. */
+  perfilHistoricoLocal: PerfilHistorico[];
   audit: AuditLog[];
   /** Contemplações oficiais (Resultados LB) — mesma mecânica dos demais. */
   resultados: Contemplacao[];
@@ -173,6 +183,8 @@ const state: State = {
   performanceHistorico: [],
   temas: [],
   mensagensProntas: [],
+  perfisCliente: [],
+  perfilHistoricoLocal: [],
   temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
   resultados: [],
@@ -481,6 +493,7 @@ export function initStore(): Promise<void> {
           reloadPerformanceHistorico(),
           reloadTemas(),
           reloadMensagensProntas(),
+    reloadPerfisCliente(),
           reloadAudit(),
           reloadResultados(),
           reloadRoster(),
@@ -505,6 +518,7 @@ export function initStore(): Promise<void> {
       state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
       state.temas = lsRead<Tema[]>(K_TEMAS, []);
       state.temaAtivo = temaAtivoDe(state.temas);
+      state.perfisCliente = PERFIS_PADRAO;
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
       state.session = lsRead<SessionUser | null>(K_SESSION, null);
     }
@@ -821,6 +835,16 @@ async function reloadTemas() {
   }
 }
 
+/** Sem a tabela (antes da migração), o recurso fica desligado e nada é exigido. */
+async function reloadPerfisCliente() {
+  const sb = supabaseBrowser();
+  const { data, error } = await sb.from("perfis_cliente").select("*").order("ordem", { ascending: true });
+  if (!error && data) {
+    state.perfisCliente = (data as DbPerfilCliente[]).map(perfilClienteFromDb);
+    notify();
+  }
+}
+
 async function reloadMensagensProntas() {
   const sb = supabaseBrowser();
   const { data, error } = await sb
@@ -856,6 +880,7 @@ export async function reloadAllData(): Promise<void> {
     reloadPerformanceHistorico(),
     reloadTemas(),
     reloadMensagensProntas(),
+    reloadPerfisCliente(),
     reloadAudit(),
     reloadResultados(),
     reloadRoster(),
@@ -1061,6 +1086,7 @@ function attachRealtime() {
   sub("temas", reloadTemas);
   sub("resultados_contemplacoes", reloadResultados);
   sub("mensagens_prontas", reloadMensagensProntas);
+  sub("perfis_cliente", reloadPerfisCliente);
 
   /*
    * LEAD TRANSFERIDO PARA OUTRA PESSOA.
@@ -1272,6 +1298,29 @@ export function usePerformanceConfig(): ConfigPerformance {
 export function usePerformanceHistorico(): PerformanceSnapshot[] {
   return useSyncExternalStore(subscribe, () => state.performanceHistorico, () => state.performanceHistorico);
 }
+export function usePerfisCliente(): PerfilCliente[] {
+  return useSyncExternalStore(subscribe, () => state.perfisCliente, () => state.perfisCliente);
+}
+
+/** Histórico de perfil de um negócio, do mais recente para o mais antigo. */
+export const perfilHistoricoApi = {
+  async listar(negocioId: string): Promise<PerfilHistorico[]> {
+    if (!supabaseEnabled) {
+      return state.perfilHistoricoLocal
+        .filter((h) => h.negocioId === negocioId)
+        .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+    }
+    const { data, error } = await supabaseBrowser()
+      .from("negocio_perfil_historico")
+      .select("*")
+      .eq("negocio_id", negocioId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return ((data ?? []) as DbPerfilHistorico[]).map(perfilHistoricoFromDb);
+  },
+};
+
 export function useMensagensProntas(): MensagemPronta[] {
   return useSyncExternalStore(
     subscribe,
@@ -1725,10 +1774,33 @@ export const leadsApi = {
         );
       }
     }
-    state.leads = state.leads.map((l) => (l.id === id ? { ...l, ...patch } : l));
-    if (!supabaseEnabled) lsWrite(K_LEADS, state.leads);
+    const mudouPerfil = patch.perfilClienteId !== undefined || patch.perfilObservacao !== undefined;
+    const anterior = state.leads.find((l) => l.id === id);
+    // O banco carimba quem e quando; aqui só antecipa na tela até o tempo real chegar.
+    const carimbo: Partial<Lead> = mudouPerfil
+      ? { perfilDefinidoPor: state.session?.id, perfilDefinidoEm: new Date().toISOString() }
+      : {};
+    state.leads = state.leads.map((l) => (l.id === id ? { ...l, ...patch, ...carimbo } : l));
+    if (!supabaseEnabled) {
+      lsWrite(K_LEADS, state.leads);
+      if (mudouPerfil) {
+        state.perfilHistoricoLocal = [
+          {
+            id: uid(),
+            negocioId: id,
+            perfilAnterior: anterior?.perfilClienteId,
+            perfilNovo: patch.perfilClienteId ?? anterior?.perfilClienteId,
+            observacao: patch.perfilObservacao ?? anterior?.perfilObservacao,
+            usuarioId: state.session?.id,
+            usuarioNome: state.session?.nome,
+            criadoEm: new Date().toISOString(),
+          },
+          ...state.perfilHistoricoLocal,
+        ];
+      }
+    }
     notify();
-    const detalhes = patch.status ? `status → ${patch.status}` : patch.nome;
+    const detalhes = patch.status ? `status → ${patch.status}` : mudouPerfil ? "perfil do cliente" : patch.nome;
     void logAudit({ acao: "editar", entidade: "lead", entidadeId: id, detalhes });
   },
   async remove(id: string) {
@@ -2883,6 +2955,7 @@ export const sessionApi = {
       state.performanceHistorico = lsRead<PerformanceSnapshot[]>(K_PERF_HIST, []);
       state.temas = lsRead<Tema[]>(K_TEMAS, []);
       state.temaAtivo = temaAtivoDe(state.temas);
+      state.perfisCliente = PERFIS_PADRAO;
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
     }
     notify();
@@ -2936,6 +3009,8 @@ export const sessionApi = {
     // Em aparelho compartilhado, nada do usuário anterior fica na memória.
     state.dashboardConfig = DASHBOARD_CONFIG_PADRAO;
     state.mensagensProntas = [];
+    state.perfisCliente = [];
+    state.perfilHistoricoLocal = [];
     state.audit = [];
     state.resultados = [];
     state.roster = [];
