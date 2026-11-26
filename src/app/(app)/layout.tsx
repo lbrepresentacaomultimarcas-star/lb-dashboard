@@ -7,6 +7,7 @@ import { MobileNavProvider } from "@/components/mobile-nav-context";
 import { BrandBar } from "@/components/marca-dupla";
 import { ImpersonacaoBar } from "@/components/impersonacao-bar";
 import { SincronizacaoMeta } from "@/components/integracoes/sincronizacao-meta";
+import { LembretesDesenvolvimento } from "@/components/perfil/lembretes-desenvolvimento";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,6 +20,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <ImpersonacaoBar />
           {/* busca leads da Meta enquanto o admin está com o sistema aberto */}
           <SincronizacaoMeta />
+          {/* lembretes do plano de desenvolvimento (1x por dia) */}
+          <LembretesDesenvolvimento />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">

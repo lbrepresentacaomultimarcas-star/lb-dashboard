@@ -32,6 +32,7 @@ import {
   UsersRound,
   Wallet,
   Medal,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabaseEnabled } from "@/lib/supabase/client";
@@ -107,6 +108,7 @@ const NAV: (NavItem | NavGroup)[] = [
     items: [
       { href: "/configuracoes/personalizacao", label: "Personalização Visual", icon: Palette, minimo: "admin" },
       { href: "/admin/colaboradores", label: "Colaboradores", icon: Shield, minimo: "admin" },
+      { href: "/admin/desenvolvimento", label: "Desenvolvimento da equipe", icon: GraduationCap, minimo: "admin" },
       { href: "/admin/equipes", label: "Equipes", icon: Users, minimo: "admin" },
       { href: "/admin/eventos", label: "Evento em destaque", icon: Flame, minimo: "admin" },
       { href: "/admin/producoes", label: "Produções", icon: BarChart3, minimo: "admin" },

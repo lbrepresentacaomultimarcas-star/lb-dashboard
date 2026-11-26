@@ -24,6 +24,13 @@ import { JornadaCarreira } from "@/components/jornada-carreira";
 import { MapaEvolucao } from "@/components/perfil/mapa-evolucao";
 import { PlanoEvolucaoCard } from "@/components/perfil/plano-evolucao";
 import { MeuApelidoCard } from "@/components/perfil/meu-apelido";
+import {
+  AvaliacaoEmpresaCard,
+  AvisoObjetivo,
+  IndicadoresMesCard,
+  PlanoPassosCard,
+  useDesenvolvimento,
+} from "@/components/perfil/desenvolvimento";
 import { useEquipes, useRoster, useSession } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { PAPEL_INFO } from "@/lib/types";
@@ -84,6 +91,7 @@ export default function PerfilPage() {
   const liberado = pessoa?.codigoLiberado !== false;
 
   const mapa = useEvolucao(pessoa?.vendedorRef);
+  const dev = useDesenvolvimento(pessoa?.id);
 
   const frase = useMemo(() => {
     const dia = Math.floor(new Date().getTime() / 86_400_000);
@@ -125,8 +133,11 @@ export default function PerfilPage() {
           <div className="flex items-start gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3">
             <Users className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-brand)]" />
             <p className="text-xs text-[var(--color-text-dim)]">
-              Você está vendo o mapa de <strong>{nome}</strong>, para acompanhamento. O plano de
-              evolução é escrito por {nome.split(" ")[0]} — você lê, não edita.
+              Você está vendo o perfil de <strong>{nome}</strong>, para acompanhamento. O objetivo é
+              escrito por {nome.split(" ")[0]}
+              {admin
+                ? " — você cadastra os passos, valida e publica a avaliação do mês logo abaixo."
+                : " — aqui é só leitura."}
             </p>
           </div>
         )}
@@ -159,6 +170,8 @@ export default function PerfilPage() {
           </div>
         )}
 
+        {pessoa && degrau && <AvisoObjetivo profileId={pessoa.id} souEu={souEu} nome={nome} />}
+
         {souEu && <MeuApelidoCard />}
 
         {/* =========================== o mapa =========================== */}
@@ -166,13 +179,37 @@ export default function PerfilPage() {
 
         {/* ======================== plano pessoal ======================= */}
         {pessoa && (
-          <PlanoEvolucaoCard
-            profileId={pessoa.id}
-            atual={mapa.atual}
-            podeEditar={souEu}
-            nome={nome}
-          />
+          <div id="meu-plano" className="scroll-mt-24">
+            <PlanoEvolucaoCard
+              profileId={pessoa.id}
+              atual={mapa.atual}
+              podeEditar={souEu}
+              nome={nome}
+            />
+          </div>
         )}
+
+        {/* =================== plano de desenvolvimento =================== */}
+        {pessoa && degrau && !dev.carregando && (
+          <>
+            <PlanoPassosCard
+              profileId={pessoa.id}
+              papel={papel}
+              souEu={souEu}
+              admin={admin && !souEu}
+              nome={nome}
+              passos={dev.passos}
+            />
+            <AvaliacaoEmpresaCard
+              profileId={pessoa.id}
+              souEu={souEu}
+              admin={admin && !souEu}
+              nome={nome}
+              avaliacoes={dev.avaliacoes}
+            />
+          </>
+        )}
+        {pessoa && degrau && <IndicadoresMesCard historico={mapa.historico} vendedorRef={pessoa.vendedorRef} />}
 
         {/* ========================== trajetória ========================= */}
         {degrau && <JornadaCarreira papel={papel} codigo={pessoa?.codigoAcesso} />}

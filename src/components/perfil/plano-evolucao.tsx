@@ -64,7 +64,9 @@ export function PlanoEvolucaoCard({
       await planosApi.salvar({ ...form, profileId });
       setPlano({ ...form, profileId });
       setEditando(false);
-      notify.success("Plano salvo");
+      notify.success("Plano salvo", "A administração foi avisada.");
+      // o aviso "Defina seu objetivo" do perfil escuta isto
+      window.dispatchEvent(new Event("lb:plano-salvo"));
     } catch (e) {
       notify.error("Não consegui salvar", e instanceof Error ? e.message : undefined);
     } finally {

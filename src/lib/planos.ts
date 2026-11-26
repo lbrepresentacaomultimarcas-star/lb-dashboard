@@ -40,10 +40,28 @@ const fromDb = (r: Row): PlanoEvolucao => ({
   atualizadoEm: s(r.atualizado_em),
 });
 
+/** Modo demonstração: os planos ficam no navegador (só para a prévia). */
+const K_DEMO = "lb:planos_evolucao";
+function demoLer(): PlanoEvolucao[] {
+  try {
+    return JSON.parse(localStorage.getItem(K_DEMO) ?? "[]") as PlanoEvolucao[];
+  } catch {
+    return [];
+  }
+}
+
 export const planosApi = {
+  /** Todos os planos que quem está logado pode ver (o admin vê todos; RLS decide). */
+  async listarTodos(): Promise<PlanoEvolucao[]> {
+    if (!supabaseEnabled) return demoLer();
+    const { data, error } = await supabaseBrowser().from("planos_evolucao").select("*");
+    if (error) throw error;
+    return (data ?? []).map((r) => fromDb(r as Row));
+  },
+
   /** O plano de uma pessoa. `null` quando ela ainda não escreveu o dela. */
   async ler(profileId: string): Promise<PlanoEvolucao | null> {
-    if (!supabaseEnabled) return null;
+    if (!supabaseEnabled) return demoLer().find((p) => p.profileId === profileId) ?? null;
     const { data } = await supabaseBrowser()
       .from("planos_evolucao")
       .select("*")
@@ -59,7 +77,15 @@ export const planosApi = {
    * novo é revisar o mesmo plano, não criar outro.
    */
   async salvar(p: PlanoEvolucao): Promise<void> {
-    if (!supabaseEnabled) return;
+    if (!supabaseEnabled) {
+      const novo = { ...p, atualizadoEm: new Date().toISOString() };
+      try {
+        localStorage.setItem(K_DEMO, JSON.stringify([...demoLer().filter((x) => x.profileId !== p.profileId), novo]));
+      } catch {
+        /* sem armazenamento no modo demonstração */
+      }
+      return;
+    }
     const { error } = await supabaseBrowser()
       .from("planos_evolucao")
       .upsert(
