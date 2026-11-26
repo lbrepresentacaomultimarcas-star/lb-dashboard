@@ -30,21 +30,34 @@ export function usePendentes(): number {
  */
 export function usePendentesDesenvolvimento(): { perfil: number; equipe: number } {
   const notificacoes = useNotificacoes();
+  const eu = useSession()?.id;
   return useMemo(() => {
     let perfil = 0;
     let equipe = 0;
     for (const n of notificacoes) {
-      if (n.lida || n.entidade !== "desenvolvimento") continue;
+      // Admin e supervisor também carregam os avisos da EQUIPE: só conta o que é desta pessoa.
+      if (n.userId !== eu || n.lida || n.entidade !== "desenvolvimento") continue;
       const link = n.link ?? "";
       if (link === "/perfil") perfil++;
       else if (link.startsWith("/perfil?de=") || link.startsWith("/admin/desenvolvimento")) equipe++;
     }
     return { perfil, equipe };
-  }, [notificacoes]);
+  }, [notificacoes, eu]);
 }
 
-/** Marca como lidos os avisos de desenvolvimento cujo link bate com `link` (ao abrir a tela). */
-export async function lerAvisosDesenvolvimento(notificacoes: Notificacao[], bate: (link: string) => boolean) {
-  const alvo = notificacoes.filter((n) => !n.lida && n.entidade === "desenvolvimento" && bate(n.link ?? ""));
+/**
+ * Marca como lidos os avisos de desenvolvimento DESTA pessoa cujo link bate
+ * (ao abrir a tela). Nunca mexe nos avisos de outra pessoa — admin e supervisor
+ * carregam os da equipe também.
+ */
+export async function lerAvisosDesenvolvimento(
+  notificacoes: Notificacao[],
+  eu: string | undefined,
+  bate: (link: string) => boolean,
+) {
+  if (!eu) return;
+  const alvo = notificacoes.filter(
+    (n) => n.userId === eu && !n.lida && n.entidade === "desenvolvimento" && bate(n.link ?? ""),
+  );
   await Promise.all(alvo.map((n) => notificacoesApi.marcarLida(n.id).catch(() => undefined)));
 }

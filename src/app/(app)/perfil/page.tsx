@@ -99,7 +99,7 @@ export default function PerfilPage() {
   useEffect(() => {
     if (!session?.id) return;
     const alvo = souEu ? "/perfil" : `/perfil?de=${alvoId}`;
-    void lerAvisosDesenvolvimento(notificacoes, (link) => link === alvo);
+    void lerAvisosDesenvolvimento(notificacoes, session.id, (link) => link === alvo);
   }, [notificacoes, souEu, alvoId, session?.id]);
   const dev = useDesenvolvimento(pessoa?.id);
 

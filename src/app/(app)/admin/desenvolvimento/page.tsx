@@ -15,7 +15,7 @@ import { PremiumStage } from "@/components/premium-stage";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
-import { useEquipes, useNotificacoes, useRoster } from "@/lib/store";
+import { useEquipes, useNotificacoes, useRoster, useSession } from "@/lib/store";
 import { lerAvisosDesenvolvimento } from "@/lib/use-pendentes";
 import { planosApi, type PlanoEvolucao } from "@/lib/planos";
 import { aoMudarDesenvolvimento, avaliacoesApi, configDevApi, passosApi } from "@/lib/desenvolvimento-api";
@@ -60,9 +60,10 @@ export default function DesenvolvimentoEquipePage() {
   useEffect(() => aoMudarDesenvolvimento(() => setVersao((v) => v + 1)), []);
   // abriu o painel = viu os lembretes de avaliação pendente
   const notificacoes = useNotificacoes();
+  const euId = useSession()?.id;
   useEffect(() => {
-    void lerAvisosDesenvolvimento(notificacoes, (link) => link.startsWith("/admin/desenvolvimento"));
-  }, [notificacoes]);
+    void lerAvisosDesenvolvimento(notificacoes, euId, (link) => link.startsWith("/admin/desenvolvimento"));
+  }, [notificacoes, euId]);
   useEffect(() => {
     let vivo = true;
     Promise.all([planosApi.listarTodos(), passosApi.listar(), avaliacoesApi.listar(), configDevApi.ler()])
