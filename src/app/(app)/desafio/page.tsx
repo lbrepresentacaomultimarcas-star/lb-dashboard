@@ -21,7 +21,7 @@ const MARCAS = ["R$ 0", "100 mil", "200 mil", "300 mil", "400 mil", "500 mil", "
 const MEDALHA = ["🥇", "🥈", "🥉"];
 
 export default function DesafioPage() {
-  const { fichas, hoje, gestor } = useDesafio();
+  const { fichas, hoje, gestor, podeImprimir } = useDesafio();
   if (!hoje) return null;
   const equipe = totaisDaEquipe(fichas);
   const contagem = diasRestantes(hoje);
@@ -38,10 +38,12 @@ export default function DesafioPage() {
             <Hourglass className="h-5 w-5" aria-hidden /> {contagem.texto}
           </span>
           <span className="text-white/75">Desafio · Responsabilidade · Competitividade · Espírito de equipe</span>
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <BotaoImprimir onClick={() => imprimir(true, [], fichas)}>Imprimir painel</BotaoImprimir>
-            <BotaoImprimir onClick={() => imprimir(false, fichas, fichas)}>Imprimir as 5 fichas</BotaoImprimir>
-          </div>
+          {podeImprimir && (
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
+              <BotaoImprimir onClick={() => imprimir(true, [], fichas)}>Imprimir painel</BotaoImprimir>
+              <BotaoImprimir onClick={() => imprimir(false, fichas, fichas)}>Imprimir as 5 fichas</BotaoImprimir>
+            </div>
+          )}
         </div>
       </TopoDesafio>
 

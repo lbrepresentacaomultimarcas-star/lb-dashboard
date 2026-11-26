@@ -39,7 +39,13 @@ export function useDesafio() {
     () => (hoje ? calcularDesafio(participantes, vendas, hoje) : []),
     [participantes, vendas, hoje],
   );
-  return { fichas, hoje, gestor: temPermissao(session, "supervisor") };
+  return {
+    fichas,
+    hoje,
+    gestor: temPermissao(session, "supervisor"),
+    /** Imprimir / PDF é só do administrador (o representante). */
+    podeImprimir: temPermissao(session, "admin"),
+  };
 }
 
 export function imprimir(painel: boolean, fichas: FichaVendedor[], todas: FichaVendedor[]) {

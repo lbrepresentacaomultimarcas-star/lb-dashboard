@@ -20,7 +20,7 @@ import {
 
 export default function FichaDesafioPage() {
   const { vendedor } = useParams<{ vendedor: string }>();
-  const { fichas, hoje } = useDesafio();
+  const { fichas, hoje, podeImprimir } = useDesafio();
   if (!hoje) return null;
 
   // navegação na ordem oficial dos nomes, não do ranking (não "pula" ao mudar a posição)
@@ -73,7 +73,7 @@ export default function FichaDesafioPage() {
           </span>
           <SeloStatus status={f.status} />
           <div className="sm:ml-auto">
-            <BotaoImprimir onClick={() => imprimir(false, [f], fichas)}>Imprimir ficha</BotaoImprimir>
+            {podeImprimir && <BotaoImprimir onClick={() => imprimir(false, [f], fichas)}>Imprimir ficha</BotaoImprimir>}
           </div>
         </div>
       </TopoDesafio>
