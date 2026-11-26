@@ -12,6 +12,7 @@ import {
   Landmark,
   LayoutDashboard,
   LifeBuoy,
+  Medal,
   Lightbulb,
   Palette,
   Settings,
@@ -64,6 +65,7 @@ export const NAV: (NavItem | NavGroup)[] = [
     icon: Trophy,
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
+      { href: "/desafio", label: "Desafio R$ 1 Milhão", icon: Medal },
       { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
       { href: "/configuracoes/personalizacao", label: "Personalização Visual", icon: Palette, minimo: "admin" },

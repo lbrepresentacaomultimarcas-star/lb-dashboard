@@ -31,6 +31,7 @@ import {
   Users,
   UsersRound,
   Wallet,
+  Medal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabaseEnabled } from "@/lib/supabase/client";
@@ -78,6 +79,7 @@ const NAV: (NavItem | NavGroup)[] = [
     icon: Trophy,
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
+      { href: "/desafio", label: "Desafio R$ 1 Milhão", icon: Medal },
       { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
       { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
