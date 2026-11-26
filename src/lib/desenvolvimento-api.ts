@@ -17,7 +17,9 @@ import {
   avaliacaoToDb,
   passoFromDb,
   passoToDb,
+  promocaoFromDb,
   type AvaliacaoMensal,
+  type PromocaoAgendada,
   type ConfigDesenvolvimento,
   type PassoPlano,
 } from "./desenvolvimento";
@@ -26,6 +28,7 @@ import { uid } from "./utils";
 const K_PASSOS = "lb:dev_passos";
 const K_AVAL = "lb:dev_avaliacoes";
 const K_CFG = "lb:dev_config";
+const K_PROMO = "lb:dev_promocoes";
 
 function ler<T>(k: string, padrao: T): T {
   try {
@@ -219,3 +222,69 @@ export async function gerarLembretesDesenvolvimento(): Promise<void> {
   if (!supabaseEnabled) return;
   await supabaseBrowser().rpc("lb_dev_lembretes");
 }
+
+export const promocoesApi = {
+  async listar(profileId: string): Promise<PromocaoAgendada[]> {
+    if (!supabaseEnabled)
+      return ler<PromocaoAgendada[]>(K_PROMO, []).filter((p) => p.profileId === profileId).sort((a, b) => b.dataHora.localeCompare(a.dataHora));
+    const { data, error } = await supabaseBrowser()
+      .from("promocoes_agendadas")
+      .select("*")
+      .eq("profile_id", profileId)
+      .order("data_hora", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((r) => promocaoFromDb(r as Record<string, unknown>));
+  },
+
+  async agendar(p: { profileId: string; cargoAtual?: string; cargoNovo: string; dataHora: string; mensagem?: string }): Promise<void> {
+    if (!supabaseEnabled) {
+      const lista = ler<PromocaoAgendada[]>(K_PROMO, []);
+      if (lista.some((x) => x.profileId === p.profileId && x.status === "agendada"))
+        throw new Error("Já existe uma promoção agendada para esta pessoa. Remarque a existente.");
+      gravar(K_PROMO, [...lista, { ...p, id: uid(), status: "agendada", criadoEm: new Date().toISOString() }]);
+      return mudou();
+    }
+    const { data, error } = await supabaseBrowser()
+      .from("promocoes_agendadas")
+      .insert({ profile_id: p.profileId, cargo_novo: p.cargoNovo, data_hora: p.dataHora, mensagem: p.mensagem?.trim() || null })
+      .select("id");
+    if (error) {
+      if ((error as { code?: string }).code === "23505") throw new Error("Já existe uma promoção agendada para esta pessoa. Remarque a existente.");
+      throw error;
+    }
+    exigir(data, "agendar a promoção");
+    mudou();
+  },
+
+  async atualizar(
+    id: string,
+    patch: Partial<Pick<PromocaoAgendada, "cargoNovo" | "dataHora" | "mensagem" | "status" | "comemoracaoVistaEm">>,
+  ): Promise<void> {
+    if (!supabaseEnabled) {
+      const agora = new Date().toISOString();
+      gravar(
+        K_PROMO,
+        ler<PromocaoAgendada[]>(K_PROMO, []).map((x) =>
+          x.id === id ? { ...x, ...patch, ...(patch.status === "realizada" ? { realizadaEm: agora } : {}) } : x,
+        ),
+      );
+      return mudou();
+    }
+    const linha: Record<string, unknown> = {};
+    if (patch.cargoNovo !== undefined) linha.cargo_novo = patch.cargoNovo;
+    if (patch.dataHora !== undefined) linha.data_hora = patch.dataHora;
+    if (patch.mensagem !== undefined) linha.mensagem = patch.mensagem?.trim() || null;
+    if (patch.status !== undefined) linha.status = patch.status;
+    if (patch.comemoracaoVistaEm !== undefined) linha.comemoracao_vista_em = patch.comemoracaoVistaEm;
+    const { data, error } = await supabaseBrowser().from("promocoes_agendadas").update(linha).eq("id", id).select("id");
+    if (error) throw error;
+    exigir(data, "alterar a promoção");
+    mudou();
+  },
+
+  /** A promoção feita que o próprio colaborador ainda não comemorou na tela. */
+  async comemoracaoPendente(profileId: string): Promise<PromocaoAgendada | null> {
+    const lista = await promocoesApi.listar(profileId);
+    return lista.find((p) => p.status === "realizada" && !p.comemoracaoVistaEm) ?? null;
+  },
+};

@@ -8,6 +8,7 @@ import { BrandBar } from "@/components/marca-dupla";
 import { ImpersonacaoBar } from "@/components/impersonacao-bar";
 import { SincronizacaoMeta } from "@/components/integracoes/sincronizacao-meta";
 import { LembretesDesenvolvimento } from "@/components/perfil/lembretes-desenvolvimento";
+import { ComemoracaoPromocao } from "@/components/perfil/promocao";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +23,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <SincronizacaoMeta />
           {/* lembretes do plano de desenvolvimento (1x por dia) */}
           <LembretesDesenvolvimento />
+          {/* comemoração com confete quando o colaborador foi promovido */}
+          <ComemoracaoPromocao />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">

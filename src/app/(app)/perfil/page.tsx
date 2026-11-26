@@ -24,6 +24,7 @@ import { JornadaCarreira } from "@/components/jornada-carreira";
 import { MapaEvolucao } from "@/components/perfil/mapa-evolucao";
 import { PlanoEvolucaoCard } from "@/components/perfil/plano-evolucao";
 import { MeuApelidoCard } from "@/components/perfil/meu-apelido";
+import { PromocaoCard } from "@/components/perfil/promocao";
 import {
   AvaliacaoEmpresaCard,
   AvisoObjetivo,
@@ -168,6 +169,10 @@ export default function PerfilPage() {
               cargo para cargo.
             </p>
           </div>
+        )}
+
+        {pessoa && degrau && (
+          <PromocaoCard profileId={pessoa.id} papel={papel} souEu={souEu} admin={admin && !souEu} nome={nome} />
         )}
 
         {pessoa && degrau && <AvisoObjetivo profileId={pessoa.id} souEu={souEu} nome={nome} />}

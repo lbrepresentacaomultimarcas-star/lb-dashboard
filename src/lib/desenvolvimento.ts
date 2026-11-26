@@ -278,3 +278,63 @@ export function avaliacaoToDb(a: Partial<AvaliacaoMensal>): Row {
   if (a.nota !== undefined) o.nota = a.nota;
   return o;
 }
+
+// ------------------------------------------------------------- promoção
+
+export type StatusPromocao = "agendada" | "realizada" | "cancelada";
+
+/** Promoção marcada pelo admin. O cargo só muda quando ele clica "Promover agora". */
+export type PromocaoAgendada = {
+  id: string;
+  profileId: string;
+  cargoAtual?: string;
+  /** papel do sistema: lider | supervisor | coordenador (Representante) | vendedor */
+  cargoNovo: string;
+  /** ISO com fuso */
+  dataHora: string;
+  mensagem?: string;
+  status: StatusPromocao;
+  criadoEm?: string;
+  realizadaEm?: string;
+  comemoracaoVistaEm?: string;
+};
+
+/** "2026-12-05" + "10:00" → ISO no horário de Brasília (-03:00). */
+export function dataHoraBrasilia(data: string, hora: string): string {
+  return `${data}T${hora.length === 5 ? hora : "09:00"}:00-03:00`;
+}
+
+/** ISO → { data: "2026-12-05", hora: "10:00" } no horário de Brasília. */
+export function separarDataHora(iso: string): { data: string; hora: string } {
+  const d = new Date(iso);
+  const data = d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const hora = d.toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+  return { data, hora };
+}
+
+/** Contagem regressiva amigável até a promoção (dias de calendário em Brasília). */
+export function faltaParaPromocao(iso: string, agora = new Date()): string {
+  const hoje = separarDataHora(agora.toISOString()).data;
+  const dia = separarDataHora(iso).data;
+  const utc = (k: string) => Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10));
+  const dias = Math.round((utc(dia) - utc(hoje)) / 86_400_000);
+  if (dias < 0) return "A data já passou";
+  if (dias === 0) return "É hoje!";
+  if (dias === 1) return "É amanhã!";
+  return `Faltam ${dias} dias`;
+}
+
+export function promocaoFromDb(r: Row): PromocaoAgendada {
+  return {
+    id: String(r.id),
+    profileId: String(r.profile_id),
+    cargoAtual: s(r.cargo_atual),
+    cargoNovo: String(r.cargo_novo),
+    dataHora: String(r.data_hora),
+    mensagem: s(r.mensagem),
+    status: (s(r.status) ?? "agendada") as StatusPromocao,
+    criadoEm: s(r.criado_em),
+    realizadaEm: s(r.realizada_em),
+    comemoracaoVistaEm: s(r.comemoracao_vista_em),
+  };
+}
