@@ -32,6 +32,7 @@ import { PremiumStage } from "@/components/premium-stage";
 import { PeriodFilter } from "@/components/period-filter";
 import { PainelInteligente } from "@/components/dashboard/painel-inteligente";
 import { EventoDestaqueCard } from "@/components/dashboard/evento-destaque";
+import { MuralPromocoes } from "@/components/perfil/mural-promocao";
 import { AnimatedBRL, AnimatedNum } from "@/components/ui/spark";
 
 function StatPremium({
@@ -125,6 +126,8 @@ export default function DashboardPage() {
 
   return (
     <PremiumStage>
+      {/* Promovidos nos últimos 3 dias: festa no topo, para a equipe inteira */}
+      <MuralPromocoes />
       <PainelInteligente />
       {/* Só aparece quando há campanha ativa dentro do período; sem evento,
           devolve null e o Dashboard segue exatamente como era. */}

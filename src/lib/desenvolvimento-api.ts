@@ -18,6 +18,9 @@ import {
   passoFromDb,
   passoToDb,
   promocaoFromDb,
+  itemMuralFromDb,
+  noMural,
+  type ItemMural,
   type AvaliacaoMensal,
   type PromocaoAgendada,
   type ConfigDesenvolvimento,
@@ -258,7 +261,7 @@ export const promocoesApi = {
 
   async atualizar(
     id: string,
-    patch: Partial<Pick<PromocaoAgendada, "cargoNovo" | "dataHora" | "mensagem" | "status" | "comemoracaoVistaEm">>,
+    patch: Partial<Pick<PromocaoAgendada, "cargoNovo" | "dataHora" | "mensagem" | "status" | "comemoracaoVistaEm" | "legenda">>,
   ): Promise<void> {
     if (!supabaseEnabled) {
       const agora = new Date().toISOString();
@@ -276,6 +279,7 @@ export const promocoesApi = {
     if (patch.mensagem !== undefined) linha.mensagem = patch.mensagem?.trim() || null;
     if (patch.status !== undefined) linha.status = patch.status;
     if (patch.comemoracaoVistaEm !== undefined) linha.comemoracao_vista_em = patch.comemoracaoVistaEm;
+    if (patch.legenda !== undefined) linha.legenda = patch.legenda?.trim() || null;
     const { data, error } = await supabaseBrowser().from("promocoes_agendadas").update(linha).eq("id", id).select("id");
     if (error) throw error;
     exigir(data, "alterar a promoção");
@@ -286,5 +290,63 @@ export const promocoesApi = {
   async comemoracaoPendente(profileId: string): Promise<PromocaoAgendada | null> {
     const lista = await promocoesApi.listar(profileId);
     return lista.find((p) => p.status === "realizada" && !p.comemoracaoVistaEm) ?? null;
+  },
+};
+
+/** Mural do Dashboard: quem foi promovido nos últimos 3 dias (a equipe inteira vê). */
+export const muralApi = {
+  async listar(nomes?: Map<string, string>): Promise<ItemMural[]> {
+    if (!supabaseEnabled) {
+      return ler<PromocaoAgendada[]>(K_PROMO, [])
+        .filter((p) => p.status === "realizada" && noMural(p.realizadaEm))
+        .map((p) => ({
+          id: p.id,
+          profileId: p.profileId,
+          nome: nomes?.get(p.profileId) ?? "Colaborador",
+          cargoAtual: p.cargoAtual,
+          cargoNovo: p.cargoNovo,
+          realizadaEm: p.realizadaEm!,
+          fotoUrl: p.fotoUrl,
+          legenda: p.legenda,
+        }))
+        .sort((a, b) => b.realizadaEm.localeCompare(a.realizadaEm));
+    }
+    const { data, error } = await supabaseBrowser().rpc("lb_dev_mural_promocoes");
+    if (error) throw error;
+    return ((data ?? []) as Record<string, unknown>[]).map(itemMuralFromDb);
+  },
+
+  /** Envia (ou troca) a foto do mural. Só o promovido ou o admin — o servidor confere. */
+  async enviarFoto(promocaoId: string, arquivo: File): Promise<void> {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(arquivo.type)) throw new Error("Use uma foto JPG, PNG ou WebP.");
+    if (arquivo.size > 5 * 1024 * 1024) throw new Error("A foto pode ter no máximo 5 MB.");
+    if (!supabaseEnabled) {
+      const url = await new Promise<string>((ok, falha) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result));
+        r.onerror = () => falha(new Error("Não consegui ler a foto."));
+        r.readAsDataURL(arquivo);
+      });
+      gravar(K_PROMO, ler<PromocaoAgendada[]>(K_PROMO, []).map((p) => (p.id === promocaoId ? { ...p, fotoUrl: url } : p)));
+      return mudou();
+    }
+    const form = new FormData();
+    form.append("file", arquivo);
+    form.append("promocaoId", promocaoId);
+    const r = await fetch("/api/promocao/foto", { method: "POST", body: form });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) throw new Error(j.error ?? "Não foi possível enviar a foto.");
+    mudou();
+  },
+
+  async removerFoto(promocaoId: string): Promise<void> {
+    if (!supabaseEnabled) {
+      gravar(K_PROMO, ler<PromocaoAgendada[]>(K_PROMO, []).map((p) => (p.id === promocaoId ? { ...p, fotoUrl: undefined } : p)));
+      return mudou();
+    }
+    const r = await fetch(`/api/promocao/foto?promocaoId=${encodeURIComponent(promocaoId)}`, { method: "DELETE" });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) throw new Error(j.error ?? "Não foi possível remover a foto.");
+    mudou();
   },
 };

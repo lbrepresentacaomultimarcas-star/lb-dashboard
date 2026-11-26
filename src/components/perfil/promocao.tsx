@@ -9,7 +9,7 @@
  * Ao ser promovido, o colaborador vê uma comemoração com confete na tela.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Award, CalendarClock, PartyPopper, Trophy, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,12 @@ import { reloadRoster, useSession } from "@/lib/store";
 import { supabaseEnabled } from "@/lib/supabase/client";
 import { JORNADA, degrauDe, proximoDegrau } from "@/lib/jornada";
 import { aoMudarDesenvolvimento, promocoesApi } from "@/lib/desenvolvimento-api";
+import { BotaoFotoPromocao } from "./mural-promocao";
+import { Confete } from "./confete";
 import {
   chaveHoje,
   dataHoraBR,
+  noMural,
   dataHoraBrasilia,
   faltaParaPromocao,
   separarDataHora,
@@ -227,6 +230,12 @@ export function PromocaoCard({
             {feitas.map((p) => (
               <li key={p.id}>
                 🏆 {rotulo(p.cargoAtual)} → <b>{rotulo(p.cargoNovo)}</b> em {dataHoraBR(p.realizadaEm ?? p.dataHora)}
+                {(admin || souEu) && noMural(p.realizadaEm) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--color-surface-2)] p-2 text-xs text-[var(--color-text-dim)]">
+                    <span>📸 No mural do Dashboard por 3 dias{p.fotoUrl ? " — com foto" : " — ainda sem foto"}.</span>
+                    <BotaoFotoPromocao promocaoId={p.id} temFoto={Boolean(p.fotoUrl)} compacto />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -292,60 +301,6 @@ export function PromocaoCard({
   );
 }
 
-// ================================================================ confete
-
-/** Chuva de confete em tela cheia (sem biblioteca). */
-export function Confete({ onFim, duracao = 5000 }: { onFim?: () => void; duracao?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  // a animação não reinicia quando o componente pai re-renderiza
-  const fimRef = useRef(onFim);
-  useEffect(() => {
-    fimRef.current = onFim;
-  }, [onFim]);
-  useEffect(() => {
-    const c = ref.current;
-    const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    const reduzir = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    c.width = window.innerWidth;
-    c.height = window.innerHeight;
-    const cores = ["#C9A227", "#e8c95a", "#22c55e", "#ef4444", "#38bdf8", "#ffffff", "#a78bfa"];
-    const pecas = Array.from({ length: reduzir ? 40 : 180 }, () => ({
-      x: Math.random() * c.width,
-      y: -20 - Math.random() * c.height,
-      w: 6 + Math.random() * 6,
-      h: 8 + Math.random() * 10,
-      vy: 2 + Math.random() * 4,
-      vx: -1.5 + Math.random() * 3,
-      r: Math.random() * Math.PI,
-      vr: -0.2 + Math.random() * 0.4,
-      cor: cores[Math.floor(Math.random() * cores.length)],
-    }));
-    const inicio = performance.now();
-    let raf = 0;
-    const passo = (t: number) => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      for (const p of pecas) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.r += p.vr;
-        if (p.y > c.height + 20 && t - inicio < duracao - 1500) p.y = -20;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.r);
-        ctx.fillStyle = p.cor;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-      }
-      if (t - inicio < duracao) raf = requestAnimationFrame(passo);
-      else fimRef.current?.();
-    };
-    raf = requestAnimationFrame(passo);
-    return () => cancelAnimationFrame(raf);
-  }, [duracao]);
-  return <canvas ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-[300]" />;
-}
-
 /**
  * Ao abrir o CRM depois de promovido, o colaborador vê a comemoração uma vez.
  * Fica no layout, então aparece em qualquer tela.
@@ -394,7 +349,11 @@ export function ComemoracaoPromocao() {
         <p className="mt-2 text-sm text-white/80">
           Promoção feita em {dataHoraBR(promo.realizadaEm ?? promo.dataHora)}. Conquista sua — a LB Representações reconhece o seu trabalho.
         </p>
-        <Button className="mt-5 w-full" onClick={() => void fechar()}>
+        <div className="mt-4 rounded-xl border border-[#C9A227]/50 bg-white/5 p-3 text-sm">
+          <p className="mb-2 text-white/80">Sua promoção aparece para toda a equipe no Dashboard por 3 dias. Mande uma foto!</p>
+          <BotaoFotoPromocao promocaoId={promo.id} temFoto={Boolean(promo.fotoUrl)} />
+        </div>
+        <Button className="mt-4 w-full" variant="secondary" onClick={() => void fechar()}>
           Obrigado(a)! 🎉
         </Button>
       </div>

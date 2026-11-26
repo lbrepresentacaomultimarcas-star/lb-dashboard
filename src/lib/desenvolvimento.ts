@@ -297,7 +297,31 @@ export type PromocaoAgendada = {
   criadoEm?: string;
   realizadaEm?: string;
   comemoracaoVistaEm?: string;
+  /** foto do mural (enviada pelo promovido ou pelo admin) */
+  fotoUrl?: string;
+  /** recado do admin no mural */
+  legenda?: string;
 };
+
+/** O que a equipe inteira vê no mural do Dashboard (3 dias após a promoção). */
+export type ItemMural = {
+  id: string;
+  profileId: string;
+  nome: string;
+  cargoAtual?: string;
+  cargoNovo: string;
+  realizadaEm: string;
+  fotoUrl?: string;
+  legenda?: string;
+};
+
+export const DIAS_NO_MURAL = 3;
+
+export function noMural(realizadaEm: string | undefined, agora = new Date()): boolean {
+  if (!realizadaEm) return false;
+  const t = new Date(realizadaEm).getTime();
+  return agora.getTime() - t < DIAS_NO_MURAL * 86_400_000;
+}
 
 /** "2026-12-05" + "10:00" → ISO no horário de Brasília (-03:00). */
 export function dataHoraBrasilia(data: string, hora: string): string {
@@ -336,5 +360,20 @@ export function promocaoFromDb(r: Row): PromocaoAgendada {
     criadoEm: s(r.criado_em),
     realizadaEm: s(r.realizada_em),
     comemoracaoVistaEm: s(r.comemoracao_vista_em),
+    fotoUrl: s(r.foto_url),
+    legenda: s(r.legenda),
+  };
+}
+
+export function itemMuralFromDb(r: Row): ItemMural {
+  return {
+    id: String(r.id),
+    profileId: String(r.profile_id),
+    nome: String(r.nome ?? "Colaborador"),
+    cargoAtual: s(r.cargo_atual),
+    cargoNovo: String(r.cargo_novo),
+    realizadaEm: String(r.realizada_em),
+    fotoUrl: s(r.foto_url),
+    legenda: s(r.legenda),
   };
 }
