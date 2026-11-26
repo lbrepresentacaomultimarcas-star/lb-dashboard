@@ -20,6 +20,14 @@ export const DESAFIO = {
   participantes: ["Adriel", "Joyce Santos", "Juliana", "Kathiely Santos", "William Narciso"],
 } as const;
 
+/**
+ * Outras grafias do MESMO vendedor no cadastro. O nome oficial continua sendo o
+ * exibido; isto só serve para achar o cadastro (ex.: "WILLYAN NARCISO").
+ */
+export const OUTRAS_GRAFIAS: Record<string, string[]> = {
+  "William Narciso": ["Willyan Narciso", "Willian Narciso", "Wilian Narciso"],
+};
+
 export const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
 /** Os 12 dias do desafio, em "AAAA-MM-DD". */
@@ -82,10 +90,12 @@ export type Participante = {
  */
 export function resolverParticipantes(vendedores: Pick<Vendedor, "id" | "nome" | "ativo">[]): Participante[] {
   return DESAFIO.participantes.map((nome) => {
-    const alvo = normalizar(nome);
+    const alvos = [nome, ...(OUTRAS_GRAFIAS[nome] ?? [])].map(normalizar);
     const base = { nome, slug: slugDe(nome) };
-    const exatos = vendedores.filter((v) => normalizar(v.nome) === alvo);
-    const candidatos = exatos.length ? exatos : vendedores.filter((v) => normalizar(v.nome).startsWith(alvo + " "));
+    const exatos = vendedores.filter((v) => alvos.includes(normalizar(v.nome)));
+    const candidatos = exatos.length
+      ? exatos
+      : vendedores.filter((v) => alvos.some((a) => normalizar(v.nome).startsWith(a + " ")));
     const escolhidos = candidatos.length > 1 ? candidatos.filter((v) => v.ativo) : candidatos;
     if (escolhidos.length === 1) return { ...base, vendedorId: escolhidos[0].id };
     if (candidatos.length === 0) return { ...base, problema: "Cadastro não encontrado em Vendedores." };
