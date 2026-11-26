@@ -50,6 +50,8 @@ export type AvaliacaoMensal = {
   cienciaEm?: string;
   resposta?: string;
   respostaEm?: string;
+  /** quando foi publicada pela 1ª vez */
+  criadoEm?: string;
   atualizadoEm?: string;
 };
 
@@ -78,6 +80,16 @@ const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+
+/** "26/11/2026 às 14:35" (horário de Brasília). Vazio sem data. */
+export function dataHoraBR(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const data = d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const hora = d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+  return `${data} às ${hora}`;
+}
 
 export function chaveHoje(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -248,6 +260,7 @@ export function avaliacaoFromDb(r: Row): AvaliacaoMensal {
     cienciaEm: s(r.ciencia_em),
     resposta: s(r.resposta),
     respostaEm: s(r.resposta_em),
+    criadoEm: s(r.criado_em),
     atualizadoEm: s(r.atualizado_em),
   };
 }

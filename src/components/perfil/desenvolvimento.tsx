@@ -40,6 +40,7 @@ import {
   SITUACAO_INFO,
   STATUS_PASSO_INFO,
   chaveHoje,
+  dataHoraBR,
   mediaNotas,
   mesCurto,
   mesParaAvaliar,
@@ -71,7 +72,7 @@ const TITULO = "flex items-center gap-2 text-[11px] font-bold uppercase tracking
 const AREA =
   "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/40";
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const dataBR = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "");
+const dataBR = dataHoraBR;
 const prazoBR = (d?: string) => (d ? d.split("-").reverse().join("/") : "");
 
 /** Passos e avaliações de uma pessoa, recarregados quando algo muda. */
@@ -258,6 +259,15 @@ export function PlanoPassosCard({
                     {p.status === "aprovado" && typeof p.nota === "number" ? ` · nota ${p.nota.toLocaleString("pt-BR")}` : ""}
                   </span>
                 </div>
+                <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--color-muted)]">
+                  {p.criadoEm && <span>📌 Cadastrado em {dataHoraBR(p.criadoEm)}</span>}
+                  {p.concluidoEm && <span>☑️ Concluído em {dataHoraBR(p.concluidoEm)}</span>}
+                  {p.validadoEm && (p.status === "aprovado" || p.status === "ajustar") && (
+                    <span>
+                      {p.status === "aprovado" ? "✅ Validado" : "🔁 Ajuste pedido"} em {dataHoraBR(p.validadoEm)}
+                    </span>
+                  )}
+                </p>
                 {(p.comentario || p.feedback) && (
                   <div className="mt-2 space-y-1 border-t border-[var(--color-border)] pt-2 text-sm">
                     {p.comentario && (
@@ -654,7 +664,11 @@ export function AvaliacaoEmpresaCard({
 
           <p className="text-[11px] text-[var(--color-text-dim)]">
             Avaliado por {atual.avaliadorNome ?? "administração"}
-            {atual.atualizadoEm ? ` em ${dataBR(atual.atualizadoEm)}` : ""}.
+            {atual.criadoEm ? ` · publicada em ${dataHoraBR(atual.criadoEm)}` : ""}
+            {atual.atualizadoEm && dataHoraBR(atual.atualizadoEm) !== dataHoraBR(atual.criadoEm)
+              ? ` · atualizada em ${dataHoraBR(atual.atualizadoEm)}`
+              : ""}
+            .
           </p>
 
           {/* ciência */}
@@ -663,7 +677,14 @@ export function AvaliacaoEmpresaCard({
               <p className="font-semibold text-emerald-400">
                 ✓ {souEu ? "Você" : nome.split(" ")[0]} leu e deu ciência em {dataBR(atual.cienciaEm)}
               </p>
-              {atual.resposta && <p className="mt-1">“{atual.resposta}”</p>}
+              {atual.resposta && (
+                <p className="mt-1">
+                  “{atual.resposta}”
+                  {atual.respostaEm && (
+                    <span className="ml-1 text-[11px] text-[var(--color-muted)]">— respondido em {dataHoraBR(atual.respostaEm)}</span>
+                  )}
+                </p>
+              )}
             </div>
           ) : souEu ? (
             <div className="space-y-2 rounded-lg border border-[var(--color-brand)]/40 p-3">

@@ -22,6 +22,8 @@ export type PlanoEvolucao = {
   metrica?: MetricaPlano;
   alvo?: number;
   foco?: string;
+  /** quando o colaborador começou a definir o caminho (1º registro) */
+  criadoEm?: string;
   atualizadoEm?: string;
 };
 
@@ -37,6 +39,7 @@ const fromDb = (r: Row): PlanoEvolucao => ({
   metrica: s(r.metrica) as MetricaPlano | undefined,
   alvo: n(r.alvo),
   foco: s(r.foco),
+  criadoEm: s(r.criado_em),
   atualizadoEm: s(r.atualizado_em),
 });
 
@@ -78,7 +81,9 @@ export const planosApi = {
    */
   async salvar(p: PlanoEvolucao): Promise<void> {
     if (!supabaseEnabled) {
-      const novo = { ...p, atualizadoEm: new Date().toISOString() };
+      const agora = new Date().toISOString();
+      const antes = demoLer().find((x) => x.profileId === p.profileId);
+      const novo = { ...p, criadoEm: antes?.criadoEm ?? agora, atualizadoEm: agora };
       try {
         localStorage.setItem(K_DEMO, JSON.stringify([...demoLer().filter((x) => x.profileId !== p.profileId), novo]));
       } catch {

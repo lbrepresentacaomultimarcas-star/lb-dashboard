@@ -18,6 +18,7 @@ import { notify } from "@/lib/notify";
 import { METRICAS_PLANO, progressoPlano, type MetricaPlano } from "@/lib/evolucao";
 import { planosApi, type PlanoEvolucao } from "@/lib/planos";
 import { JORNADA } from "@/lib/jornada";
+import { dataHoraBR } from "@/lib/desenvolvimento";
 import type { IndicadoresBrutos } from "@/lib/performance";
 
 export function PlanoEvolucaoCard({
@@ -62,7 +63,9 @@ export function PlanoEvolucaoCard({
     setSalvando(true);
     try {
       await planosApi.salvar({ ...form, profileId });
-      setPlano({ ...form, profileId });
+      // relê do banco: a data de início e a da atualização são as gravadas lá
+      const gravado = await planosApi.ler(profileId).catch(() => null);
+      setPlano(gravado ?? { ...form, profileId });
       setEditando(false);
       notify.success("Plano salvo", "A administração foi avisada.");
       // o aviso "Defina seu objetivo" do perfil escuta isto
@@ -238,6 +241,23 @@ export function PlanoEvolucaoCard({
               <span className="text-[var(--color-muted)]">Foco: </span>
               <span className="text-[var(--color-text)]">{plano.foco}</span>
             </p>
+          )}
+
+          {(plano?.criadoEm || plano?.atualizadoEm) && (
+            <div className="rounded-lg bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-text-dim)]">
+              {plano?.criadoEm && (
+                <p>
+                  🗓️ Começou a definir o caminho em{" "}
+                  <b className="text-[var(--color-text)]">{dataHoraBR(plano.criadoEm)}</b>
+                </p>
+              )}
+              {plano?.atualizadoEm && dataHoraBR(plano.atualizadoEm) !== dataHoraBR(plano.criadoEm) && (
+                <p>
+                  ✏️ Última atualização em{" "}
+                  <b className="text-[var(--color-text)]">{dataHoraBR(plano.atualizadoEm)}</b>
+                </p>
+              )}
+            </div>
           )}
 
           {/* Progresso SÓ quando a meta é mensurável. Meta em palavras não

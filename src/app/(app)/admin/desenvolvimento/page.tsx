@@ -23,6 +23,7 @@ import {
   SITUACAO_INFO,
   avaliacaoEmDia,
   chaveHoje,
+  dataHoraBR,
   mesCurto,
   mesDevido,
   mesRotulo,
@@ -252,6 +253,9 @@ export default function DesenvolvimentoEquipePage() {
                       <span>
                         {l.plano.objetivo}
                         {l.plano.prazoMeses ? <span className="text-xs text-[var(--color-text-dim)]"> · {l.plano.prazoMeses} meses</span> : null}
+                        {l.plano.criadoEm && (
+                          <span className="block text-[11px] text-[var(--color-muted)]">desde {dataHoraBR(l.plano.criadoEm)}</span>
+                        )}
                       </span>
                     ) : (
                       <span className="text-amber-300">⚠ não definido</span>
@@ -279,7 +283,7 @@ export default function DesenvolvimentoEquipePage() {
                       <>
                         {mesCurto(l.ultima.mes)} · nota {l.ultima.nota.toLocaleString("pt-BR")}
                         <p className={cn("text-xs", l.ultima.cienciaEm ? "text-emerald-400" : "text-amber-300")}>
-                          {l.ultima.cienciaEm ? "✓ deu ciência" : "⏳ sem ciência"}
+                          {l.ultima.cienciaEm ? `✓ ciência em ${dataHoraBR(l.ultima.cienciaEm)}` : "⏳ sem ciência"}
                         </p>
                       </>
                     ) : (
