@@ -19,7 +19,7 @@ import Link from "next/link";
 import { Bell, BellRing, Check, Inbox } from "lucide-react";
 import { notificacoesApi, useNotificacoes, useSession } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
-import { usePendentes } from "@/lib/use-pendentes";
+import { usePendentes, usePendentesDesenvolvimento } from "@/lib/use-pendentes";
 import { cn } from "@/lib/utils";
 
 /** Pede permissão uma vez só; nunca insiste se a pessoa negou. */
@@ -55,6 +55,10 @@ export function NotificacoesSino() {
   const session = useSession();
   const notificacoes = useNotificacoes();
   const pendentes = usePendentes();
+  // avisos do Plano de Desenvolvimento ainda não lidos (o mesmo número do menu "Meu Perfil")
+  const dev = usePendentesDesenvolvimento();
+  const avisosDev = dev.perfil + dev.equipe;
+  const totalSino = pendentes + avisosDev;
   const [aberto, setAberto] = useState(false);
   const anunciadas = useRef<Set<string> | null>(null);
   const caixa = useRef<HTMLDivElement | null>(null);
@@ -121,7 +125,10 @@ export function NotificacoesSino() {
 
   if (!session) return null;
 
-  const rotulo = pendentes > 0 ? `${pendentes} lead(s) aguardando atendimento` : "Avisos";
+  const rotulo =
+    [pendentes > 0 ? `${pendentes} lead(s) aguardando atendimento` : "", avisosDev > 0 ? `${avisosDev} aviso(s) do seu desenvolvimento` : ""]
+      .filter(Boolean)
+      .join(" · ") || "Avisos";
 
   return (
     <div className="relative" ref={caixa}>
@@ -131,18 +138,18 @@ export function NotificacoesSino() {
         title={rotulo}
         className={cn(
           "relative grid h-9 w-9 place-items-center rounded-lg transition-colors",
-          pendentes > 0
+          totalSino > 0
             ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
             : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]",
         )}
       >
-        {pendentes > 0 ? <BellRing className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
-        {pendentes > 0 && (
+        {totalSino > 0 ? <BellRing className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
+        {totalSino > 0 && (
           <span
             className="absolute -right-0.5 -top-0.5 grid min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-bold leading-[18px] text-white tabular-nums"
             style={{ background: "var(--color-danger)", boxShadow: "0 0 0 2px var(--color-surface)" }}
           >
-            {pendentes > 99 ? "99+" : pendentes}
+            {totalSino > 99 ? "99+" : totalSino}
           </span>
         )}
       </button>

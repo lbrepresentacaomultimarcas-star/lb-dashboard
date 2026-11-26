@@ -32,7 +32,8 @@ import {
   PlanoPassosCard,
   useDesenvolvimento,
 } from "@/components/perfil/desenvolvimento";
-import { useEquipes, useRoster, useSession } from "@/lib/store";
+import { useEquipes, useNotificacoes, useRoster, useSession } from "@/lib/store";
+import { lerAvisosDesenvolvimento } from "@/lib/use-pendentes";
 import { temPermissao } from "@/lib/permissions";
 import { PAPEL_INFO } from "@/lib/types";
 import { degrauDe } from "@/lib/jornada";
@@ -92,6 +93,14 @@ export default function PerfilPage() {
   const liberado = pessoa?.codigoLiberado !== false;
 
   const mapa = useEvolucao(pessoa?.vendedorRef);
+  const notificacoes = useNotificacoes();
+
+  // Abriu o perfil = viu os avisos dele: o pontinho vermelho do menu e do sino some.
+  useEffect(() => {
+    if (!session?.id) return;
+    const alvo = souEu ? "/perfil" : `/perfil?de=${alvoId}`;
+    void lerAvisosDesenvolvimento(notificacoes, (link) => link === alvo);
+  }, [notificacoes, souEu, alvoId, session?.id]);
   const dev = useDesenvolvimento(pessoa?.id);
 
   const frase = useMemo(() => {

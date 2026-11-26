@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { supabaseEnabled } from "@/lib/supabase/client";
 import { Logo } from "@/components/logo";
 import { useSession } from "@/lib/store";
-import { usePendentes } from "@/lib/use-pendentes";
+import { usePendentes, usePendentesDesenvolvimento } from "@/lib/use-pendentes";
 import { temPermissao } from "@/lib/permissions";
 import { useDesafiosVisiveis } from "@/components/desafio/desafio-ui";
 import type { Papel } from "@/lib/types";
@@ -124,11 +124,11 @@ const NAV: (NavItem | NavGroup)[] = [
   { href: "/configuracoes", label: "Configurações", icon: Settings, minimo: "admin" },
 ];
 
-/** Hoje só a fila da Central cobra. Fica em função para o dia em que outra
- *  tela também precisar de número — o lugar de decidir é um só. */
-const HREF_COM_CONTADOR = "/central";
-function badgeDoItem(href: string, pendentes: number) {
-  return href === HREF_COM_CONTADOR ? pendentes : 0;
+/** Quem cobra com bolinha vermelha: a fila da Central e os avisos do Plano de
+ *  Desenvolvimento (o mesmo número que está no sino). O lugar de decidir é um só. */
+type Contadores = Record<string, number>;
+function badgeDoItem(href: string, contadores: Contadores) {
+  return contadores[href] ?? 0;
 }
 
 function isGroupActive(group: NavGroup, pathname: string) {
@@ -181,7 +181,16 @@ function Item({
   );
 }
 
-function Group({ group, pathname, badge = 0 }: { group: NavGroup; pathname: string; badge?: number }) {
+function Group({
+  group,
+  pathname,
+  contadores,
+}: {
+  group: NavGroup;
+  pathname: string;
+  contadores: Contadores;
+}) {
+  const badge = group.items.reduce((soma, it) => soma + badgeDoItem(it.href, contadores), 0);
   const active = isGroupActive(group, pathname);
   const [open, setOpen] = useState(active);
   const Icon = group.icon;
@@ -211,7 +220,7 @@ function Group({ group, pathname, badge = 0 }: { group: NavGroup; pathname: stri
       {open && (
         <div className="mt-1 space-y-1">
           {group.items.map((it) => (
-            <Item key={it.href} item={it} pathname={pathname} indent badge={badgeDoItem(it.href, badge)} />
+            <Item key={it.href} item={it} pathname={pathname} indent badge={badgeDoItem(it.href, contadores)} />
           ))}
         </div>
       )}
@@ -223,6 +232,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const session = useSession();
   const pendentes = usePendentes();
+  const dev = usePendentesDesenvolvimento();
+  const contadores: Contadores = { "/central": pendentes, "/perfil": dev.perfil, "/admin/desenvolvimento": dev.equipe };
   const temDesafio = useDesafiosVisiveis().length > 0;
 
   // Filtra NAV pelo papel: itens com `minimo` definido só aparecem se permissão suficiente
@@ -256,14 +267,9 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {navVisivel.map((entry, i) =>
           "items" in entry ? (
-            <Group
-              key={`g-${i}`}
-              group={entry}
-              pathname={pathname}
-              badge={entry.items.some((it) => it.href === HREF_COM_CONTADOR) ? pendentes : 0}
-            />
+            <Group key={`g-${i}`} group={entry} pathname={pathname} contadores={contadores} />
           ) : (
-            <Item key={entry.href} item={entry} pathname={pathname} badge={badgeDoItem(entry.href, pendentes)} />
+            <Item key={entry.href} item={entry} pathname={pathname} badge={badgeDoItem(entry.href, contadores)} />
           ),
         )}
       </nav>

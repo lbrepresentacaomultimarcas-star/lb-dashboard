@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Menu, ShoppingCart, Sparkles, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMobileNav } from "@/components/mobile-nav-context";
+import { usePendentesDesenvolvimento } from "@/lib/use-pendentes";
 
 const ITEMS = [
   { href: "/dashboard", label: "Início", icon: LayoutDashboard },
@@ -20,6 +21,8 @@ const ITEMS = [
 export function BottomNav() {
   const pathname = usePathname();
   const { setOpen } = useMobileNav();
+  const dev = usePendentesDesenvolvimento();
+  const avisos = dev.perfil + dev.equipe;
 
   return (
     <nav
@@ -45,9 +48,18 @@ export function BottomNav() {
       })}
       <button
         onClick={() => setOpen(true)}
-        className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-[var(--color-text-dim)]"
+        className="relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-[var(--color-text-dim)]"
+        aria-label={avisos > 0 ? `Menu — ${avisos} aviso(s) no seu perfil` : "Menu"}
       >
-        <Menu className="h-5 w-5" />
+        <span className="relative">
+          <Menu className="h-5 w-5" />
+          {avisos > 0 && (
+            <span
+              className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--color-surface)]"
+              style={{ background: "var(--color-danger)" }}
+            />
+          )}
+        </span>
         Menu
       </button>
     </nav>

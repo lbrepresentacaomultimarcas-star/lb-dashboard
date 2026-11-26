@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/store";
 import { filterNav } from "@/components/nav-items";
 import { useDesafiosVisiveis } from "@/components/desafio/desafio-ui";
-import { usePendentes } from "@/lib/use-pendentes";
+import { usePendentes, usePendentesDesenvolvimento } from "@/lib/use-pendentes";
 import { Logo } from "@/components/logo";
 import { useMobileNav } from "@/components/mobile-nav-context";
 
@@ -24,6 +24,10 @@ export function MobileDrawer() {
   const temDesafio = useDesafiosVisiveis().length > 0;
   const nav = filterNav(session, temDesafio);
   const pendentes = usePendentes();
+  const dev = usePendentesDesenvolvimento();
+  // bolinha vermelha por item (o mesmo número do sino)
+  const contador = (href: string) =>
+    href === "/central" ? pendentes : href === "/perfil" ? dev.perfil : href === "/admin/desenvolvimento" ? dev.equipe : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -97,12 +101,12 @@ export function MobileDrawer() {
                     >
                       <Icon className="h-4 w-4" />
                       {it.label}
-                      {it.href === "/central" && pendentes > 0 && (
+{contador(it.href) > 0 && (
                         <span
                           className="ml-auto grid min-w-[20px] place-items-center rounded-full px-1.5 text-[10px] font-bold leading-5 text-white tabular-nums"
                           style={{ background: "var(--color-danger)" }}
                         >
-                          {pendentes > 99 ? "99+" : pendentes}
+                          {contador(it.href) > 99 ? "99+" : contador(it.href)}
                         </span>
                       )}
                     </Link>
@@ -127,6 +131,14 @@ export function MobileDrawer() {
                   >
                     <Icon className="h-4 w-4" />
                     {entry.label}
+                    {contador(entry.href) > 0 && (
+                        <span
+                          className="ml-auto grid min-w-[20px] place-items-center rounded-full px-1.5 text-[10px] font-bold leading-5 text-white tabular-nums"
+                          style={{ background: "var(--color-danger)" }}
+                        >
+                          {contador(entry.href) > 99 ? "99+" : contador(entry.href)}
+                        </span>
+                      )}
                   </Link>
                 );
               })()
