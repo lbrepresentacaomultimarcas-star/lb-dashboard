@@ -104,6 +104,7 @@ import {
 } from "./temas";
 import { uid } from "./utils";
 import { PERFIS_PADRAO, type PerfilCliente } from "./perfil-cliente";
+import { desafioFromDb, desafioToDb, type DbDesafio, type Desafio } from "./desafio";
 import { siteBaseUrl } from "./site-url";
 
 // ============================================================
@@ -121,6 +122,7 @@ const K_PERF_CONFIG = "lb:performance_config";
 const K_PERF_HIST = "lb:performance_historico";
 const K_TEMAS = "lb:temas";
 const K_MENSAGENS = "lb:mensagens_prontas";
+const K_DESAFIOS = "lb:desafios";
 const K_TENTATIVAS = "lb:tentativas";
 const K_SESSION = "lb:session";
 /** "Entrar como consultor" — sessionStorage (vale só nesta aba e some ao fechá-la). */
@@ -146,6 +148,8 @@ type State = {
   mensagensProntas: MensagemPronta[];
   /** Perfis comportamentais do cliente (Pipeline). Vazio = recurso desligado. */
   perfisCliente: PerfilCliente[];
+  /** Desafios configurados pelo admin (tela Gerenciar desafios). */
+  desafios: Desafio[];
   /** Modo demonstração: histórico de perfis em memória. */
   perfilHistoricoLocal: PerfilHistorico[];
   audit: AuditLog[];
@@ -184,6 +188,7 @@ const state: State = {
   temas: [],
   mensagensProntas: [],
   perfisCliente: [],
+  desafios: [],
   perfilHistoricoLocal: [],
   temaAtivo: TEMA_LB_PREMIUM,
   audit: [],
@@ -494,6 +499,7 @@ export function initStore(): Promise<void> {
           reloadTemas(),
           reloadMensagensProntas(),
     reloadPerfisCliente(),
+    reloadDesafios(),
           reloadAudit(),
           reloadResultados(),
           reloadRoster(),
@@ -519,6 +525,7 @@ export function initStore(): Promise<void> {
       state.temas = lsRead<Tema[]>(K_TEMAS, []);
       state.temaAtivo = temaAtivoDe(state.temas);
       state.perfisCliente = PERFIS_PADRAO;
+      state.desafios = lsRead<Desafio[]>(K_DESAFIOS, []);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
       state.session = lsRead<SessionUser | null>(K_SESSION, null);
     }
@@ -836,6 +843,15 @@ async function reloadTemas() {
 }
 
 /** Sem a tabela (antes da migração), o recurso fica desligado e nada é exigido. */
+/** Sem a tabela (antes da migração), a lista fica vazia e nada quebra. */
+async function reloadDesafios() {
+  const { data, error } = await supabaseBrowser().from("desafios").select("*").order("inicio", { ascending: false });
+  if (!error && data) {
+    state.desafios = (data as DbDesafio[]).map(desafioFromDb);
+    notify();
+  }
+}
+
 async function reloadPerfisCliente() {
   const sb = supabaseBrowser();
   const { data, error } = await sb.from("perfis_cliente").select("*").order("ordem", { ascending: true });
@@ -881,6 +897,7 @@ export async function reloadAllData(): Promise<void> {
     reloadTemas(),
     reloadMensagensProntas(),
     reloadPerfisCliente(),
+    reloadDesafios(),
     reloadAudit(),
     reloadResultados(),
     reloadRoster(),
@@ -1087,6 +1104,7 @@ function attachRealtime() {
   sub("resultados_contemplacoes", reloadResultados);
   sub("mensagens_prontas", reloadMensagensProntas);
   sub("perfis_cliente", reloadPerfisCliente);
+  sub("desafios", reloadDesafios);
 
   /*
    * LEAD TRANSFERIDO PARA OUTRA PESSOA.
@@ -1298,6 +1316,52 @@ export function usePerformanceConfig(): ConfigPerformance {
 export function usePerformanceHistorico(): PerformanceSnapshot[] {
   return useSyncExternalStore(subscribe, () => state.performanceHistorico, () => state.performanceHistorico);
 }
+export function useDesafios(): Desafio[] {
+  return useSyncExternalStore(subscribe, () => state.desafios, () => state.desafios);
+}
+
+/** Criar, editar, ativar/desativar e excluir desafios. O banco só deixa o administrador. */
+export const desafiosApi = {
+  async criar(input: Omit<Desafio, "id" | "criadoEm">): Promise<Desafio> {
+    let criado: Desafio;
+    if (supabaseEnabled) {
+      const { data, error } = await supabaseBrowser().from("desafios").insert(desafioToDb(input)).select().single();
+      if (error) throw error;
+      criado = desafioFromDb(data as DbDesafio);
+    } else {
+      criado = { ...input, id: uid(), criadoEm: new Date().toISOString() };
+    }
+    state.desafios = [criado, ...state.desafios.filter((d) => d.id !== criado.id)];
+    if (!supabaseEnabled) lsWrite(K_DESAFIOS, state.desafios);
+    notify();
+    return criado;
+  },
+  async atualizar(id: string, patch: Partial<Omit<Desafio, "id" | "criadoEm">>): Promise<void> {
+    if (supabaseEnabled) {
+      const { data, error } = await supabaseBrowser()
+        .from("desafios")
+        .update({ ...desafioToDb(patch), atualizado_em: new Date().toISOString() })
+        .eq("id", id)
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Sem permissão para alterar este desafio.");
+    }
+    state.desafios = state.desafios.map((d) => (d.id === id ? { ...d, ...patch } : d));
+    if (!supabaseEnabled) lsWrite(K_DESAFIOS, state.desafios);
+    notify();
+  },
+  async excluir(id: string): Promise<void> {
+    if (supabaseEnabled) {
+      const { data, error } = await supabaseBrowser().from("desafios").delete().eq("id", id).select("id");
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Sem permissão para excluir este desafio.");
+    }
+    state.desafios = state.desafios.filter((d) => d.id !== id);
+    if (!supabaseEnabled) lsWrite(K_DESAFIOS, state.desafios);
+    notify();
+  },
+};
+
 export function usePerfisCliente(): PerfilCliente[] {
   return useSyncExternalStore(subscribe, () => state.perfisCliente, () => state.perfisCliente);
 }
@@ -2956,6 +3020,7 @@ export const sessionApi = {
       state.temas = lsRead<Tema[]>(K_TEMAS, []);
       state.temaAtivo = temaAtivoDe(state.temas);
       state.perfisCliente = PERFIS_PADRAO;
+      state.desafios = lsRead<Desafio[]>(K_DESAFIOS, []);
       state.audit = lsRead<AuditLog[]>(K_AUDIT, []);
     }
     notify();
@@ -3011,6 +3076,7 @@ export const sessionApi = {
     state.mensagensProntas = [];
     state.perfisCliente = [];
     state.perfilHistoricoLocal = [];
+    state.desafios = [];
     state.audit = [];
     state.resultados = [];
     state.roster = [];

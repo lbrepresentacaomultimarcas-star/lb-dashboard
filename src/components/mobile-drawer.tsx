@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/store";
 import { filterNav } from "@/components/nav-items";
+import { useDesafiosVisiveis } from "@/components/desafio/desafio-ui";
 import { usePendentes } from "@/lib/use-pendentes";
 import { Logo } from "@/components/logo";
 import { useMobileNav } from "@/components/mobile-nav-context";
@@ -20,7 +21,8 @@ export function MobileDrawer() {
   const { open, setOpen } = useMobileNav();
   const pathname = usePathname();
   const session = useSession();
-  const nav = filterNav(session);
+  const temDesafio = useDesafiosVisiveis().length > 0;
+  const nav = filterNav(session, temDesafio);
   const pendentes = usePendentes();
 
   useEffect(() => {

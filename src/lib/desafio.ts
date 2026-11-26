@@ -1,53 +1,66 @@
 /**
- * DESAFIO LB — META DE R$ 1 MILHÃO (26/11/2026 a 07/12/2026).
+ * DESAFIOS (ex.: "DESAFIO LB — META DE R$ 1 MILHÃO").
  *
- * Regras puras (sem React, sem banco): a tela, a impressão e os testes usam
- * exatamente as mesmas contas. Nada aqui é digitado à mão: produção, saldo,
- * percentual, status e marcação do dia saem das vendas do CRM.
+ * O administrador cria, edita, ativa e desativa os desafios (tabela `desafios`).
+ * Aqui ficam as regras puras (sem React, sem banco): a tela, a impressão e os
+ * testes usam exatamente as mesmas contas. Nada é digitado à mão: produção,
+ * saldo, percentual, status e marcação do dia saem das vendas do CRM.
  *
  * Vendas que contam: as mesmas do Ranking (tudo, menos as Canceladas). O filtro
  * de Canceladas já vem de `useVendas()`; aqui ele é repetido por segurança.
  */
-import type { Venda, Vendedor } from "./types";
+import type { Venda } from "./types";
 
-export const DESAFIO = {
-  titulo: "DESAFIO LB — META DE R$ 1 MILHÃO",
-  inicio: "2026-11-26",
-  fim: "2026-12-07",
-  metaColetiva: 1_000_000,
-  metaIndividual: 200_000,
-  /** Nomes oficiais do desafio — não alterar. */
-  participantes: ["Adriel", "Joyce Santos", "Juliana", "Kathiely Santos", "William Narciso"],
-} as const;
-
-/**
- * Outras grafias do MESMO vendedor no cadastro. O nome oficial continua sendo o
- * exibido; isto só serve para achar o cadastro (ex.: "WILLYAN NARCISO").
- */
-export const OUTRAS_GRAFIAS: Record<string, string[]> = {
-  "William Narciso": ["Willyan Narciso", "Willian Narciso", "Wilian Narciso"],
+export type ParticipanteDesafio = {
+  vendedorId: string;
+  /** Nome exibido no desafio (pode diferir do cadastro, ex.: "William Narciso"). */
+  nome: string;
+  meta: number;
 };
+
+export type Desafio = {
+  id: string;
+  titulo: string;
+  frase: string;
+  /** "AAAA-MM-DD" */
+  inicio: string;
+  /** "AAAA-MM-DD" (inclusive) */
+  fim: string;
+  /** Vazio = soma das metas individuais. */
+  metaColetiva?: number;
+  participantes: ParticipanteDesafio[];
+  ativo: boolean;
+  criadoEm?: string;
+};
+
+export const FRASE_PADRAO = "Desafio · Responsabilidade · Competitividade · Espírito de equipe";
+/** Depois do último dia, o desafio continua no menu por estes dias, com o resultado final. */
+export const DIAS_RESULTADO_FINAL = 2;
+export const MAX_DIAS_DESAFIO = 93;
 
 export const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
-/** Os 12 dias do desafio, em "AAAA-MM-DD". */
-export const DIAS_DESAFIO: string[] = (() => {
-  const out: string[] = [];
-  const [y, m, d] = DESAFIO.inicio.split("-").map(Number);
-  const fim = DESAFIO.fim;
-  for (let i = 0; i < 40; i++) {
-    const k = chaveDia(new Date(y, m - 1, d + i));
-    out.push(k);
-    if (k === fim) break;
-  }
-  return out;
-})();
-
-/** Meta diária de referência (R$ 200.000 / 12 dias). */
-export const META_DIARIA = DESAFIO.metaIndividual / DIAS_DESAFIO.length;
+// ---------------------------------------------------------------- datas
 
 export function chaveDia(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dataDe(chave: string): Date {
+  const [y, m, d] = chave.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export function somarDias(chave: string, n: number): string {
+  const d = dataDe(chave);
+  return chaveDia(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+}
+
+/** Dias corridos de `a` até `b` (b - a). */
+export function diferencaDias(a: string, b: string): number {
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
 }
 
 /** Dia efetivo da venda: a parte de data do registro (mesma regra do ciclo de produção). */
@@ -57,54 +70,116 @@ export function diaDaVenda(data: string): string {
 }
 
 export function rotuloDia(chave: string): { data: string; semana: string } {
-  const [y, m, d] = chave.split("-").map(Number);
-  return { data: `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`, semana: DIAS_SEMANA[new Date(y, m - 1, d).getDay()] };
+  const [, m, d] = chave.split("-");
+  return { data: `${d}/${m}`, semana: DIAS_SEMANA[dataDe(chave).getDay()] };
 }
 
-export function slugDe(nome: string): string {
-  return normalizar(nome).replace(/ /g, "-");
+/** "26/11/2026" */
+export function dataBR(chave: string): string {
+  const [y, m, d] = chave.split("-");
+  return `${d}/${m}/${y}`;
 }
 
-export function normalizar(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+/** "26/11/2026 a 07/12/2026" */
+export function periodoBR(d: Pick<Desafio, "inicio" | "fim">): string {
+  return `${dataBR(d.inicio)} a ${dataBR(d.fim)}`;
 }
 
-export type Participante = {
-  nome: string;
-  slug: string;
-  vendedorId?: string;
-  /** Preenchido quando o vínculo com o cadastro não é seguro. */
-  problema?: string;
+/** Todos os dias do desafio, em "AAAA-MM-DD". */
+export function diasDoDesafio(d: Pick<Desafio, "inicio" | "fim">): string[] {
+  const n = Math.min(MAX_DIAS_DESAFIO, Math.max(0, diferencaDias(d.inicio, d.fim) + 1));
+  return Array.from({ length: n }, (_, i) => somarDias(d.inicio, i));
+}
+
+// ---------------------------------------------------------------- metas
+
+export function metaColetivaDe(d: Pick<Desafio, "metaColetiva" | "participantes">): number {
+  if (d.metaColetiva && d.metaColetiva > 0) return d.metaColetiva;
+  return arred(d.participantes.reduce((a, p) => a + (Number(p.meta) || 0), 0));
+}
+
+export function metaDiaria(meta: number, d: Pick<Desafio, "inicio" | "fim">): number {
+  const n = diasDoDesafio(d).length;
+  return n ? meta / n : 0;
+}
+
+/** Todas as metas individuais iguais? Devolve o valor; senão, null. */
+export function metaUnica(d: Pick<Desafio, "participantes">): number | null {
+  const metas = new Set(d.participantes.map((p) => Number(p.meta)));
+  return metas.size === 1 ? [...metas][0] : null;
+}
+
+// ---------------------------------------------------------------- tempo
+
+export type EstadoDesafio = "inativo" | "agendado" | "em_andamento" | "resultado_final" | "encerrado";
+
+export function estadoDoDesafio(d: Pick<Desafio, "ativo" | "inicio" | "fim">, hoje: string): EstadoDesafio {
+  if (!d.ativo) return "inativo";
+  if (hoje < d.inicio) return "agendado";
+  if (hoje <= d.fim) return "em_andamento";
+  if (diferencaDias(d.fim, hoje) <= DIAS_RESULTADO_FINAL) return "resultado_final";
+  return "encerrado";
+}
+
+export const ESTADO_INFO: Record<EstadoDesafio, { rotulo: string; cor: string }> = {
+  inativo: { rotulo: "Desativado", cor: "#64748b" },
+  agendado: { rotulo: "Agendado", cor: "#0ea5e9" },
+  em_andamento: { rotulo: "Em andamento", cor: "#16a34a" },
+  resultado_final: { rotulo: "Resultado final", cor: "#C9A227" },
+  encerrado: { rotulo: "Encerrado", cor: "#64748b" },
 };
 
-/**
- * Liga cada nome oficial ao cadastro que já existe em `vendedores` (nunca cria).
- * 1º nome completo igual; senão, cadastros que começam pelo nome oficial
- * ("Adriel" → "Adriel Souza"). Entre vários, fica com o único ativo. Se ainda
- * sobrar mais de um, ou nenhum, NÃO adivinha: devolve o problema.
- */
-export function resolverParticipantes(vendedores: Pick<Vendedor, "id" | "nome" | "ativo">[]): Participante[] {
-  return DESAFIO.participantes.map((nome) => {
-    const alvos = [nome, ...(OUTRAS_GRAFIAS[nome] ?? [])].map(normalizar);
-    const base = { nome, slug: slugDe(nome) };
-    const exatos = vendedores.filter((v) => alvos.includes(normalizar(v.nome)));
-    const candidatos = exatos.length
-      ? exatos
-      : vendedores.filter((v) => alvos.some((a) => normalizar(v.nome).startsWith(a + " ")));
-    const escolhidos = candidatos.length > 1 ? candidatos.filter((v) => v.ativo) : candidatos;
-    if (escolhidos.length === 1) return { ...base, vendedorId: escolhidos[0].id };
-    if (candidatos.length === 0) return { ...base, problema: "Cadastro não encontrado em Vendedores." };
-    return {
-      ...base,
-      problema: `Mais de um cadastro possível: ${candidatos.map((c) => c.nome).join(", ")}.`,
-    };
-  });
+/** Aparece para a equipe (menu e tela): ativo, do 1º dia até o resultado final. */
+export function visivelParaEquipe(d: Pick<Desafio, "ativo" | "inicio" | "fim">, hoje: string): boolean {
+  const e = estadoDoDesafio(d, hoje);
+  return e === "em_andamento" || e === "resultado_final";
 }
+
+/** Contagem regressiva até o último dia (contando hoje). */
+export function diasRestantes(d: Pick<Desafio, "inicio" | "fim">, hoje: string): { dias: number; texto: string } {
+  if (hoje > d.fim) return { dias: 0, texto: "Desafio encerrado — resultado final" };
+  if (hoje < d.inicio) {
+    const ate = diferencaDias(hoje, d.inicio);
+    return { dias: diasDoDesafio(d).length, texto: `Começa em ${ate} dia${ate === 1 ? "" : "s"}` };
+  }
+  const dias = diferencaDias(hoje, d.fim) + 1;
+  if (dias === 1) return { dias, texto: "ÚLTIMO DIA!" };
+  return { dias, texto: `Faltam ${dias} dias (contando hoje)` };
+}
+
+/** Próxima rodada: começa no dia seguinte ao fim, com a mesma duração. */
+export function proximaRodada(d: Desafio): Omit<Desafio, "id" | "criadoEm"> {
+  const dur = diferencaDias(d.inicio, d.fim);
+  const inicio = somarDias(d.fim, 1);
+  return {
+    titulo: d.titulo,
+    frase: d.frase,
+    inicio,
+    fim: somarDias(inicio, dur),
+    metaColetiva: d.metaColetiva,
+    participantes: d.participantes.map((p) => ({ ...p })),
+    ativo: true,
+  };
+}
+
+/** Problemas que impedem salvar (lista vazia = ok). */
+export function validarDesafio(d: Omit<Desafio, "id">): string[] {
+  const erros: string[] = [];
+  if (!d.titulo.trim()) erros.push("Informe o nome do desafio.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(d.fim)) erros.push("Informe as datas de início e fim.");
+  else if (d.fim < d.inicio) erros.push("A data final não pode ser antes da inicial.");
+  else if (diferencaDias(d.inicio, d.fim) + 1 > MAX_DIAS_DESAFIO) erros.push(`O período pode ter no máximo ${MAX_DIAS_DESAFIO} dias.`);
+  if (d.participantes.length === 0) erros.push("Escolha pelo menos um vendedor.");
+  if (new Set(d.participantes.map((p) => p.vendedorId)).size !== d.participantes.length) erros.push("Há vendedor repetido.");
+  for (const p of d.participantes) {
+    if (!p.nome.trim()) erros.push("Todo participante precisa de um nome de exibição.");
+    if (!(Number(p.meta) > 0)) erros.push(`Informe a meta de ${p.nome || "todos os participantes"}.`);
+  }
+  if (d.metaColetiva !== undefined && d.metaColetiva !== null && !(d.metaColetiva > 0)) erros.push("A meta da equipe precisa ser maior que zero.");
+  return [...new Set(erros)];
+}
+
+// ---------------------------------------------------------------- cálculo
 
 export type ResultadoDia = "vendeu" | "nao_vendeu" | "aguardando";
 
@@ -120,7 +195,7 @@ export type LinhaDia = {
 
 export type StatusDesafio = "META BATIDA ✓" | "EM ANDAMENTO" | "SEM VENDAS";
 
-export type FichaVendedor = Participante & {
+export type FichaVendedor = ParticipanteDesafio & {
   dias: LinhaDia[];
   total: number;
   falta: number;
@@ -129,29 +204,29 @@ export type FichaVendedor = Participante & {
   posicao: number;
 };
 
-/**
- * Marcação do dia: vendeu → ✓; dia que já passou com zero → X;
- * hoje ainda sem venda e dias futuros → em branco.
- */
+/** Vendeu → ✓; dia que já passou com zero → X; hoje ainda sem venda e dias futuros → em branco. */
 export function resultadoDoDia(chave: string, valor: number, hoje: string): ResultadoDia {
   if (valor > 0) return "vendeu";
   return chave < hoje ? "nao_vendeu" : "aguardando";
 }
 
-export function statusDe(total: number): StatusDesafio {
-  if (total >= DESAFIO.metaIndividual) return "META BATIDA ✓";
+export function statusDe(total: number, meta: number): StatusDesafio {
+  if (total >= meta) return "META BATIDA ✓";
   return total > 0 ? "EM ANDAMENTO" : "SEM VENDAS";
 }
 
-const arred = (n: number) => Math.round(n * 100) / 100;
+function arred(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 /** Fichas de todos os participantes, já com a posição no ranking do desafio. */
 export function calcularDesafio(
-  participantes: Participante[],
+  d: Pick<Desafio, "inicio" | "fim" | "participantes">,
   vendas: Pick<Venda, "vendedorId" | "valor" | "data" | "status">[],
   hoje: string,
 ): FichaVendedor[] {
-  const dentro = new Set(DIAS_DESAFIO);
+  const dias = diasDoDesafio(d);
+  const dentro = new Set(dias);
   // soma por vendedor e dia — cada venda vai só para o vendedor dela
   const soma = new Map<string, Map<string, number>>();
   for (const v of vendas) {
@@ -163,29 +238,30 @@ export function calcularDesafio(
     soma.set(v.vendedorId, porDia);
   }
 
-  const fichas = participantes.map((p) => {
-    const porDia = (p.vendedorId && soma.get(p.vendedorId)) || new Map<string, number>();
+  const fichas = d.participantes.map((p) => {
+    const meta = Number(p.meta) || 0;
+    const porDia = soma.get(p.vendedorId) ?? new Map<string, number>();
     let acumulado = 0;
-    const dias = DIAS_DESAFIO.map((chave) => {
+    const linhas = dias.map((chave) => {
       const valor = porDia.get(chave) ?? 0;
       acumulado = arred(acumulado + valor);
       return {
         chave,
         valor,
         acumulado,
-        falta: Math.max(0, arred(DESAFIO.metaIndividual - acumulado)),
+        falta: Math.max(0, arred(meta - acumulado)),
         resultado: resultadoDoDia(chave, valor, hoje),
         futuro: chave > hoje,
       };
     });
-    const total = acumulado;
     return {
       ...p,
-      dias,
-      total,
-      falta: Math.max(0, arred(DESAFIO.metaIndividual - total)),
-      pct: (total / DESAFIO.metaIndividual) * 100,
-      status: statusDe(total),
+      meta,
+      dias: linhas,
+      total: acumulado,
+      falta: Math.max(0, arred(meta - acumulado)),
+      pct: meta > 0 ? (acumulado / meta) * 100 : 0,
+      status: statusDe(acumulado, meta),
       posicao: 0,
     };
   });
@@ -197,26 +273,64 @@ export function calcularDesafio(
   return ordem;
 }
 
-export function totaisDaEquipe(fichas: Pick<FichaVendedor, "total">[]) {
+export function totaisDaEquipe(fichas: Pick<FichaVendedor, "total">[], metaColetiva: number) {
   const total = arred(fichas.reduce((a, f) => a + f.total, 0));
   return {
     total,
-    falta: Math.max(0, arred(DESAFIO.metaColetiva - total)),
-    pct: (total / DESAFIO.metaColetiva) * 100,
+    falta: Math.max(0, arred(metaColetiva - total)),
+    pct: metaColetiva > 0 ? (total / metaColetiva) * 100 : 0,
   };
 }
 
-/** Contagem regressiva até 07/12 (contando hoje). */
-export function diasRestantes(hoje: string): { dias: number; texto: string } {
-  if (hoje > DESAFIO.fim) return { dias: 0, texto: "Desafio encerrado" };
-  const [y, m, d] = hoje.split("-").map(Number);
-  const [fy, fm, fd] = DESAFIO.fim.split("-").map(Number);
-  const dias = Math.round((Date.UTC(fy, fm - 1, fd) - Date.UTC(y, m - 1, d)) / 86_400_000) + 1;
-  if (hoje < DESAFIO.inicio) {
-    const [iy, im, id] = DESAFIO.inicio.split("-").map(Number);
-    const ate = Math.round((Date.UTC(iy, im - 1, id) - Date.UTC(y, m - 1, d)) / 86_400_000);
-    return { dias: DIAS_DESAFIO.length, texto: `Começa em ${ate} dia${ate === 1 ? "" : "s"}` };
-  }
-  if (dias === 1) return { dias, texto: "ÚLTIMO DIA!" };
-  return { dias, texto: `Faltam ${dias} dias (contando hoje)` };
+/** Rótulo curto para as marcas do termômetro: "100 mil", "1,5 MI". */
+export function valorCurto(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MI`;
+  if (n >= 1_000) return `${(n / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil`;
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+}
+
+/** 11 marcas de 0 até a meta (0%, 10%, … 100%). */
+export function marcasTermometro(meta: number): string[] {
+  return Array.from({ length: 11 }, (_, i) => (i === 0 ? "R$ 0" : i === 10 ? `R$ ${valorCurto(meta)}` : valorCurto((meta * i) / 10)));
+}
+
+// ---------------------------------------------------------------- banco
+
+export type DbDesafio = {
+  id: string;
+  titulo: string;
+  frase: string | null;
+  inicio: string;
+  fim: string;
+  meta_coletiva: number | string | null;
+  participantes: { vendedor_id: string; nome: string; meta: number | string }[] | null;
+  ativo: boolean | null;
+  criado_em?: string | null;
+};
+
+export function desafioFromDb(r: DbDesafio): Desafio {
+  return {
+    id: r.id,
+    titulo: r.titulo,
+    frase: r.frase ?? "",
+    inicio: String(r.inicio).slice(0, 10),
+    fim: String(r.fim).slice(0, 10),
+    metaColetiva: r.meta_coletiva === null || r.meta_coletiva === undefined ? undefined : Number(r.meta_coletiva),
+    participantes: (r.participantes ?? []).map((p) => ({ vendedorId: p.vendedor_id, nome: p.nome, meta: Number(p.meta) })),
+    ativo: r.ativo ?? true,
+    criadoEm: r.criado_em ?? undefined,
+  };
+}
+
+export function desafioToDb(d: Partial<Omit<Desafio, "id" | "criadoEm">>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (d.titulo !== undefined) out.titulo = d.titulo.trim();
+  if (d.frase !== undefined) out.frase = d.frase.trim();
+  if (d.inicio !== undefined) out.inicio = d.inicio;
+  if (d.fim !== undefined) out.fim = d.fim;
+  if ("metaColetiva" in d) out.meta_coletiva = d.metaColetiva && d.metaColetiva > 0 ? d.metaColetiva : null;
+  if (d.participantes !== undefined)
+    out.participantes = d.participantes.map((p) => ({ vendedor_id: p.vendedorId, nome: p.nome.trim(), meta: Number(p.meta) }));
+  if (d.ativo !== undefined) out.ativo = d.ativo;
+  return out;
 }

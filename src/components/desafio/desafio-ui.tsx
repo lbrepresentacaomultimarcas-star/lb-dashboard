@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Printer } from "lucide-react";
-import { useSession, useVendas, useVendedores } from "@/lib/store";
+import { useDesafios, useSession, useVendas } from "@/lib/store";
 import { temPermissao } from "@/lib/permissions";
 import { notify } from "@/lib/notify";
-import { calcularDesafio, chaveDia, resolverParticipantes, type FichaVendedor } from "@/lib/desafio";
+import { calcularDesafio, chaveDia, visivelParaEquipe, type Desafio, type FichaVendedor } from "@/lib/desafio";
 import { htmlDesafio, imprimirDesafio } from "@/lib/desafio-impressao";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,7 @@ export const pct = (n: number) =>
   `${n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
 /** "Hoje" no fuso do aparelho; vira sozinho à meia-noite. Nulo até montar (evita divergência no SSR). */
-function useHoje(): string | null {
+export function useHoje(): string | null {
   const [hoje, setHoje] = useState<string | null>(null);
   useEffect(() => {
     const atualizar = () => setHoje(chaveDia(new Date()));
@@ -28,28 +28,34 @@ function useHoje(): string | null {
   return hoje;
 }
 
-/** Tudo o que as telas do desafio precisam, calculado a partir das vendas do CRM. */
-export function useDesafio() {
-  const vendedores = useVendedores();
-  const vendas = useVendas(); // mesmas vendas do Ranking: sem as Canceladas
+/** Quem pode o quê nas telas do desafio. */
+export function usePermissoesDesafio() {
   const session = useSession();
-  const hoje = useHoje();
-  const participantes = useMemo(() => resolverParticipantes(vendedores), [vendedores]);
-  const fichas = useMemo(
-    () => (hoje ? calcularDesafio(participantes, vendas, hoje) : []),
-    [participantes, vendas, hoje],
-  );
   return {
-    fichas,
-    hoje,
     gestor: temPermissao(session, "supervisor"),
-    /** Imprimir / PDF é só do administrador (o representante). */
-    podeImprimir: temPermissao(session, "admin"),
+    /** Gerenciar e imprimir / PDF é só do administrador (o representante). */
+    admin: temPermissao(session, "admin"),
   };
 }
 
-export function imprimir(painel: boolean, fichas: FichaVendedor[], todas: FichaVendedor[]) {
-  if (!imprimirDesafio(htmlDesafio({ painel, fichas, todas }))) {
+/** Desafios que a equipe vê agora (ativos, do 1º dia até o resultado final). */
+export function useDesafiosVisiveis(): Desafio[] {
+  const desafios = useDesafios();
+  const hoje = useHoje();
+  return useMemo(
+    () => (hoje ? desafios.filter((d) => visivelParaEquipe(d, hoje)).sort((a, b) => a.fim.localeCompare(b.fim)) : []),
+    [desafios, hoje],
+  );
+}
+
+/** Fichas do desafio, calculadas a partir das vendas do CRM (mesmas do Ranking: sem Canceladas). */
+export function useFichas(desafio: Desafio | undefined, hoje: string | null): FichaVendedor[] {
+  const vendas = useVendas();
+  return useMemo(() => (desafio && hoje ? calcularDesafio(desafio, vendas, hoje) : []), [desafio, vendas, hoje]);
+}
+
+export function imprimir(desafio: Desafio, painel: boolean, fichas: FichaVendedor[], todas: FichaVendedor[]) {
+  if (!imprimirDesafio(htmlDesafio(desafio, { painel, fichas, todas }))) {
     notify.error("Pop-up bloqueado", "Libere pop-ups deste site para imprimir ou salvar em PDF.");
   }
 }
@@ -68,7 +74,17 @@ export function BotaoImprimir({ onClick, children }: { onClick: () => void; chil
 }
 
 /** Faixa azul-marinho com o dourado embaixo, como no material oficial. */
-export function TopoDesafio({ titulo, subtitulo, children }: { titulo: string; subtitulo: string; children?: React.ReactNode }) {
+export function TopoDesafio({
+  titulo,
+  subtitulo,
+  objetivo,
+  children,
+}: {
+  titulo: string;
+  subtitulo: string;
+  objetivo: string;
+  children?: React.ReactNode;
+}) {
   return (
     <header
       className="overflow-hidden rounded-2xl text-white"
@@ -96,7 +112,7 @@ export function TopoDesafio({ titulo, subtitulo, children }: { titulo: string; s
             <p className="text-[10px] font-bold tracking-[0.3em]" style={{ color: GOLD }}>
               OBJETIVO
             </p>
-            <p className="text-lg font-black">R$ 1.000.000,00 até 07/12</p>
+            <p className="text-lg font-black">{objetivo}</p>
           </div>
         </div>
       </div>

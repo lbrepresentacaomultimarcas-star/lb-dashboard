@@ -34,6 +34,8 @@ export type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   minimo?: Papel;
+  /** Só aparece com desafio no ar (o administrador sempre vê). */
+  soComDesafio?: boolean;
 };
 
 export type NavGroup = {
@@ -65,7 +67,7 @@ export const NAV: (NavItem | NavGroup)[] = [
     icon: Trophy,
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
-      { href: "/desafio", label: "Desafio R$ 1 Milhão", icon: Medal },
+      { href: "/desafio", label: "Desafio", icon: Medal, soComDesafio: true },
       { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
       { href: "/configuracoes/personalizacao", label: "Personalização Visual", icon: Palette, minimo: "admin" },
@@ -105,11 +107,13 @@ export const NAV: (NavItem | NavGroup)[] = [
   { href: "/configuracoes", label: "Configurações", icon: Settings, minimo: "admin" },
 ];
 
-export function filterNav(session: SessionUser | null): (NavItem | NavGroup)[] {
+export function filterNav(session: SessionUser | null, temDesafio = false): (NavItem | NavGroup)[] {
+  const pode = (it: NavItem) =>
+    (!it.minimo || temPermissao(session, it.minimo)) && (!it.soComDesafio || temDesafio || temPermissao(session, "admin"));
   const out: (NavItem | NavGroup)[] = [];
   for (const entry of NAV) {
     if ("items" in entry) {
-      const filhos = entry.items.filter((it) => !it.minimo || temPermissao(session, it.minimo));
+      const filhos = entry.items.filter(pode);
       if (filhos.length > 0) out.push({ ...entry, items: filhos });
     } else if (!entry.minimo || temPermissao(session, entry.minimo)) {
       out.push(entry);

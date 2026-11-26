@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
-import { DESAFIO, DIAS_DESAFIO, META_DIARIA, rotuloDia } from "@/lib/desafio";
+import { diasDoDesafio, metaDiaria, rotuloDia, type Desafio } from "@/lib/desafio";
+import { objetivoDe } from "@/lib/desafio-impressao";
 import {
   BotaoImprimir,
   Cartao,
@@ -15,24 +15,32 @@ import {
   brl,
   imprimir,
   pct,
-  useDesafio,
+  useFichas,
+  useHoje,
+  usePermissoesDesafio,
 } from "@/components/desafio/desafio-ui";
 
-export default function FichaDesafioPage() {
-  const { vendedor } = useParams<{ vendedor: string }>();
-  const { fichas, hoje, podeImprimir } = useDesafio();
+/** Controle individual de um vendedor no desafio (os dias, um por linha). */
+export function FichaDesafio({ desafio, vendedorId }: { desafio: Desafio; vendedorId: string }) {
+  const hoje = useHoje();
+  const fichas = useFichas(desafio, hoje);
+  const { admin } = usePermissoesDesafio();
   if (!hoje) return null;
 
-  // navegação na ordem oficial dos nomes, não do ranking (não "pula" ao mudar a posição)
-  const ordemOficial = DESAFIO.participantes.map((n) => fichas.find((f) => f.nome === n)!).filter(Boolean);
-  const idx = ordemOficial.findIndex((f) => f.slug === vendedor);
+  // navegação na ordem cadastrada, não na do ranking (não "pula" ao mudar a posição)
+  const ordemOficial = desafio.participantes
+    .map((p) => fichas.find((f) => f.vendedorId === p.vendedorId))
+    .filter((f): f is NonNullable<typeof f> => Boolean(f));
+  const idx = ordemOficial.findIndex((f) => f.vendedorId === vendedorId);
+  const painel = `/desafio/${desafio.id}`;
+  const nDias = diasDoDesafio(desafio).length;
   const f = ordemOficial[idx];
 
   if (!f) {
     return (
       <div className="mx-auto max-w-xl space-y-4 py-10 text-center">
         <p className="text-lg font-bold">Vendedor não encontrado no desafio.</p>
-        <Link href="/desafio" className="font-bold underline" style={{ color: GOLD }}>
+        <Link href={painel} className="font-bold underline" style={{ color: GOLD }}>
           Voltar ao painel do desafio
         </Link>
       </div>
@@ -44,18 +52,18 @@ export default function FichaDesafioPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-10">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href="/desafio" className="inline-flex items-center gap-1 text-sm font-bold" style={{ color: GOLD }}>
+        <Link href={painel} className="inline-flex items-center gap-1 text-sm font-bold" style={{ color: GOLD }}>
           <ArrowLeft className="h-4 w-4" aria-hidden /> Painel da equipe
         </Link>
         <div className="flex items-center gap-1 text-sm">
           <Link
-            href={`/desafio/${anterior.slug}`}
+            href={`${painel}/${anterior.vendedorId}`}
             className="inline-flex items-center rounded-lg px-2 py-1.5 text-[var(--color-text-dim)] hover:bg-white/5"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden /> {anterior.nome}
           </Link>
           <Link
-            href={`/desafio/${proximo.slug}`}
+            href={`${painel}/${proximo.vendedorId}`}
             className="inline-flex items-center rounded-lg px-2 py-1.5 text-[var(--color-text-dim)] hover:bg-white/5"
           >
             {proximo.nome} <ChevronRight className="h-4 w-4" aria-hidden />
@@ -63,7 +71,11 @@ export default function FichaDesafioPage() {
         </div>
       </div>
 
-      <TopoDesafio titulo={f.nome.toUpperCase()} subtitulo={`Controle individual • ${DESAFIO.titulo}`}>
+      <TopoDesafio
+        titulo={f.nome.toUpperCase()}
+        subtitulo={`Controle individual • ${desafio.titulo}`}
+        objetivo={objetivoDe(desafio)}
+      >
         <div
           className="flex flex-wrap items-center gap-3 px-5 py-3 sm:px-6"
           style={{ background: "rgba(255,255,255,.04)", borderTop: "1px solid rgba(201,162,39,.25)" }}
@@ -73,16 +85,16 @@ export default function FichaDesafioPage() {
           </span>
           <SeloStatus status={f.status} />
           <div className="sm:ml-auto">
-            {podeImprimir && <BotaoImprimir onClick={() => imprimir(false, [f], fichas)}>Imprimir ficha</BotaoImprimir>}
+            {admin && <BotaoImprimir onClick={() => imprimir(desafio, false, [f], fichas)}>Imprimir ficha</BotaoImprimir>}
           </div>
         </div>
       </TopoDesafio>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Cartao tom="navy" rotulo="Meta individual" valor={brl(DESAFIO.metaIndividual)} />
-        <Cartao rotulo="Período" valor="26/11 a 07/12/2026" />
-        <Cartao rotulo="Meta diária de referência" valor={brl(META_DIARIA)} />
-        <Cartao rotulo="Dias do desafio" valor={`${DIAS_DESAFIO.length} dias`} />
+        <Cartao tom="navy" rotulo="Meta individual" valor={brl(f.meta)} />
+        <Cartao rotulo="Período" valor={`${rotuloDia(desafio.inicio).data} a ${rotuloDia(desafio.fim).data}/${desafio.fim.slice(0, 4)}`} />
+        <Cartao rotulo="Meta diária de referência" valor={brl(metaDiaria(f.meta, desafio))} />
+        <Cartao rotulo="Dias do desafio" valor={`${nDias} dia${nDias === 1 ? "" : "s"}`} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
@@ -117,7 +129,7 @@ export default function FichaDesafioPage() {
                         </span>
                       )}
                     </td>
-                    <td className="hidden px-2 py-2.5 sm:px-3 tabular-nums text-slate-600 sm:table-cell">{brl(META_DIARIA)}</td>
+                    <td className="hidden px-2 py-2.5 sm:px-3 tabular-nums text-slate-600 sm:table-cell">{brl(metaDiaria(f.meta, desafio))}</td>
                     <td className="px-2 py-2.5 sm:px-3 text-right font-bold tabular-nums">{d.valor ? brl(d.valor) : "—"}</td>
                     <td className="px-2 py-2.5 sm:px-3 text-right tabular-nums">{d.futuro ? "—" : brl(d.acumulado)}</td>
                     <td className="hidden px-2 py-2.5 sm:px-3 text-right tabular-nums md:table-cell">{d.futuro ? "—" : brl(d.falta)}</td>
@@ -143,7 +155,7 @@ export default function FichaDesafioPage() {
                 <td className="px-2 py-3 sm:px-3" style={{ color: GOLD }}>
                   TOTAL
                 </td>
-                <td className="hidden px-2 py-3 sm:px-3 tabular-nums sm:table-cell">{brl(DESAFIO.metaIndividual)}</td>
+                <td className="hidden px-2 py-3 sm:px-3 tabular-nums sm:table-cell">{brl(f.meta)}</td>
                 <td className="px-2 py-3 sm:px-3 text-right tabular-nums">{brl(f.total)}</td>
                 <td className="px-2 py-3 sm:px-3" />
                 <td className="hidden px-2 py-3 sm:px-3 text-right tabular-nums md:table-cell">{brl(f.falta)}</td>
@@ -170,12 +182,6 @@ export default function FichaDesafioPage() {
           </div>
         </aside>
       </div>
-
-      {f.problema && (
-        <p className="rounded-xl border border-amber-400/50 bg-amber-400/10 p-3 text-sm text-amber-100">
-          Vínculo com o cadastro a conferir: {f.problema}
-        </p>
-      )}
     </div>
   );
 }

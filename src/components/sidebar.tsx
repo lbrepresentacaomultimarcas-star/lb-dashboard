@@ -39,6 +39,7 @@ import { Logo } from "@/components/logo";
 import { useSession } from "@/lib/store";
 import { usePendentes } from "@/lib/use-pendentes";
 import { temPermissao } from "@/lib/permissions";
+import { useDesafiosVisiveis } from "@/components/desafio/desafio-ui";
 import type { Papel } from "@/lib/types";
 
 type NavItem = {
@@ -47,6 +48,8 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   /** Papel mínimo pra ver esse item. Default: vendedor. */
   minimo?: Papel;
+  /** Só aparece com desafio no ar (o administrador sempre vê). */
+  soComDesafio?: boolean;
 };
 
 type NavGroup = {
@@ -79,7 +82,7 @@ const NAV: (NavItem | NavGroup)[] = [
     icon: Trophy,
     items: [
       { href: "/ranking", label: "Rankings", icon: Trophy },
-      { href: "/desafio", label: "Desafio R$ 1 Milhão", icon: Medal },
+      { href: "/desafio", label: "Desafio", icon: Medal, soComDesafio: true },
       { href: "/performance", label: "Performance", icon: Sparkles },
       { href: "/configuracoes/temporadas", label: "Temporadas", icon: Palette, minimo: "admin" },
       { href: "/metas", label: "Metas mensais", icon: Target, minimo: "supervisor" },
@@ -218,13 +221,16 @@ export function Sidebar() {
   const pathname = usePathname();
   const session = useSession();
   const pendentes = usePendentes();
+  const temDesafio = useDesafiosVisiveis().length > 0;
 
   // Filtra NAV pelo papel: itens com `minimo` definido só aparecem se permissão suficiente
   const navVisivel: (NavItem | NavGroup)[] = [];
   for (const entry of NAV) {
     if ("items" in entry) {
       const filhos = entry.items.filter(
-        (it) => !it.minimo || temPermissao(session, it.minimo),
+        (it) =>
+          (!it.minimo || temPermissao(session, it.minimo)) &&
+          (!it.soComDesafio || temDesafio || temPermissao(session, "admin")),
       );
       if (filhos.length > 0) navVisivel.push({ ...entry, items: filhos });
     } else if (!entry.minimo || temPermissao(session, entry.minimo)) {
